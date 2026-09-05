@@ -26,7 +26,8 @@ Storage: D1 for everything structured, R2 for uploaded files, KV for OAuth recor
 
 - **No local tooling for users.** Deploy is the Cloudflare button. Never add a step that requires a CLI, a checkout, or a dashboard visit that the admin UI could do through the API.
 - **Schema migrates itself.** Add a migration to `MIGRATIONS` in [schema.ts](src/schema.ts). Never assume a deploy runs `wrangler d1 migrations apply`; it does not.
-- **Upgrades must be frictionless.** A user syncing their fork triggers a rebuild. Anything that would break on that path is a bug.
+- **Upgrades must be frictionless.** Users fork this repo and import the fork in Cloudflare, so Sync fork triggers a rebuild with no git and no CLI. Anything that breaks on that path is a bug.
+- **The Deploy to Cloudflare button clones, it does not fork.** A cloned repo has no upstream, so Sync fork does not exist and GitHub cannot open a cross-repo PR. That is why the documented path is fork first, import second.
 - **One path normalizer.** [path.ts](src/pages/path.ts) is the only place a page path is normalized. Everything else calls it.
 - **Render cache keys carry `updated_at`**, so writes never need an explicit purge.
 - **owner_id on every content row.** Single owner today; the field is the seam for multi-user later.
