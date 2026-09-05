@@ -1,5 +1,13 @@
 import { deleteAsset, listAssets, putAsset } from "../assets/service";
-import { listDomains } from "../domains/service";
+import {
+  addDomain,
+  domainRecords,
+  getDomainConfig,
+  listDomains,
+  refreshDomain,
+} from "../domains/service";
+import { isApex, PROVIDERS, providerById } from "../domains/instructions";
+import type { Domain } from "../types";
 import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
 import { isValidPath, normalizePath } from "../pages/path";
 import { getSettings, SETTING, setSetting } from "../settings";
@@ -37,6 +45,33 @@ function requirePath(raw: unknown): string {
 function detectFormat(content: string, declared?: string): "markdown" | "html" {
   if (declared === "markdown" || declared === "html") return declared;
   return /^\s*(<!doctype html|<html[\s>])/i.test(content) ? "html" : "markdown";
+}
+
+function describeDomain(
+  domain: Domain,
+  records: { type: string; name: string; value: string; purpose: string }[],
+  providerId: string,
+): string {
+  const provider = providerById(providerId);
+  const lines = [
+    `${domain.hostname} is attached and waiting for DNS.`,
+    "",
+    `Add these records at ${provider.label === "Other / not listed" ? "whoever manages DNS for this domain" : provider.label}:`,
+    "",
+    ...records.map((r) => `  ${r.type}  ${r.name}  ->  ${r.value}\n      ${r.purpose}`),
+    "",
+    ...provider.steps.map((step, i) => `${i + 1}. ${step}`),
+  ];
+
+  if (isApex(domain.hostname) && !provider.apexSupported) {
+    lines.push(
+      "",
+      `Note: ${domain.hostname} is a bare domain. ${provider.label} may not allow a CNAME here. If the record will not save, use www.${domain.hostname} instead.`,
+    );
+  }
+  if (domain.verification_errors) lines.push("", `Cloudflare reported: ${domain.verification_errors}`);
+  lines.push("", "Run check_domain once the records are saved. Certificates usually issue within a few minutes.");
+  return lines.join("\n");
 }
 
 export const TOOLS: ToolDefinition[] = [
@@ -193,6 +228,71 @@ export const TOOLS: ToolDefinition[] = [
       const removed = await deleteAsset(ctx.env, String(args.key));
       if (!removed) throw new Error(`No asset with key ${args.key}`);
       return `Deleted asset ${args.key}`;
+    },
+  },
+  {
+    name: "list_domains",
+    title: "List custom domains",
+    description: "List custom domains attached to this site and whether each one is live yet.",
+    inputSchema: object({}),
+    handler: async (_args, ctx) => {
+      const domains = await listDomains(ctx.env);
+      if (domains.length === 0) return "No custom domains yet. Use add_domain to attach one.";
+      return domains
+        .map((d) => `${d.hostname}  ${d.status}${d.verification_errors ? `  (${d.verification_errors})` : ""}`)
+        .join("\n");
+    },
+  },
+  {
+    name: "add_domain",
+    title: "Add a custom domain",
+    description:
+      "Attach a domain such as blog.example.com to this site and return the exact DNS records the owner must add. The domain never moves; two records at their existing DNS provider is all it takes.",
+    inputSchema: object(
+      {
+        hostname: { type: "string", description: "For example blog.example.com" },
+        dns_provider: {
+          type: "string",
+          enum: PROVIDERS.map((p) => p.id),
+          description: "Who manages DNS for this domain, used to tailor the steps",
+        },
+      },
+      ["hostname"],
+    ),
+    handler: async (args, ctx) => {
+      const config = await getDomainConfig(ctx.env);
+      if (!config)
+        throw new Error(
+          `Custom domains are not set up yet. Open ${ctx.siteUrl}/admin/domains, click "Create token on Cloudflare", and paste the token. Then try again.`,
+        );
+
+      const providerId = typeof args.dns_provider === "string" ? args.dns_provider : "generic";
+      const { domain, records } = await addDomain(
+        ctx.env,
+        ctx.ownerId,
+        String(args.hostname),
+        providerId,
+      );
+      return describeDomain(domain, records, providerId);
+    },
+  },
+  {
+    name: "check_domain",
+    title: "Check a custom domain",
+    description:
+      "Re-check whether a domain's DNS records are visible and its certificate has issued, and repeat the records if anything is still missing.",
+    inputSchema: object({ hostname: { type: "string" } }, ["hostname"]),
+    handler: async (args, ctx) => {
+      const hostname = String(args.hostname).trim().toLowerCase();
+      const domains = await listDomains(ctx.env);
+      const existing = domains.find((d) => d.hostname === hostname);
+      if (!existing) throw new Error(`${hostname} is not attached to this site.`);
+
+      const domain = await refreshDomain(ctx.env, existing);
+      if (domain.status === "active") return `${domain.hostname} is live at https://${domain.hostname}`;
+
+      const records = await domainRecords(ctx.env, domain);
+      return describeDomain(domain, records, domain.provider ?? "generic");
     },
   },
   {

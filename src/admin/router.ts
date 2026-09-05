@@ -148,8 +148,47 @@ async function handleLogin(request: Request, env: Env, next: string): Promise<Re
 
 // ---------- pages ----------
 
-async function pagesScreen(env: Env, url: URL): Promise<Response> {
+function checklist(steps: { done: boolean; title: string; body: string }[]): string {
+  const remaining = steps.filter((s) => !s.done);
+  if (remaining.length === 0) return "";
+  return `<div class="panel">
+<h2 style="margin-top:0">Getting started</h2>
+<ol class="steps" style="color:inherit">${steps
+    .map(
+      (step) =>
+        `<li style="margin-bottom:.7rem${step.done ? ";opacity:.5" : ""}">
+<strong>${step.done ? "&#10003; " : ""}${escapeHtml(step.title)}</strong>
+<div class="small muted">${step.body}</div></li>`,
+    )
+    .join("")}</ol></div>`;
+}
+
+async function pagesScreen(env: Env, url: URL, ownerId: string): Promise<Response> {
   const pages = await listPages(env);
+  const [grants, domains, origin] = await Promise.all([
+    env.OAUTH_PROVIDER.listUserGrants(ownerId),
+    listDomains(env),
+    Promise.resolve(`${url.protocol}//${url.host}`),
+  ]);
+
+  const guide = checklist([
+    {
+      done: grants.items.length > 0,
+      title: "Connect Claude",
+      body: `In Claude, add a custom connector pointing at <code>${escapeHtml(origin)}/mcp</code>, then sign in with your admin password. <a href="/admin/connections">Connections</a>`,
+    },
+    {
+      done: pages.length > 0,
+      title: "Publish your first page",
+      body: 'Ask Claude to publish a page, or <a href="/admin/pages/edit">write one here</a>.',
+    },
+    {
+      done: domains.some((d) => d.status === "active"),
+      title: "Use your own domain",
+      body: 'Optional. Your site already works at this address. <a href="/admin/domains">Set up a domain</a>',
+    },
+  ]);
+
   const rows = pages.length
     ? pages
         .map(
@@ -171,7 +210,7 @@ async function pagesScreen(env: Env, url: URL): Promise<Response> {
   return page({
     title: "Pages",
     current: "/admin",
-    body: `${flash(url)}
+    body: `${flash(url)}${guide}
 <div class="row" style="justify-content:space-between">
 <h1>Pages</h1><a class="button" href="/admin/pages/edit">New page</a></div>
 <div class="panel"><table>
@@ -299,37 +338,64 @@ function recordTable(records: { type: string; name: string; value: string; purpo
     .join("")}</tbody></table>`;
 }
 
+function tokenTemplateUrl(): string {
+  const permissions = [
+    { key: "ssl_and_certificates", type: "edit" },
+    { key: "dns", type: "edit" },
+    { key: "workers_routes", type: "edit" },
+    { key: "zone", type: "read" },
+  ];
+  const params = new URLSearchParams({
+    permissionGroupKeys: JSON.stringify(permissions),
+    accountId: "*",
+    zoneId: "all",
+    name: "pages custom domains",
+  });
+  return `https://dash.cloudflare.com/profile/api-tokens?${params.toString()}`;
+}
+
+function detectScriptName(url: URL): string | null {
+  const match = url.host.match(/^([a-z0-9-]+)\.[a-z0-9-]+\.workers\.dev$/i);
+  return match ? match[1] : null;
+}
+
 async function domainsScreen(env: Env, url: URL): Promise<Response> {
   const config = await getDomainConfig(env);
 
   if (!config) {
-    const zoneId = await getSetting(env, SETTING.cfZoneId);
+    const script = detectScriptName(url);
     return page({
       title: "Domains",
       current: "/admin/domains",
       body: `${flash(url)}
-<h1>Custom domains</h1>
-<p class="lede">One-time setup. After this, any domain can point here with a CNAME, and its owner never has to move their DNS.</p>
+<h1>Use your own domain</h1>
+<p class="lede">Two clicks. After this, any domain points here with a CNAME and never leaves its current DNS provider.</p>
 <div class="panel">
-<h2 style="margin-top:0">Connect your Cloudflare account</h2>
-<ol class="steps">
-<li>Open the Cloudflare dashboard and create an API token.</li>
-<li>Give it these permissions: <code>Zone : SSL and Certificates : Edit</code>, <code>Zone : DNS : Edit</code>, <code>Zone : Workers Routes : Edit</code>, <code>Zone : Zone : Read</code>.</li>
-<li>Scope it to the one domain this site should use as its home base, then paste the token below.</li>
-</ol>
-<form method="post" action="/admin/domains/configure">
+<ol class="steps" style="color:inherit">
+<li style="margin-bottom:1rem"><strong>Create a token</strong>
+<div class="small muted">The permissions are filled in for you. Under <strong>Zone Resources</strong>, pick the one domain this site should use as its home base, then create the token and copy it.</div>
+<p style="margin:.6rem 0 0"><a class="button" href="${tokenTemplateUrl()}" target="_blank" rel="noopener">Create token on Cloudflare</a></p>
+</li>
+<li><strong>Paste it here</strong>
+<div class="small muted">Everything else is configured automatically.</div>
+<form method="post" action="/admin/domains/configure" style="margin-top:.6rem">
 <div class="field">
-  <label for="token">Cloudflare API token<span class="hint">Stored encrypted. Never shown again after saving.</span></label>
-  <input id="token" name="token" type="password" required>
+  <input id="token" name="token" type="password" required autocomplete="off" placeholder="Paste token">
 </div>
-<div class="field">
+${
+  script
+    ? `<input type="hidden" name="script" value="${escapeHtml(script)}">`
+    : `<div class="field">
   <label for="script">Worker name<span class="hint">The name of this Worker in your Cloudflare account.</span></label>
   <input id="script" name="script" type="text" value="pages" required>
-</div>
-${zoneId ? `<input type="hidden" name="zone_id" value="${escapeHtml(zoneId)}">` : ""}
-<button type="submit">Continue</button>
+</div>`
+}
+<button type="submit">Finish setup</button>
 </form>
-</div>`,
+</li>
+</ol>
+</div>
+<p class="small muted">Why a token at all: Cloudflare only serves HTTPS for hostnames it knows about, and issuing certificates for other people's domains needs one domain of your own on Cloudflare as the home base. You name it once, here.</p>`,
     });
   }
 
@@ -337,14 +403,25 @@ ${zoneId ? `<input type="hidden" name="zone_id" value="${escapeHtml(zoneId)}">` 
   const cards = await Promise.all(
     domains.map(async (domain) => {
       const records = await domainRecords(env, domain);
-      const pill =
-        domain.status === "active" ? "ok" : domain.status === "failed" ? "bad" : "warn";
+      const provider = providerById(domain.provider ?? "generic");
+      const pill = domain.status === "active" ? "ok" : domain.status === "failed" ? "bad" : "warn";
       const label =
         domain.status === "active"
           ? "Live"
           : domain.status === "failed"
             ? "Needs attention"
             : "Waiting for DNS";
+
+      const pending =
+        domain.status === "active"
+          ? `<p class="small muted" style="margin-bottom:0">Serving at <a href="https://${escapeHtml(
+              domain.hostname,
+            )}" target="_blank" rel="noopener">https://${escapeHtml(domain.hostname)}</a></p>`
+          : `<h2 style="margin-top:1rem">What to do at ${escapeHtml(provider.label)}</h2>
+<ol class="steps">${provider.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+${recordTable(records)}
+<p class="small muted" style="margin-top:.8rem">This page rechecks every few minutes. <a href="/admin/domains/refresh">Check now</a></p>`;
+
       return `<div class="panel">
 <div class="row" style="justify-content:space-between">
 <div><strong class="mono">${escapeHtml(domain.hostname)}</strong>
@@ -354,16 +431,16 @@ ${zoneId ? `<input type="hidden" name="zone_id" value="${escapeHtml(zoneId)}">` 
 <input type="hidden" name="hostname" value="${escapeHtml(domain.hostname)}">
 <button class="danger" type="submit">Remove</button></form>
 </div>
+${domain.verification_errors ? notice("bad", domain.verification_errors) : ""}
 ${
-  domain.verification_errors
-    ? notice("bad", domain.verification_errors)
-    : domain.status === "active"
-      ? ""
-      : `<p class="small muted">Add these two records wherever you manage DNS for this domain. This page checks every few minutes.</p>${recordTable(
-          records,
-        )}`
+  isApex(domain.hostname) && !provider.apexSupported && domain.status !== "active"
+    ? notice(
+        "warn",
+        `This is a bare domain. ${provider.label} may not support a CNAME here. If the records will not save, use www.${domain.hostname} instead.`,
+      )
+    : ""
 }
-${isApex(domain.hostname) && domain.status !== "active" ? notice("warn", "This is a bare domain. It only works if your DNS provider supports CNAME flattening or ALIAS records. If it does not, use www instead.") : ""}
+${pending}
 </div>`;
     }),
   );
@@ -390,7 +467,7 @@ ${isApex(domain.hostname) && domain.status !== "active" ? notice("warn", "This i
 <button type="submit">Add domain</button>
 </form>
 ${cards.join("")}
-<p class="small muted">CNAME target for every domain: <code>${escapeHtml(config.fallbackOrigin)}</code></p>`,
+<p class="small muted">Every domain points at <code>${escapeHtml(config.fallbackOrigin)}</code></p>`,
   });
 }
 
@@ -579,10 +656,14 @@ export async function handleAdmin(request: Request, env: Env, url: URL): Promise
       case "/admin/domains/add": {
         const body = await form(request);
         try {
-          const { domain } = await addDomain(env, ownerId, body.hostname ?? "");
-          const provider = providerById(body.provider ?? "generic");
+          const { domain } = await addDomain(
+            env,
+            ownerId,
+            body.hostname ?? "",
+            body.provider ?? "generic",
+          );
           return back("/admin/domains", {
-            ok: `${domain.hostname} added. ${provider.steps[0]}`,
+            ok: `${domain.hostname} added. Add the two records shown below.`,
           });
         } catch (error) {
           return back("/admin/domains", {
@@ -622,7 +703,7 @@ export async function handleAdmin(request: Request, env: Env, url: URL): Promise
   switch (path) {
     case "/admin":
     case "/admin/":
-      return pagesScreen(env, url);
+      return pagesScreen(env, url, ownerId);
     case "/admin/pages/edit":
       return pageEditor(env, url);
     case "/admin/assets":

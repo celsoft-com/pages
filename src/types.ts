@@ -49,6 +49,7 @@ export interface Domain {
   verification_errors: string | null;
   dcv_record_name: string | null;
   dcv_record_value: string | null;
+  provider: string | null;
   created_at: number;
   checked_at: number | null;
 }

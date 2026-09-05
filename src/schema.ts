@@ -52,6 +52,10 @@ const MIGRATIONS: Migration[] = [
       )`,
     ],
   },
+  {
+    version: 2,
+    statements: [`ALTER TABLE domains ADD COLUMN provider TEXT`],
+  },
 ];
 
 let ensured = false;

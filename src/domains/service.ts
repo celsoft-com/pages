@@ -87,6 +87,7 @@ export async function addDomain(
   env: Env,
   ownerId: string,
   hostname: string,
+  provider = "generic",
 ): Promise<{ domain: Domain; records: DnsRecord[] }> {
   const config = await getDomainConfig(env);
   if (!config) throw new Error("Custom domains are not configured yet. Finish domain setup first.");
@@ -97,8 +98,8 @@ export async function addDomain(
 
   await env.DB.prepare(
     `INSERT INTO domains (hostname, owner_id, custom_hostname_id, status, ssl_status, verification_errors,
-       dcv_record_name, dcv_record_value, created_at, checked_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       dcv_record_name, dcv_record_value, provider, created_at, checked_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(hostname) DO UPDATE SET
        custom_hostname_id = excluded.custom_hostname_id,
        status = excluded.status,
@@ -106,6 +107,7 @@ export async function addDomain(
        verification_errors = excluded.verification_errors,
        dcv_record_name = excluded.dcv_record_name,
        dcv_record_value = excluded.dcv_record_value,
+       provider = excluded.provider,
        checked_at = excluded.checked_at`,
   )
     .bind(
@@ -117,6 +119,7 @@ export async function addDomain(
       state.verification_errors ?? null,
       state.dcv_record_name ?? null,
       state.dcv_record_value ?? null,
+      provider,
       Date.now(),
       Date.now(),
     )
