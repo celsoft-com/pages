@@ -17,10 +17,13 @@ One function serves everything, routed in [app.ts](src/app.ts):
 
 - **Public pages** — anything not claimed by another prefix.
 - **Admin UI** — `/admin/*`, server-rendered HTML, no client framework.
+- **Assets** — `/assets/*`, uploaded files served from blobs.
 - **MCP** — `/mcp`, JSON-RPC over Streamable HTTP.
 - **OAuth** — hand-rolled in [oauth/](src/oauth), authorization code with PKCE and dynamic client registration.
 
 Storage is Netlify Blobs throughout: `site` (owner, settings, rate limits), `pages`, `assets`, `oauth`.
+
+Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other public path redirects to it.
 
 ## Rules
 
