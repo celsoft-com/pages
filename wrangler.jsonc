@@ -8,8 +8,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "pages-db",
-      "database_id": "placeholder-created-on-deploy"
+      "database_name": "pages-db"
     }
   ],
   "r2_buckets": [
@@ -20,12 +19,7 @@
   ],
   "kv_namespaces": [
     {
-      "binding": "OAUTH_KV",
-      "id": "placeholder-created-on-deploy"
-    },
-    {
-      "binding": "CACHE_KV",
-      "id": "placeholder-created-on-deploy"
+      "binding": "OAUTH_KV"
     }
   ],
   "triggers": {

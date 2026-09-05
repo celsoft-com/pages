@@ -23,7 +23,7 @@ async function siteChrome(env: Env) {
 
 async function renderPage(env: Env, page: Page): Promise<string> {
   const cacheKey = `render:${page.path}:${page.updated_at}`;
-  const cached = await env.CACHE_KV.get(cacheKey);
+  const cached = await env.OAUTH_KV.get(cacheKey);
   if (cached) return cached;
 
   const chrome = await siteChrome(env);
@@ -35,7 +35,7 @@ async function renderPage(env: Env, page: Page): Promise<string> {
     currentPath: page.path,
     content: renderMarkdown(page.body),
   });
-  await env.CACHE_KV.put(cacheKey, html, { expirationTtl: RENDER_CACHE_TTL });
+  await env.OAUTH_KV.put(cacheKey, html, { expirationTtl: RENDER_CACHE_TTL });
   return html;
 }
 

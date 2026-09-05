@@ -5,7 +5,6 @@ export interface Env {
   DB: D1Database;
   ASSETS: R2Bucket;
   OAUTH_KV: KVNamespace;
-  CACHE_KV: KVNamespace;
 }
 
 export interface Owner {
