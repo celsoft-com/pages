@@ -358,6 +358,12 @@ async function settingsScreen(url: URL): Promise<Response> {
 <input id="confirm" name="confirm" type="password" minlength="12" required autocomplete="new-password"></div>
 <button type="submit">Change password</button>
 </form>
+<div class="panel">
+<h2 style="margin-top:0">Custom domain</h2>
+<p class="small muted" style="margin:0 0 .6rem">Your site can answer at your own domain instead of its netlify.app address. You add the domain in Netlify, point one DNS record at it from wherever your domain is managed, and Netlify issues the certificate. Nothing moves and nothing transfers.</p>
+<p class="small muted" style="margin:0 0 .8rem">Worth doing: a domain of your own also avoids the browser warnings that shared netlify.app addresses sometimes attract.</p>
+<a class="button secondary" href="https://docs.netlify.com/domains-https/custom-domains/" target="_blank" rel="noopener">How to add a domain &#8599;</a>
+</div>
 <form method="post" action="/admin/logout" class="panel">
 <button class="secondary" type="submit">Sign out</button>
 </form>`,

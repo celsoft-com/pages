@@ -83,7 +83,7 @@ export function page(options: {
     : `<header class="admin"><strong>${escapeHtml(options.title)}</strong><nav>${NAV.map(
         (item) =>
           `<a href="${item.href}"${item.href === options.current ? ' aria-current="page"' : ""}>${item.label}</a>`,
-      ).join("")}</nav></header>`;
+      ).join("")}<a href="/" target="_blank" rel="noopener">View site &#8599;</a></nav></header>`;
 
   const html = `<!doctype html>
 <html lang="en"><head>
