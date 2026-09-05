@@ -7,14 +7,12 @@
   "observability": { "enabled": true },
   "d1_databases": [
     {
-      "binding": "DB",
-      "database_name": "pages-db"
+      "binding": "DB"
     }
   ],
   "r2_buckets": [
     {
-      "binding": "ASSETS",
-      "bucket_name": "pages-assets"
+      "binding": "ASSETS"
     }
   ],
   "kv_namespaces": [

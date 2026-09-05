@@ -31,4 +31,5 @@ Storage: D1 for everything structured, R2 for uploaded files, KV for OAuth recor
 - **Render cache keys carry `updated_at`**, so writes never need an explicit purge.
 - **owner_id on every content row.** Single owner today; the field is the seam for multi-user later.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
+- **Never pin resource names.** `wrangler.jsonc` declares bindings only, no `database_name`, `bucket_name` or namespace title. One account can hold several instances, and a pinned name collides on the second deploy.
 - **Domains are CNAME-only.** Site owners never move nameservers. Cloudflare for SaaS custom hostnames on one provider zone.
