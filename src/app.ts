@@ -4,6 +4,7 @@ import { isSetupComplete } from "./auth/setup";
 import { handleMcp } from "./mcp/handler";
 import { authenticate, metadata, protectedResourceMetadata, register, token } from "./oauth/server";
 import { handlePage } from "./pages/handler";
+import { welcomePage } from "./welcome";
 
 function unauthorized(origin: string): Response {
   return Response.json(
@@ -38,8 +39,15 @@ export async function handle(request: Request): Promise<Response> {
     if (path.startsWith("/admin") || path === "/oauth/authorize") return handleAdmin(request, url);
     if (path.startsWith("/assets/")) return handleAsset(request);
 
-    if (!(await isSetupComplete()))
-      return new Response(null, { status: 303, headers: { location: "/admin/setup" } });
+    if (path === "/robots.txt")
+      return new Response("User-agent: *\nDisallow: /admin\nDisallow: /oauth\n", {
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+
+    if (!(await isSetupComplete())) {
+      if (path === "/") return welcomePage();
+      return new Response(null, { status: 303, headers: { location: "/" } });
+    }
 
     return handlePage(request);
   } catch (error) {
