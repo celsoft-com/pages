@@ -1,6 +1,6 @@
 import { fromBase64, randomBytes, toBase64 } from "../crypto/random";
 
-const ITERATIONS = 210000;
+const ITERATIONS = 100000;
 
 export async function hashSecret(secret: string, saltB64?: string): Promise<{ hash: string; salt: string }> {
   const salt = saltB64 ? fromBase64(saltB64) : randomBytes(16);
