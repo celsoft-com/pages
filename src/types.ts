@@ -1,55 +1,40 @@
-import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
-
-export interface Env {
-  OAUTH_PROVIDER: OAuthHelpers;
-  DB: D1Database;
-  ASSETS: R2Bucket;
-  OAUTH_KV: KVNamespace;
-}
+export type ContentType = "markdown" | "html";
 
 export interface Owner {
   id: string;
-  password_hash: string;
-  password_salt: string;
-  recovery_hash: string;
-  recovery_salt: string;
-  created_at: number;
+  passwordHash: string;
+  passwordSalt: string;
+  recoveryHash: string;
+  recoverySalt: string;
+  sessionKey: string;
+  createdAt: number;
 }
-
-export type ContentType = "markdown" | "html";
 
 export interface Page {
   path: string;
-  owner_id: string;
-  content_type: ContentType;
+  contentType: ContentType;
   title: string;
   body: string;
-  created_at: number;
-  updated_at: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PageSummary {
+  path: string;
+  contentType: ContentType;
+  title: string;
+  updatedAt: number;
 }
 
 export interface Asset {
-  id: string;
-  owner_id: string;
   key: string;
   filename: string;
-  content_type: string;
+  contentType: string;
   size: number;
-  created_at: number;
+  createdAt: number;
 }
 
-export type DomainStatus = "pending" | "active" | "failed";
-
-export interface Domain {
-  hostname: string;
-  owner_id: string;
-  custom_hostname_id: string | null;
-  status: DomainStatus;
-  ssl_status: string | null;
-  verification_errors: string | null;
-  dcv_record_name: string | null;
-  dcv_record_value: string | null;
-  provider: string | null;
-  created_at: number;
-  checked_at: number | null;
+export interface SiteSettings {
+  title: string;
+  description: string;
 }

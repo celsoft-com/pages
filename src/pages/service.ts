@@ -1,52 +1,55 @@
-import type { ContentType, Env, Page } from "../types";
+import { encodeKey, stores } from "../store";
+import type { ContentType, Page, PageSummary } from "../types";
 import { normalizePath } from "./path";
 
-export async function getPage(env: Env, path: string): Promise<Page | null> {
-  return env.DB.prepare("SELECT * FROM pages WHERE path = ?")
-    .bind(normalizePath(path))
-    .first<Page>();
+export async function getPage(path: string): Promise<Page | null> {
+  const stored = await stores.pages().get(encodeKey(normalizePath(path)), { type: "json" });
+  return (stored as Page | null) ?? null;
 }
 
-export async function listPages(env: Env): Promise<Page[]> {
-  const { results } = await env.DB.prepare(
-    "SELECT path, owner_id, content_type, title, '' AS body, created_at, updated_at FROM pages ORDER BY path",
-  ).all<Page>();
-  return results;
+export async function listPages(): Promise<PageSummary[]> {
+  const { blobs } = await stores.pages().list();
+  const summaries = await Promise.all(
+    blobs.map(async (blob) => {
+      const page = (await stores.pages().get(blob.key, { type: "json" })) as Page | null;
+      if (!page) return null;
+      return {
+        path: page.path,
+        contentType: page.contentType,
+        title: page.title,
+        updatedAt: page.updatedAt,
+      } satisfies PageSummary;
+    }),
+  );
+  return summaries.filter((p): p is PageSummary => p !== null).sort((a, b) => a.path.localeCompare(b.path));
 }
 
-export async function savePage(
-  env: Env,
-  input: {
-    path: string;
-    ownerId: string;
-    contentType: ContentType;
-    title: string;
-    body: string;
-  },
-): Promise<Page> {
+export async function savePage(input: {
+  path: string;
+  contentType: ContentType;
+  title: string;
+  body: string;
+}): Promise<Page> {
   const path = normalizePath(input.path);
+  const existing = await getPage(path);
   const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO pages (path, owner_id, content_type, title, body, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(path) DO UPDATE SET
-       content_type = excluded.content_type,
-       title = excluded.title,
-       body = excluded.body,
-       updated_at = excluded.updated_at`,
-  )
-    .bind(path, input.ownerId, input.contentType, input.title, input.body, now, now)
-    .run();
-  const page = await getPage(env, path);
-  if (!page) throw new Error(`page write failed for ${path}`);
+  const page: Page = {
+    path,
+    contentType: input.contentType,
+    title: input.title,
+    body: input.body,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+  await stores.pages().setJSON(encodeKey(path), page);
   return page;
 }
 
-export async function deletePage(env: Env, path: string): Promise<boolean> {
-  const result = await env.DB.prepare("DELETE FROM pages WHERE path = ?")
-    .bind(normalizePath(path))
-    .run();
-  return (result.meta.changes ?? 0) > 0;
+export async function deletePage(path: string): Promise<boolean> {
+  const normalized = normalizePath(path);
+  if (!(await getPage(normalized))) return false;
+  await stores.pages().delete(encodeKey(normalized));
+  return true;
 }
 
 export function deriveTitle(body: string, path: string): string {

@@ -1,45 +1,42 @@
 import { randomBytes, recoveryCode, toBase64 } from "../crypto/random";
-import { SETTING, setSetting } from "../settings";
-import type { Env, Owner } from "../types";
+import { stores } from "../store";
+import type { Owner } from "../types";
 import { hashSecret } from "./password";
 
-export async function getOwner(env: Env): Promise<Owner | null> {
-  return env.DB.prepare("SELECT * FROM owner LIMIT 1").first<Owner>();
+const KEY = "owner";
+
+export async function getOwner(): Promise<Owner | null> {
+  return (await stores.site().get(KEY, { type: "json" })) as Owner | null;
 }
 
-export async function isSetupComplete(env: Env): Promise<boolean> {
-  return (await getOwner(env)) !== null;
+export async function isSetupComplete(): Promise<boolean> {
+  return (await getOwner()) !== null;
 }
 
-export async function completeSetup(
-  env: Env,
-  password: string,
-): Promise<{ ownerId: string; recovery: string }> {
-  if (await isSetupComplete(env)) throw new Error("setup already complete");
+export async function completeSetup(password: string): Promise<{ owner: Owner; recovery: string }> {
+  if (await isSetupComplete()) throw new Error("setup already complete");
 
-  const ownerId = crypto.randomUUID();
   const recovery = recoveryCode();
   const [pw, rc] = await Promise.all([hashSecret(password), hashSecret(recovery)]);
+  const owner: Owner = {
+    id: crypto.randomUUID(),
+    passwordHash: pw.hash,
+    passwordSalt: pw.salt,
+    recoveryHash: rc.hash,
+    recoverySalt: rc.salt,
+    sessionKey: toBase64(randomBytes(32)),
+    createdAt: Date.now(),
+  };
 
-  const inserted = await env.DB.prepare(
-    `INSERT INTO owner (id, password_hash, password_salt, recovery_hash, recovery_salt, created_at)
-     SELECT ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM owner)`,
-  )
-    .bind(ownerId, pw.hash, pw.salt, rc.hash, rc.salt, Date.now())
-    .run();
-
-  if ((inserted.meta.changes ?? 0) === 0) throw new Error("setup already complete");
-
-  await setSetting(env, SETTING.sessionKey, toBase64(randomBytes(32)));
-  await setSetting(env, SETTING.secretKey, toBase64(randomBytes(32)));
-  await setSetting(env, SETTING.siteTitle, "Pages");
-
-  return { ownerId, recovery };
+  await stores.site().setJSON(KEY, owner, { onlyIfNew: true });
+  const stored = await getOwner();
+  if (!stored || stored.id !== owner.id) throw new Error("setup already complete");
+  return { owner: stored, recovery };
 }
 
-export async function changePassword(env: Env, ownerId: string, password: string): Promise<void> {
+export async function changePassword(password: string): Promise<void> {
+  const owner = await getOwner();
+  if (!owner) throw new Error("not set up");
   const pw = await hashSecret(password);
-  await env.DB.prepare("UPDATE owner SET password_hash = ?, password_salt = ? WHERE id = ?")
-    .bind(pw.hash, pw.salt, ownerId)
-    .run();
+  await stores.site().setJSON(KEY, { ...owner, passwordHash: pw.hash, passwordSalt: pw.salt });
 }

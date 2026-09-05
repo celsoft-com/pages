@@ -1,5 +1,3 @@
-import { ensureSchema } from "../schema";
-import type { Env } from "../types";
 import { TOOLS, type ToolContext } from "./tools";
 
 const PROTOCOL_VERSION = "2025-06-18";
@@ -65,15 +63,13 @@ async function dispatch(message: JsonRpcRequest, ctx: ToolContext): Promise<unkn
   }
 }
 
-export async function handleMcp(request: Request, env: Env, ownerId: string): Promise<Response> {
+export async function handleMcp(request: Request): Promise<Response> {
   if (request.method === "GET" || request.method === "DELETE") {
     return new Response(null, { status: 405, headers: { allow: "POST" } });
   }
   if (request.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }
-
-  await ensureSchema(env);
 
   let payload: JsonRpcRequest | JsonRpcRequest[];
   try {
@@ -83,7 +79,7 @@ export async function handleMcp(request: Request, env: Env, ownerId: string): Pr
   }
 
   const url = new URL(request.url);
-  const ctx: ToolContext = { env, ownerId, siteUrl: `${url.protocol}//${url.host}` };
+  const ctx: ToolContext = { siteUrl: `${url.protocol}//${url.host}` };
 
   const messages = Array.isArray(payload) ? payload : [payload];
   const responses: unknown[] = [];

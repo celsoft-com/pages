@@ -67,7 +67,6 @@ ol.steps li { margin-bottom: .3rem; }
 const NAV = [
   { href: "/admin", label: "Pages" },
   { href: "/admin/assets", label: "Assets" },
-  { href: "/admin/domains", label: "Domains" },
   { href: "/admin/connections", label: "Connections" },
   { href: "/admin/settings", label: "Settings" },
 ];

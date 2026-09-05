@@ -4,17 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "build": "tsc --noEmit",
+    "dev": "netlify dev",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260905.1",
-    "typescript": "^7.0.2",
-    "wrangler": "^4.129.0"
+    "@netlify/functions": "^6.0.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@cloudflare/workers-oauth-provider": "^0.10.3",
+    "@netlify/blobs": "^11.0.3",
     "marked": "^18.0.11"
   }
 }

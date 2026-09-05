@@ -2,19 +2,19 @@
 
 A website you talk to Claude to build.
 
-Deploy it to your own Cloudflare account, connect Claude, and ask it to publish pages. Markdown gets a clean theme, HTML is served exactly as written. Your pages, files, settings and domains all live in your Cloudflare account.
+Deploy it to your own Netlify account, connect Claude, and ask it to publish pages. Markdown gets a clean theme, HTML is served exactly as written.
 
 ## Deploy
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/seanodell/pages)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/seanodell/pages)
 
-Name your site and deploy it. Open the Worker in the Cloudflare dashboard, follow its `.workers.dev` address, and pick an admin password.
+Open your site and pick an admin password. That's the whole setup.
 
-That's the whole setup. Claude does the rest.
+## Connect Claude
 
-## Cost
+Open **Connections** in your site, copy the URL, and add it as a custom connector in Claude. Sign in with your admin password and approve.
 
-Workers Paid, $5/month.
+Then ask Claude to publish a page.
 
 ## License
 
