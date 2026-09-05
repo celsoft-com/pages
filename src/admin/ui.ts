@@ -1,3 +1,4 @@
+import { describeBuild } from "../build";
 import { escapeHtml } from "../render/theme";
 
 const STYLES = `
@@ -62,6 +63,8 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .small { font-size: .85rem; }
 ol.steps { padding-left: 1.2rem; color: var(--muted); font-size: .9rem; }
 ol.steps li { margin-bottom: .3rem; }
+footer.build { margin-top: 2.5rem; padding-top: .85rem; border-top: 1px solid var(--rule);
+  color: var(--muted); font-size: .78rem; }
 `;
 
 const NAV = [
@@ -93,7 +96,9 @@ export function page(options: {
 <title>${escapeHtml(options.title)}</title>
 <style>${STYLES}</style>
 </head><body>
-<div class="${options.narrow ? "narrow" : "wrap"}">${nav}${options.body}</div>
+<div class="${options.narrow ? "narrow" : "wrap"}">${nav}${options.body}${
+    options.chrome === false ? "" : `<footer class="build">${escapeHtml(describeBuild())}</footer>`
+  }</div>
 </body></html>`;
 
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });

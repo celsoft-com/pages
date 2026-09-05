@@ -8,7 +8,8 @@
     "dev": "netlify dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:deploy": "node scripts/build-info.mjs && npm run build"
   },
   "devDependencies": {
     "@netlify/functions": "^6.0.0",

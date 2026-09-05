@@ -42,5 +42,8 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   owner that choice, and the page tools repeat it. Weaken that steering and Claude will paste data into pages again.
 - **Items change one at a time.** Every data tool reads or writes a single item, so editing one costs one small call.
   Never add a tool that makes a client send a whole collection back to change one field.
+- **The build stamp is baked in, not looked up.** Netlify exposes no deploy timestamp and no API call is allowed,
+  so [build-info.mjs](scripts/build-info.mjs) writes [build-info.ts](src/build-info.ts) during `build:deploy`. The
+  committed copy is blank on purpose; a local `npm run build` must never overwrite it.
 - **Tests gate the deploy.** `npm run build` is `tsc --noEmit && vitest run`, and Netlify runs it, so a failing test
   fails the deploy. Blobs are mocked in [test/blobs.ts](src/test/blobs.ts); tests never need a network.
