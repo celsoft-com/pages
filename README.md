@@ -6,13 +6,15 @@ Deploy it to your own Cloudflare account, connect Claude, and ask it to publish 
 
 ## Deploy
 
-1. **Fork this repo** to your own GitHub account.
-2. In the Cloudflare dashboard, open **Compute → Workers**, choose **Import a repository**, and pick your fork.
-3. Deploy it. Cloudflare creates the database, bucket and namespace it needs.
-4. Open the Worker in the dashboard and follow its `.workers.dev` address.
-5. Pick an admin password on first visit.
+**Fork this repo first.** Then in the Cloudflare dashboard open **Compute → Workers**, choose **Import a repository**, and pick your fork.
 
-That's the whole setup. The site takes it from there.
+Deploy it, then open the Worker in the dashboard and follow its `.workers.dev` address. Pick an admin password on first visit. That's the whole setup.
+
+### Just trying it out
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/seanodell/pages)
+
+One click, no fork. The catch: this clones the repo rather than forking it, so there is no **Sync fork** button later and updates need a terminal. Fine for a look, not for a site you keep.
 
 ## Updates
 
