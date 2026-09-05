@@ -1,4 +1,12 @@
 import { deleteAsset, listAssets, putAsset } from "../assets/service";
+import {
+  deleteCollection,
+  getCollection,
+  isValidId,
+  listCollections,
+  normalizeCollectionPath,
+  saveCollection,
+} from "../data/service";
 import { verifySecret } from "../auth/password";
 import { checkRateLimit, clearFailures, clientBucket, recordFailure } from "../auth/ratelimit";
 import { clearSessionCookie, createSessionCookie, getSessionOwner } from "../auth/session";
@@ -8,7 +16,7 @@ import { listGrants, revokeGrant } from "../oauth/store";
 import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
 import { isValidPath, normalizePath } from "../pages/path";
 import { getSettings, saveSettings } from "../settings";
-import type { Owner } from "../types";
+import type { Item, Owner } from "../types";
 import { escapeHtml, notice, page, redirect } from "./ui";
 
 function flash(url: URL): string {
@@ -404,6 +412,104 @@ async function authorizeScreen(request: Request, url: URL, owner: Owner): Promis
   });
 }
 
+// ---------- data ----------
+
+async function dataScreen(url: URL): Promise<Response> {
+  const collections = await listCollections();
+  const rows = collections.length
+    ? collections
+        .map(
+          (c) => `<tr>
+<td><a href="/admin/data/edit?path=${encodeURIComponent(c.path)}">${escapeHtml(c.path)}</a>
+<div class="small muted mono">/data${escapeHtml(c.path)}.json</div></td>
+<td class="small muted">${c.count} items</td>
+<td class="actions">
+<a class="button secondary" href="/data${escapeHtml(c.path)}.json" target="_blank" rel="noopener">Open</a>
+<form method="post" action="/admin/data/delete" style="display:inline"
+  onsubmit="return confirm('Delete ${escapeHtml(c.path)} and every item in it?')">
+<input type="hidden" name="path" value="${escapeHtml(c.path)}">
+<button class="danger" type="submit">Delete</button></form>
+</td></tr>`,
+        )
+        .join("")
+    : `<tr><td colspan="3" class="muted">No collections yet.</td></tr>`;
+
+  return page({
+    title: "Data",
+    current: "/admin/data",
+    body: `${flash(url)}
+<div class="row" style="justify-content:space-between">
+<h1>Data</h1><a class="button" href="/admin/data/edit">New collection</a></div>
+<p class="lede">JSON a page can fetch and render. Each collection is served whole at its
+<code>/data/&lt;path&gt;.json</code> address. Claude edits single items; here you edit the raw array.</p>
+<div class="panel"><table>
+<thead><tr><th>Collection</th><th>Size</th><th></th></tr></thead>
+<tbody>${rows}</tbody></table></div>`,
+  });
+}
+
+async function dataEditor(url: URL): Promise<Response> {
+  const path = url.searchParams.get("path");
+  const existing = path ? await getCollection(path) : null;
+  const body = existing ? JSON.stringify(existing.items, null, 2) : "[]";
+
+  return page({
+    title: existing ? `Edit ${existing.path}` : "New collection",
+    current: "/admin/data",
+    body: `${flash(url)}
+<h1>${existing ? "Edit collection" : "New collection"}</h1>
+<form method="post" action="/admin/data/save" class="panel">
+<input type="hidden" name="original" value="${escapeHtml(existing?.path ?? "")}">
+<div class="field">
+  <label for="path">Path<span class="hint">Lowercase, for example /products. Served at /data/products.json.</span></label>
+  <input id="path" name="path" type="text" required value="${escapeHtml(existing?.path ?? "")}" placeholder="/products">
+</div>
+<div class="field">
+  <label for="items">Items<span class="hint">A JSON array of objects. Each one needs a unique id; missing ids are filled in.</span></label>
+  <textarea id="items" name="items" required spellcheck="false">${escapeHtml(body)}</textarea>
+</div>
+<div class="row"><button type="submit">Save</button>
+<a class="button secondary" href="/admin/data">Cancel</a></div>
+</form>`,
+  });
+}
+
+async function saveDataForm(request: Request): Promise<Response> {
+  const body = await form(request);
+  const path = normalizeCollectionPath(body.path ?? "");
+  const editing = `/admin/data/edit?path=${encodeURIComponent(body.original || path)}`;
+  if (!isValidPath(path)) return back(editing, { error: `Path "${body.path}" is not usable.` });
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body.items ?? "");
+  } catch (error) {
+    return back(editing, { error: `That is not valid JSON. ${error instanceof Error ? error.message : ""}` });
+  }
+  if (!Array.isArray(parsed)) return back(editing, { error: "Items must be a JSON array." });
+
+  const items: Item[] = [];
+  const taken = new Set<string>();
+  for (const [index, entry] of parsed.entries()) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry))
+      return back(editing, { error: `Item ${index + 1} is not an object.` });
+
+    const fields = entry as Record<string, unknown>;
+    let id = typeof fields.id === "string" && fields.id ? fields.id : `item-${index + 1}`;
+    while (taken.has(id)) id = `${id}-2`;
+    if (!isValidId(id)) return back(editing, { error: `Item id "${id}" is not usable.` });
+
+    taken.add(id);
+    items.push({ ...fields, id });
+  }
+
+  const original = body.original ? normalizeCollectionPath(body.original) : null;
+  if (original && original !== path) await deleteCollection(original);
+
+  await saveCollection(path, items);
+  return back("/admin/data", { ok: `Saved ${path} with ${items.length} items` });
+}
+
 // ---------- router ----------
 
 export async function handleAdmin(request: Request, url: URL): Promise<Response> {
@@ -439,6 +545,13 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
         await deleteAsset(body.key ?? "");
         return back("/admin/assets", { ok: "File deleted." });
       }
+      case "/admin/data/save":
+        return saveDataForm(request);
+      case "/admin/data/delete": {
+        const body = await form(request);
+        await deleteCollection(body.path ?? "");
+        return back("/admin/data", { ok: `Deleted ${body.path}` });
+      }
       case "/admin/connections/revoke": {
         const body = await form(request);
         await revokeGrant(body.grant_id ?? "");
@@ -470,6 +583,10 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
       return pageEditor(url);
     case "/admin/assets":
       return assetsScreen(url);
+    case "/admin/data":
+      return dataScreen(url);
+    case "/admin/data/edit":
+      return dataEditor(url);
     case "/admin/connections":
       return connectionsScreen(url);
     case "/admin/settings":

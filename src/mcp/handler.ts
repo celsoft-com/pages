@@ -2,6 +2,16 @@ import { TOOLS, type ToolContext } from "./tools";
 
 const PROTOCOL_VERSION = "2025-06-18";
 
+export const INSTRUCTIONS = [
+  "Publish and edit pages on this site. Markdown is rendered into the site theme; full HTML documents are served exactly as written.",
+  "",
+  "Repeating content belongs in a data collection rather than hard-coded into a page: products, posts, events, team members, menu items, FAQs, anything the owner will add to or edit later.",
+  "A collection is a JSON array served whole at /data/<path>.json. Write it one item at a time with put_item, change one field with put_item, drop one with delete_item, change the order with reorder_items, and find items with search_items.",
+  "Then publish an HTML page that fetches that URL and renders the items, so later edits are one small call instead of a rewrite of the whole page.",
+  "",
+  "Before publishing a page whose content repeats, offer the owner the choice and say which you recommend: content baked into the page, or a collection the page renders. Baking it in is fine for a one-off; a collection is right for anything that will change.",
+].join("\n");
+
 interface JsonRpcRequest {
   jsonrpc: "2.0";
   id?: string | number | null;
@@ -24,8 +34,7 @@ async function dispatch(message: JsonRpcRequest, ctx: ToolContext): Promise<unkn
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "pages", version: "0.1.0" },
-        instructions:
-          "Publish and edit pages on this site. Markdown is rendered into the site theme; full HTML documents are served exactly as written.",
+        instructions: INSTRUCTIONS,
       });
 
     case "notifications/initialized":

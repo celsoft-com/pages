@@ -34,6 +34,21 @@ export interface Asset {
   createdAt: number;
 }
 
+export type Item = { id: string } & Record<string, unknown>;
+
+export interface Collection {
+  path: string;
+  items: Item[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CollectionSummary {
+  path: string;
+  count: number;
+  updatedAt: number;
+}
+
 export interface SiteSettings {
   title: string;
   description: string;

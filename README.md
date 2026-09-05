@@ -4,6 +4,8 @@ A website you talk to Claude to build.
 
 Deploy it to your own Netlify account, connect Claude, and ask it to publish pages. Markdown gets a clean theme, HTML is served exactly as written.
 
+Lists of things (products, posts, events) can live in a data collection instead of being typed into a page. Claude edits one item at a time, the page fetches the whole collection as JSON, and nothing has to be rewritten to change a price.
+
 ## Deploy
 
 [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/celsoft-com/pages)

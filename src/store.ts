@@ -4,6 +4,7 @@ export const stores = {
   site: () => getStore({ name: "site", consistency: "strong" }),
   pages: () => getStore({ name: "pages", consistency: "strong" }),
   assets: () => getStore("assets"),
+  data: () => getStore({ name: "data", consistency: "strong" }),
   oauth: () => getStore({ name: "oauth", consistency: "strong" }),
 };
 

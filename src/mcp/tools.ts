@@ -1,7 +1,17 @@
 import { deleteAsset, listAssets, putAsset } from "../assets/service";
+import { matchItem, parseQuery } from "../data/query";
+import {
+  deleteCollection,
+  deleteItem,
+  getCollection,
+  listCollections,
+  putItem,
+  reorderItems,
+} from "../data/service";
 import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
 import { isValidPath, normalizePath } from "../pages/path";
 import { getSettings, saveSettings } from "../settings";
+import type { Item } from "../types";
 
 export interface ToolContext {
   siteUrl: string;
@@ -38,6 +48,17 @@ function urlFor(ctx: ToolContext, path: string): string {
   return `${ctx.siteUrl}${path === "/" ? "" : path}`;
 }
 
+function dataUrl(ctx: ToolContext, path: string): string {
+  return `${ctx.siteUrl}/data${path === "/" ? "/index" : path}.json`;
+}
+
+function project(item: Item, fields: unknown): Record<string, unknown> {
+  if (!Array.isArray(fields) || fields.length === 0) return item;
+  const picked: Record<string, unknown> = { id: item.id };
+  for (const field of fields) if (field !== "id") picked[String(field)] = item[String(field)];
+  return picked;
+}
+
 export const TOOLS: ToolDefinition[] = [
   {
     name: "list_pages",
@@ -70,7 +91,8 @@ export const TOOLS: ToolDefinition[] = [
     name: "publish_page",
     title: "Publish a page",
     description:
-      "Create a page at a path. Markdown is rendered into the site theme; HTML is served exactly as written. Fails if the path is taken unless overwrite is true.",
+      "Create a page at a path. Markdown is rendered into the site theme; HTML is served exactly as written. Fails if the path is taken unless overwrite is true. " +
+      "If the page lists repeating things, offer the owner a data collection first: keep the items in one with put_item and have the page fetch /data/<path>.json, so editing one of them later does not mean rewriting the page.",
     inputSchema: object(
       {
         path: { type: "string", description: "Page path, for example /about or / for the home page" },
@@ -100,7 +122,8 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "update_page",
     title: "Update a page",
-    description: "Replace the content of an existing page.",
+    description:
+      "Replace the content of an existing page. If you are rewriting the page only to change items in a list, move that list into a data collection instead and let the page fetch it.",
     inputSchema: object({ path: { type: "string" }, content: { type: "string" }, title: { type: "string" } }, [
       "path",
       "content",
@@ -177,6 +200,179 @@ export const TOOLS: ToolDefinition[] = [
     handler: async (args) => {
       if (!(await deleteAsset(String(args.key)))) throw new Error(`No asset with key ${args.key}`);
       return `Deleted asset ${args.key}`;
+    },
+  },
+  {
+    name: "list_collections",
+    title: "List data collections",
+    description:
+      "List every JSON data collection on this site with its item count and public URL. A collection is an array of items a page can fetch and render.",
+    inputSchema: object({}),
+    handler: async (_args, ctx) => {
+      const collections = await listCollections();
+      if (collections.length === 0) return "No data collections yet. Use put_item to create one.";
+      return collections.map((c) => `${c.path}  ${c.count} items  ${dataUrl(ctx, c.path)}`).join("\n");
+    },
+  },
+  {
+    name: "list_items",
+    title: "List items in a collection",
+    description:
+      "Return items from a collection in order. Ask for only the fields you need and page with limit and offset; the whole collection is rarely worth reading.",
+    inputSchema: object(
+      {
+        path: { type: "string", description: "Collection path, for example /products" },
+        fields: {
+          type: "array",
+          items: { type: "string" },
+          description: "Field names to include. Defaults to every field. id is always included.",
+        },
+        limit: { type: "number", description: "Maximum items to return. Defaults to 50." },
+        offset: { type: "number", description: "Items to skip. Defaults to 0." },
+      },
+      ["path"],
+    ),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      const collection = await getCollection(path);
+      if (!collection) throw new Error(`No collection exists at ${path}. Use put_item to create it.`);
+
+      const offset = Math.max(0, Number(args.offset) || 0);
+      const limit = Math.max(1, Number(args.limit) || 50);
+      const page = collection.items.slice(offset, offset + limit);
+
+      return JSON.stringify(
+        {
+          path: collection.path,
+          total: collection.items.length,
+          offset,
+          items: page.map((item) => project(item, args.fields)),
+        },
+        null,
+        2,
+      );
+    },
+  },
+  {
+    name: "get_item",
+    title: "Read one item",
+    description: "Return a single item from a collection by its id.",
+    inputSchema: object({ path: { type: "string" }, id: { type: "string" } }, ["path", "id"]),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      const collection = await getCollection(path);
+      const item = collection?.items.find((i) => i.id === String(args.id));
+      if (!item) throw new Error(`No item ${args.id} in ${path}`);
+      return JSON.stringify(item, null, 2);
+    },
+  },
+  {
+    name: "put_item",
+    title: "Create or update an item",
+    description:
+      "Write one item without rewriting the collection. By default the given fields are merged into the existing item and everything else is left alone; pass merge false to replace it outright. Creates the collection when it does not exist. Omit id to append a new item with a generated id.",
+    inputSchema: object(
+      {
+        path: { type: "string", description: "Collection path, for example /products" },
+        id: { type: "string", description: "Item id. Omit to create a new item." },
+        fields: { type: "object", description: "Field values to write", additionalProperties: true },
+        merge: { type: "boolean", description: "Merge into the existing item. Defaults to true." },
+        index: { type: "number", description: "Position in the collection. Defaults to the end for new items." },
+      },
+      ["path", "fields"],
+    ),
+    handler: async (args, ctx) => {
+      const path = requirePath(args.path);
+      if (typeof args.fields !== "object" || args.fields === null || Array.isArray(args.fields))
+        throw new Error("fields must be an object");
+
+      const { item, created } = await putItem({
+        path,
+        id: args.id === undefined ? undefined : String(args.id),
+        fields: args.fields as Record<string, unknown>,
+        merge: args.merge !== false,
+        index: args.index === undefined ? undefined : Number(args.index),
+      });
+      return `${created ? "Created" : "Updated"} ${item.id} in ${path}  ${dataUrl(ctx, path)}`;
+    },
+  },
+  {
+    name: "delete_item",
+    title: "Delete an item",
+    description: "Remove one item from a collection by its id. The rest of the collection is untouched.",
+    inputSchema: object({ path: { type: "string" }, id: { type: "string" } }, ["path", "id"]),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      if (!(await deleteItem(path, String(args.id)))) throw new Error(`No item ${args.id} in ${path}`);
+      return `Deleted ${args.id} from ${path}`;
+    },
+  },
+  {
+    name: "reorder_items",
+    title: "Reorder a collection",
+    description:
+      "Move the given ids to the front of the collection, in the order listed. Items left out keep their relative order behind them, so moving one item to the top only needs one id.",
+    inputSchema: object(
+      {
+        path: { type: "string" },
+        ids: { type: "array", items: { type: "string" }, description: "Ids in the order they should appear" },
+      },
+      ["path", "ids"],
+    ),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      if (!Array.isArray(args.ids) || args.ids.length === 0) throw new Error("ids must be a non-empty array");
+      const items = await reorderItems(path, args.ids.map(String));
+      return `Order in ${path}: ${items.map((i) => i.id).join(", ")}`;
+    },
+  },
+  {
+    name: "search_items",
+    title: "Search items",
+    description:
+      "Find items across one collection or all of them. Returns each match with its collection path and id so it can be edited with get_item, put_item or delete_item. " +
+      "Query syntax: bare words match any field; field:value matches part of a field; field=value matches it exactly; field>10, field<10, field>=10 and field<=10 compare numbers; " +
+      'field!=value excludes; has:field requires the field to be set; -term excludes matches; "quoted words" match a phrase. Terms combine with AND, and dotted paths reach nested fields.',
+    inputSchema: object(
+      {
+        query: { type: "string", description: 'For example: status=draft price>10 -sale has:image "winter coat"' },
+        path: { type: "string", description: "Collection to search. Defaults to every collection." },
+        fields: { type: "array", items: { type: "string" }, description: "Field names to include in results" },
+        limit: { type: "number", description: "Maximum matches to return. Defaults to 25." },
+      },
+      ["query"],
+    ),
+    handler: async (args) => {
+      if (typeof args.query !== "string" || args.query.trim() === "") throw new Error("query is required");
+      const terms = parseQuery(args.query);
+      const limit = Math.max(1, Number(args.limit) || 25);
+
+      const paths = args.path
+        ? [requirePath(args.path)]
+        : (await listCollections()).map((c) => c.path);
+
+      const matches: Record<string, unknown>[] = [];
+      for (const path of paths) {
+        const collection = await getCollection(path);
+        if (!collection) continue;
+        collection.items.forEach((item, index) => {
+          if (matchItem(item, terms)) matches.push({ path, id: item.id, index, item: project(item, args.fields) });
+        });
+      }
+
+      if (matches.length === 0) return `No items match ${args.query}`;
+      return JSON.stringify({ total: matches.length, matches: matches.slice(0, limit) }, null, 2);
+    },
+  },
+  {
+    name: "delete_collection",
+    title: "Delete a collection",
+    description: "Remove a whole data collection and every item in it.",
+    inputSchema: object({ path: { type: "string" } }, ["path"]),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      if (!(await deleteCollection(path))) throw new Error(`No collection exists at ${path}`);
+      return `Deleted collection ${path}`;
     },
   },
   {

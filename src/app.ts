@@ -1,5 +1,6 @@
 import { handleAdmin } from "./admin/router";
 import { handleAsset } from "./assets/handler";
+import { handleData } from "./data/handler";
 import { isSetupComplete } from "./auth/setup";
 import { handleMcp } from "./mcp/handler";
 import { authenticate, metadata, protectedResourceMetadata, register, token } from "./oauth/server";
@@ -38,6 +39,7 @@ export async function handle(request: Request): Promise<Response> {
 
     if (path.startsWith("/admin") || path === "/oauth/authorize") return handleAdmin(request, url);
     if (path.startsWith("/assets/")) return handleAsset(request);
+    if (path.startsWith("/data/")) return handleData(request);
 
     if (path === "/robots.txt")
       return new Response("User-agent: *\nDisallow: /admin\nDisallow: /oauth\n", {
