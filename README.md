@@ -10,7 +10,7 @@ Deploy it to your own Cloudflare account, connect Claude, and ask it to publish 
 
 Name your site, then open it and pick an admin password.
 
-That's the whole setup. The site walks you through connecting Claude, and Claude handles the rest, including custom domains.
+That's the whole setup. The site takes it from there.
 
 ## Upgrading
 
@@ -18,7 +18,7 @@ Sync your fork on GitHub. Cloudflare redeploys and the database migrates itself.
 
 ## Cost
 
-Workers Paid, $5/month. Custom domains are free up to 100.
+Workers Paid, $5/month.
 
 ## Local development
 
