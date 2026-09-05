@@ -52,9 +52,36 @@ const provider = new OAuthProvider<Env>({
   scopesSupported: ["pages:write"],
 });
 
+function missingBindings(env: Env): string[] {
+  const required: [string, unknown][] = [
+    ["DB (D1 database)", env.DB],
+    ["ASSETS (R2 bucket)", env.ASSETS],
+    ["OAUTH_KV (KV namespace)", env.OAUTH_KV],
+  ];
+  return required.filter(([, value]) => !value).map(([name]) => name);
+}
+
 export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    return provider.fetch(request, env, ctx);
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const missing = missingBindings(env);
+    if (missing.length > 0) {
+      return new Response(
+        `This site is missing storage it needs:\n\n${missing
+          .map((name) => `  - ${name}`)
+          .join("\n")}\n\nRe-run the deploy and let Cloudflare create every resource it asks about.`,
+        { status: 500, headers: { "content-type": "text/plain; charset=utf-8" } },
+      );
+    }
+
+    try {
+      return await provider.fetch(request, env, ctx);
+    } catch (error) {
+      const message = error instanceof Error ? `${error.message}\n\n${error.stack ?? ""}` : String(error);
+      return new Response(`This site hit an error.\n\n${message}`, {
+        status: 500,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+    }
   },
 
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
