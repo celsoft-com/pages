@@ -321,6 +321,12 @@ async function connectionsScreen(url: URL): Promise<Response> {
 <h1>Connect Claude</h1>
 <p class="lede">Add this URL as a custom connector in Claude. You will be asked to sign in with your admin password.</p>
 <div class="panel"><p class="mono" style="font-size:1rem">${escapeHtml(origin)}/mcp</p></div>
+${
+      url.host.endsWith(".netlify.app")
+        ? `<div class="notice warn"><strong>If Chrome says "Dangerous site" while signing in</strong>
+<div class="small" style="margin-top:.3rem">That is Safe Browsing reacting to the shared <code>netlify.app</code> domain, which gets abused for phishing, not to anything on your site. Adding your own domain in Netlify gives the site its own reputation and the warning stops.</div></div>`
+        : ""
+    }
 <h2>Connected clients</h2>
 <div class="panel"><table>
 <thead><tr><th>Client</th><th>Connected</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`,
