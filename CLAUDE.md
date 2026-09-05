@@ -31,5 +31,6 @@ Storage: D1 for everything structured, R2 for uploaded files, KV for OAuth recor
 - **Render cache keys carry `updated_at`**, so writes never need an explicit purge.
 - **owner_id on every content row.** Single owner today; the field is the seam for multi-user later.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
+- **Resource name defaults come from the source repo name.** Verified: the Deploy to Cloudflare flow ignores the Worker name the user types and derives KV/D1/R2 defaults from the repo the button points at. Removing `name` from `wrangler.jsonc` does not change it. A second deploy into one account must rename them in the form. Do not re-investigate.
 - **Never pin names, including the Worker's own.** `wrangler.jsonc` declares bindings only: no top-level `name`, no `database_name`, `bucket_name` or namespace title. Whatever the user types in the deploy form names everything. A pinned name overrides their choice and collides on the second deploy into one account.
 - **Domains are CNAME-only.** Site owners never move nameservers. Cloudflare for SaaS custom hostnames on one provider zone.
