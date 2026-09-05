@@ -9,6 +9,7 @@ import {
   normalizeCollectionPath,
   putItem,
   reorderItems,
+  revOf,
   saveCollection,
 } from "./service";
 
@@ -62,8 +63,14 @@ describe("putItem", () => {
   });
 
   it("merges into an existing item by default", async () => {
-    await putItem({ path: "/p", id: "coat", fields: { title: "Coat", price: 120 }, merge: true });
-    const { created } = await putItem({ path: "/p", id: "coat", fields: { price: 99 }, merge: true });
+    const first = await putItem({ path: "/p", id: "coat", fields: { title: "Coat", price: 120 }, merge: true });
+    const { created } = await putItem({
+      path: "/p",
+      id: "coat",
+      fields: { price: 99 },
+      merge: true,
+      ifRev: first.rev,
+    });
 
     expect(created).toBe(false);
     const item = (await getCollection("/p"))!.items[0];
@@ -71,15 +78,15 @@ describe("putItem", () => {
   });
 
   it("replaces the item outright when merge is false", async () => {
-    await putItem({ path: "/p", id: "coat", fields: { title: "Coat", price: 120 }, merge: false });
-    await putItem({ path: "/p", id: "coat", fields: { title: "Parka" }, merge: false });
+    const first = await putItem({ path: "/p", id: "coat", fields: { title: "Coat", price: 120 }, merge: false });
+    await putItem({ path: "/p", id: "coat", fields: { title: "Parka" }, merge: false, ifRev: first.rev });
     expect((await getCollection("/p"))!.items[0]).toEqual({ id: "coat", title: "Parka" });
   });
 
   it("keeps an update in place rather than moving it", async () => {
-    await putItem({ path: "/p", id: "a", fields: {}, merge: true });
+    const a = await putItem({ path: "/p", id: "a", fields: {}, merge: true });
     await putItem({ path: "/p", id: "b", fields: {}, merge: true });
-    await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true, ifRev: a.rev });
     expect(await ids("/p")).toEqual(["a", "b"]);
   });
 
@@ -130,8 +137,8 @@ describe("putItem", () => {
   it("moves an existing item when given an index", async () => {
     await putItem({ path: "/p", id: "a", fields: {}, merge: true });
     await putItem({ path: "/p", id: "b", fields: {}, merge: true });
-    await putItem({ path: "/p", id: "c", fields: {}, merge: true });
-    await putItem({ path: "/p", id: "c", fields: {}, merge: true, index: 0 });
+    const c = await putItem({ path: "/p", id: "c", fields: {}, merge: true });
+    await putItem({ path: "/p", id: "c", fields: {}, merge: true, index: 0, ifRev: c.rev });
     expect(await ids("/p")).toEqual(["c", "a", "b"]);
   });
 
@@ -241,5 +248,126 @@ describe("collections", () => {
     await saveCollection("/shop/items", [{ id: "a" }]);
     expect((await getCollection("/shop/items"))!.path).toBe("/shop/items");
     expect((await listCollections()).map((c) => c.path)).toEqual(["/shop/items"]);
+  });
+});
+
+describe("revisions", () => {
+  it("starts a new item at rev 1", async () => {
+    const { rev } = await putItem({ path: "/p", id: "a", fields: {}, merge: true });
+    expect(rev).toBe(1);
+  });
+
+  it("refuses to update an existing item without a rev", async () => {
+    await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    await expect(putItem({ path: "/p", id: "a", fields: { x: 2 }, merge: true })).rejects.toThrow(
+      /already exists at rev 1/,
+    );
+  });
+
+  it("tells the caller how to proceed when it refuses", async () => {
+    await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    await expect(putItem({ path: "/p", id: "a", fields: { x: 2 }, merge: true })).rejects.toThrow(
+      /if_rev: 1, or pass overwrite: true/,
+    );
+  });
+
+  it("accepts a matching rev", async () => {
+    const first = await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    const second = await putItem({ path: "/p", id: "a", fields: { x: 2 }, merge: true, ifRev: first.rev });
+    expect(second.rev).toBeGreaterThan(first.rev);
+  });
+
+  it("refuses a stale rev after someone else wrote", async () => {
+    const mine = await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    await putItem({ path: "/p", id: "a", fields: { x: 2 }, merge: true, ifRev: mine.rev });
+
+    await expect(putItem({ path: "/p", id: "a", fields: { x: 3 }, merge: true, ifRev: mine.rev })).rejects.toThrow(
+      /you have rev 1, it is now rev 2/,
+    );
+  });
+
+  it("leaves the item untouched when it refuses", async () => {
+    await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    await expect(putItem({ path: "/p", id: "a", fields: { x: 99 }, merge: true, ifRev: 7 })).rejects.toThrow();
+    expect((await getCollection("/p"))!.items[0]).toEqual({ id: "a", x: 1 });
+  });
+
+  it("lets overwrite through without a rev", async () => {
+    await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    const forced = await putItem({ path: "/p", id: "a", fields: { x: 2 }, merge: true, overwrite: true });
+    expect(forced.created).toBe(false);
+    expect((await getCollection("/p"))!.items[0]).toEqual({ id: "a", x: 2 });
+  });
+
+  it("rejects a rev on an item that is not there", async () => {
+    await expect(putItem({ path: "/p", id: "ghost", fields: {}, merge: true, ifRev: 1 })).rejects.toThrow(
+      /may have been deleted/,
+    );
+  });
+
+  it("only bumps the rev of the item that changed", async () => {
+    const a = await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    const b = await putItem({ path: "/p", id: "b", fields: { y: 1 }, merge: true });
+    await putItem({ path: "/p", id: "a", fields: { x: 2 }, merge: true, ifRev: a.rev });
+
+    const collection = (await getCollection("/p"))!;
+    expect(revOf(collection, "b")).toBe(b.rev);
+    expect(revOf(collection, "a")).toBeGreaterThan(a.rev);
+  });
+
+  it("does not bump a rev when the write changes nothing", async () => {
+    const a = await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    const again = await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true, ifRev: a.rev });
+    expect(again.rev).toBe(a.rev);
+  });
+
+  it("advances the collection rev on every write", async () => {
+    await putItem({ path: "/p", id: "a", fields: {}, merge: true });
+    const first = (await getCollection("/p"))!.rev;
+    await putItem({ path: "/p", id: "b", fields: {}, merge: true });
+    expect((await getCollection("/p"))!.rev).toBeGreaterThan(first);
+  });
+
+  it("checks the rev on delete and leaves the item when it is stale", async () => {
+    const a = await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    await putItem({ path: "/p", id: "a", fields: { x: 2 }, merge: true, ifRev: a.rev });
+
+    await expect(deleteItem("/p", "a", a.rev)).rejects.toThrow(/you have rev 1, it is now rev 2/);
+    expect(await ids("/p")).toEqual(["a"]);
+  });
+
+  it("deletes with a matching rev", async () => {
+    const a = await putItem({ path: "/p", id: "a", fields: {}, merge: true });
+    expect(await deleteItem("/p", "a", a.rev)).toBe(true);
+  });
+
+  it("checks the collection rev on reorder", async () => {
+    await putItem({ path: "/p", id: "a", fields: {}, merge: true });
+    await putItem({ path: "/p", id: "b", fields: {}, merge: true });
+    const stale = 1;
+
+    await expect(reorderItems("/p", ["b"], stale)).rejects.toThrow(/you have rev 1, it is now rev 2/);
+    expect(await ids("/p")).toEqual(["a", "b"]);
+  });
+
+  it("reorders with the current collection rev", async () => {
+    await putItem({ path: "/p", id: "a", fields: {}, merge: true });
+    await putItem({ path: "/p", id: "b", fields: {}, merge: true });
+    const rev = (await getCollection("/p"))!.rev;
+
+    await reorderItems("/p", ["b"], rev);
+    expect(await ids("/p")).toEqual(["b", "a"]);
+  });
+
+  it("treats a collection stored before revs existed as rev 0", async () => {
+    await saveCollection("/p", [{ id: "a" }]);
+    const collection = (await getCollection("/p"))!;
+    expect(typeof collection.rev).toBe("number");
+    expect(revOf(collection, "missing")).toBe(0);
+  });
+
+  it("keeps revs out of the items themselves", async () => {
+    await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
+    expect((await getCollection("/p"))!.items[0]).toEqual({ id: "a", x: 1 });
   });
 });

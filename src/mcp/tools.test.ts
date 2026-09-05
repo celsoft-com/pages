@@ -93,7 +93,7 @@ describe("list_items", () => {
 
   it("returns only the fields asked for, always including id", async () => {
     const result = await json("list_items", { path: "/products", fields: ["title"] });
-    expect(Object.keys(result.items[0]).sort()).toEqual(["id", "title"]);
+    expect(Object.keys(result.items[0].item).sort()).toEqual(["id", "title"]);
   });
 
   it("pages with limit and offset while still reporting the total", async () => {
@@ -101,6 +101,7 @@ describe("list_items", () => {
     expect(result.total).toBe(3);
     expect(result.offset).toBe(1);
     expect(result.items.map((i: any) => i.id)).toEqual(["hat"]);
+    expect(result.items[0].item.title).toBe("Wool Hat");
   });
 
   it("caps an unbounded read at a default page", async () => {
@@ -119,11 +120,11 @@ describe("get_item", () => {
   beforeEach(seed);
 
   it("returns the whole item", async () => {
-    expect(await json("get_item", { path: "/products", id: "hat" })).toEqual({
+    expect(await json("get_item", { path: "/products", id: "hat" })).toMatchObject({
+      path: "/products",
       id: "hat",
-      title: "Wool Hat",
-      price: 30,
-      status: "live",
+      rev: expect.any(Number),
+      item: { id: "hat", title: "Wool Hat", price: 30, status: "live" },
     });
   });
 
@@ -141,8 +142,9 @@ describe("put_item", () => {
 
   it("merges by default", async () => {
     await seed();
-    await call("put_item", { path: "/products", id: "coat", fields: { price: 99 } });
-    expect(await json("get_item", { path: "/products", id: "coat" })).toMatchObject({
+    const { rev } = await json("get_item", { path: "/products", id: "coat" });
+    await call("put_item", { path: "/products", id: "coat", fields: { price: 99 }, if_rev: rev });
+    expect((await json("get_item", { path: "/products", id: "coat" })).item).toMatchObject({
       title: "Winter Coat",
       price: 99,
     });
@@ -150,13 +152,20 @@ describe("put_item", () => {
 
   it("replaces when merge is false", async () => {
     await seed();
-    await call("put_item", { path: "/products", id: "coat", fields: { title: "Parka" }, merge: false });
-    expect(await json("get_item", { path: "/products", id: "coat" })).toEqual({ id: "coat", title: "Parka" });
+    const { rev } = await json("get_item", { path: "/products", id: "coat" });
+    await call("put_item", { path: "/products", id: "coat", fields: { title: "Parka" }, merge: false, if_rev: rev });
+    expect((await json("get_item", { path: "/products", id: "coat" })).item).toEqual({
+      id: "coat",
+      title: "Parka",
+    });
   });
 
   it("reports an update as an update", async () => {
     await seed();
-    expect(await call("put_item", { path: "/products", id: "coat", fields: { price: 1 } })).toContain("Updated");
+    const { rev } = await json("get_item", { path: "/products", id: "coat" });
+    expect(await call("put_item", { path: "/products", id: "coat", fields: { price: 1 }, if_rev: rev })).toContain(
+      "Updated",
+    );
   });
 
   it("rejects fields that are not an object", async () => {
@@ -204,7 +213,14 @@ describe("search_items", () => {
   it("returns the path and id needed to edit each match", async () => {
     const result = await json("search_items", { query: "status=live price>50" });
     expect(result.matches).toEqual([
-      { path: "/products", id: "boot", index: 2, item: expect.objectContaining({ title: "Snow Boot" }) },
+      {
+        path: "/products",
+        url: "https://example.com/data/products.json",
+        id: "boot",
+        rev: expect.any(Number),
+        index: 2,
+        item: expect.objectContaining({ title: "Snow Boot" }),
+      },
     ]);
   });
 
@@ -249,5 +265,143 @@ describe("delete_collection", () => {
 
   it("fails on a collection that is not there", async () => {
     await expect(call("delete_collection", { path: "/nope" })).rejects.toThrow("No collection exists");
+  });
+});
+
+describe("how collections are served", () => {
+  it("gives put_item's caller the exact address", async () => {
+    const text = await call("put_item", { path: "/Products", id: "coat", fields: {} });
+    expect(text).toBe(
+      "Created coat at rev 1 in collection /products, served at https://example.com/data/products.json",
+    );
+  });
+
+  it("gives the same address however the path was written", async () => {
+    for (const path of ["/Products", "products", "/products.json", "/products/"]) {
+      resetBlobs();
+      const text = await call("put_item", { path, id: "a", fields: {} });
+      expect(text, path).toContain("https://example.com/data/products.json");
+    }
+  });
+
+  it("addresses a collection at the root as index.json", async () => {
+    const text = await call("put_item", { path: "/", id: "a", fields: {} });
+    expect(text).toContain("https://example.com/data/index.json");
+  });
+
+  it("addresses a nested collection under the same rule", async () => {
+    const text = await call("put_item", { path: "/shop/items", id: "a", fields: {} });
+    expect(text).toContain("https://example.com/data/shop/items.json");
+  });
+
+  it("labels the url in the collection listing", async () => {
+    await seed();
+    expect(await call("list_collections")).toContain("served at https://example.com/data/products.json");
+  });
+
+  it("carries the url and warns the envelope is not the served shape", async () => {
+    await seed();
+    const result = await json("list_items", { path: "/products" });
+    expect(result.url).toBe("https://example.com/data/products.json");
+    expect(result.served).toMatch(/without this envelope/);
+  });
+
+  it("carries the url on every search match", async () => {
+    await seed();
+    const result = await json("search_items", { query: "coat" });
+    expect(result.matches[0].url).toBe("https://example.com/data/products.json");
+  });
+
+  it("states the mapping, the shape and the visibility in the tool text", () => {
+    for (const name of ["list_collections", "list_items", "put_item"]) {
+      const description = TOOLS.find((t) => t.name === name)!.description;
+      expect(description, name).toContain("/data/products.json");
+      expect(description, name).toMatch(/bare JSON array/);
+      expect(description, name).toMatch(/public/i);
+    }
+  });
+});
+
+describe("stale writes", () => {
+  beforeEach(seed);
+
+  it("refuses an update that carries no rev", async () => {
+    await expect(call("put_item", { path: "/products", id: "coat", fields: { price: 1 } })).rejects.toThrow(
+      /already exists at rev/,
+    );
+  });
+
+  it("still creates a new item with no rev", async () => {
+    expect(await call("put_item", { path: "/products", id: "scarf", fields: { title: "Scarf" } })).toContain(
+      "Created scarf",
+    );
+  });
+
+  it("refuses an update built on a rev that has moved on", async () => {
+    const { rev } = await json("get_item", { path: "/products", id: "coat" });
+    await call("put_item", { path: "/products", id: "coat", fields: { price: 1 }, if_rev: rev });
+
+    await expect(
+      call("put_item", { path: "/products", id: "coat", fields: { price: 2 }, if_rev: rev }),
+    ).rejects.toThrow(/has changed since you read it/);
+  });
+
+  it("lets an explicit overwrite through", async () => {
+    expect(
+      await call("put_item", { path: "/products", id: "coat", fields: { price: 1 }, overwrite: true }),
+    ).toContain("Updated coat");
+  });
+
+  it("hands back a rev the next write accepts", async () => {
+    const first = await call("put_item", { path: "/products", id: "coat", fields: { price: 1 }, overwrite: true });
+    const rev = Number(/at rev (\d+)/.exec(first)![1]);
+    expect(await call("put_item", { path: "/products", id: "coat", fields: { price: 2 }, if_rev: rev })).toContain(
+      "Updated coat",
+    );
+  });
+
+  it("gives search results a rev that put_item accepts", async () => {
+    const result = await json("search_items", { query: "coat" });
+    const match = result.matches[0];
+    expect(
+      await call("put_item", { path: match.path, id: match.id, fields: { price: 5 }, if_rev: match.rev }),
+    ).toContain("Updated coat");
+  });
+
+  it("gives list_items a collection rev that reorder_items accepts", async () => {
+    const listed = await json("list_items", { path: "/products" });
+    expect(await call("reorder_items", { path: "/products", ids: ["boot"], if_rev: listed.rev })).toContain(
+      "boot, coat, hat",
+    );
+  });
+
+  it("refuses a reorder built on a stale collection rev", async () => {
+    const listed = await json("list_items", { path: "/products" });
+    await call("put_item", { path: "/products", id: "coat", fields: { price: 7 }, overwrite: true });
+
+    await expect(
+      call("reorder_items", { path: "/products", ids: ["boot"], if_rev: listed.rev }),
+    ).rejects.toThrow(/has changed since you read it/);
+  });
+
+  it("refuses a delete built on a stale rev", async () => {
+    const { rev } = await json("get_item", { path: "/products", id: "coat" });
+    await call("put_item", { path: "/products", id: "coat", fields: { price: 3 }, if_rev: rev });
+
+    await expect(call("delete_item", { path: "/products", id: "coat", if_rev: rev })).rejects.toThrow(
+      /has changed since you read it/,
+    );
+  });
+
+  it("shows the collection rev in the listing", async () => {
+    expect(await call("list_collections")).toMatch(/rev \d+/);
+  });
+
+  it("explains revs in the tool text without promising them in the served json", () => {
+    for (const name of ["get_item", "list_items", "put_item"]) {
+      const description = TOOLS.find((t) => t.name === name)!.description;
+      expect(description, name).toMatch(/rev/);
+    }
+    expect(TOOLS.find((t) => t.name === "put_item")!.description).toMatch(/never appears in what the url serves/);
   });
 });

@@ -39,6 +39,8 @@ export type Item = { id: string } & Record<string, unknown>;
 export interface Collection {
   path: string;
   items: Item[];
+  rev: number;
+  revs: Record<string, number>;
   createdAt: number;
   updatedAt: number;
 }
@@ -46,6 +48,7 @@ export interface Collection {
 export interface CollectionSummary {
   path: string;
   count: number;
+  rev: number;
   updatedAt: number;
 }
 

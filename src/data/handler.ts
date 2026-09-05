@@ -10,7 +10,7 @@ export async function handleData(request: Request): Promise<Response> {
   const collection = await getCollection(normalizeCollectionPath(raw));
   if (!collection) return notFound();
 
-  const etag = `W/"${collection.updatedAt}"`;
+  const etag = `W/"${collection.rev}"`;
   const headers = {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "public, max-age=60",

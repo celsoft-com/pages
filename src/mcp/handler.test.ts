@@ -23,7 +23,32 @@ function text(result: any): string {
 describe("instructions", () => {
   it("tells the client to keep repeating content in a collection", () => {
     expect(INSTRUCTIONS).toMatch(/collection/i);
-    expect(INSTRUCTIONS).toMatch(/\/data\/<path>\.json/);
+  });
+
+  it("spells out the exact address a collection is served at", () => {
+    expect(INSTRUCTIONS).toContain("/products is served at /data/products.json");
+    expect(INSTRUCTIONS).toContain("/shop/items at /data/shop/items.json");
+  });
+
+  it("warns that the path is normalized before it becomes an address", () => {
+    expect(INSTRUCTIONS).toMatch(/lowercased/);
+    expect(INSTRUCTIONS).toContain("/Products, products and /products.json all mean the collection /products");
+  });
+
+  it("says the body is a bare array, not the envelope the tools return", () => {
+    expect(INSTRUCTIONS).toMatch(/bare JSON array/);
+    expect(INSTRUCTIONS).toMatch(/no wrapper object/i);
+    expect(INSTRUCTIONS).toMatch(/envelope/);
+  });
+
+  it("warns that a collection is public and cached", () => {
+    expect(INSTRUCTIONS).toMatch(/public, unauthenticated and cached for 60 seconds/);
+    expect(INSTRUCTIONS).toMatch(/[Nn]ever put anything private/);
+  });
+
+  it("shows a page that actually renders one", () => {
+    expect(INSTRUCTIONS).toContain("fetch('/data/products.json')");
+    expect(INSTRUCTIONS).toContain("items.map(");
   });
 
   it("tells the client to offer the owner the choice", () => {
@@ -56,7 +81,7 @@ describe("tools/call", () => {
     const reply = await rpc("tools/call", { name: "get_item", arguments: { path: "/p", id: "a" } });
 
     expect(reply.result.isError).toBe(false);
-    expect(JSON.parse(text(reply))).toEqual({ id: "a", title: "A" });
+    expect(JSON.parse(text(reply))).toMatchObject({ id: "a", rev: 1, item: { id: "a", title: "A" } });
   });
 
   it("returns a tool failure as an error result rather than a protocol error", async () => {

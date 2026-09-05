@@ -21,8 +21,22 @@ function slugify(input: string): string {
 }
 
 export async function getCollection(path: string): Promise<Collection | null> {
-  const stored = await stores.data().get(encodeKey(normalizeCollectionPath(path)), { type: "json" });
-  return (stored as Collection | null) ?? null;
+  const stored = (await stores.data().get(encodeKey(normalizeCollectionPath(path)), { type: "json" })) as
+    | Collection
+    | null;
+  if (!stored) return null;
+  return { ...stored, rev: stored.rev ?? 0, revs: stored.revs ?? {} };
+}
+
+export function revOf(collection: Collection, id: string): number {
+  return collection.revs[id] ?? 0;
+}
+
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
+  return `{${entries.map(([key, inner]) => `${JSON.stringify(key)}:${canonical(inner)}`).join(",")}}`;
 }
 
 export async function listCollections(): Promise<CollectionSummary[]> {
@@ -34,6 +48,7 @@ export async function listCollections(): Promise<CollectionSummary[]> {
       return {
         path: collection.path,
         count: collection.items.length,
+        rev: collection.rev ?? 0,
         updatedAt: collection.updatedAt,
       } satisfies CollectionSummary;
     }),
@@ -45,9 +60,20 @@ export async function saveCollection(path: string, items: Item[]): Promise<Colle
   const normalized = normalizeCollectionPath(path);
   const existing = await getCollection(normalized);
   const now = Date.now();
+  const rev = (existing?.rev ?? 0) + 1;
+
+  const before = new Map((existing?.items ?? []).map((item) => [item.id, canonical(item)]));
+  const revs: Record<string, number> = {};
+  for (const item of items) {
+    const unchanged = before.get(item.id) === canonical(item);
+    revs[item.id] = unchanged ? (existing?.revs[item.id] ?? rev) : rev;
+  }
+
   const collection: Collection = {
     path: normalized,
     items,
+    rev,
+    revs,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -80,9 +106,12 @@ export async function putItem(input: {
   fields: Record<string, unknown>;
   merge: boolean;
   index?: number;
-}): Promise<{ item: Item; created: boolean }> {
+  ifRev?: number;
+  overwrite?: boolean;
+}): Promise<{ item: Item; created: boolean; rev: number }> {
   const path = normalizeCollectionPath(input.path);
-  const items = (await getCollection(path))?.items ?? [];
+  const collection = await getCollection(path);
+  const items = collection?.items ?? [];
   const taken = new Set(items.map((i) => i.id));
 
   const id = input.id ?? freshId(input.fields, taken);
@@ -90,6 +119,26 @@ export async function putItem(input: {
     throw new Error(`id "${id}" is not usable. Use letters, numbers, dashes, dots or underscores.`);
 
   const at = items.findIndex((i) => i.id === id);
+
+  if (at === -1 && input.ifRev !== undefined)
+    throw new Error(
+      `No item "${id}" in ${path} to match if_rev ${input.ifRev}. It may have been deleted. ` +
+        `Call list_items to see what is there, then write without if_rev to create it.`,
+    );
+
+  if (at !== -1) {
+    const current = revOf(collection!, id);
+    if (input.ifRev === undefined && input.overwrite !== true)
+      throw new Error(
+        `Item "${id}" in ${path} already exists at rev ${current}. Read it with get_item and pass ` +
+          `if_rev: ${current}, or pass overwrite: true to write without checking.`,
+      );
+    if (input.ifRev !== undefined && input.ifRev !== current)
+      throw new Error(
+        `Item "${id}" in ${path} has changed since you read it: you have rev ${input.ifRev}, it is now ` +
+          `rev ${current}. Read it again with get_item and reapply your change.`,
+      );
+  }
   const { id: _ignored, ...fields } = input.fields;
   const item: Item = at === -1 || !input.merge ? { id, ...fields } : { ...items[at], ...fields, id };
 
@@ -104,11 +153,11 @@ export async function putItem(input: {
     }
   }
 
-  await saveCollection(path, items);
-  return { item, created: at === -1 };
+  const saved = await saveCollection(path, items);
+  return { item, created: at === -1, rev: revOf(saved, id) };
 }
 
-export async function deleteItem(path: string, id: string): Promise<boolean> {
+export async function deleteItem(path: string, id: string, ifRev?: number): Promise<boolean> {
   const normalized = normalizeCollectionPath(path);
   const collection = await getCollection(normalized);
   if (!collection) return false;
@@ -116,14 +165,27 @@ export async function deleteItem(path: string, id: string): Promise<boolean> {
   const remaining = collection.items.filter((i) => i.id !== id);
   if (remaining.length === collection.items.length) return false;
 
+  const current = revOf(collection, id);
+  if (ifRev !== undefined && ifRev !== current)
+    throw new Error(
+      `Item "${id}" in ${normalized} has changed since you read it: you have rev ${ifRev}, it is now ` +
+        `rev ${current}. Read it again with get_item before deleting it.`,
+    );
+
   await saveCollection(normalized, remaining);
   return true;
 }
 
-export async function reorderItems(path: string, ids: string[]): Promise<Item[]> {
+export async function reorderItems(path: string, ids: string[], ifRev?: number): Promise<Item[]> {
   const normalized = normalizeCollectionPath(path);
   const collection = await getCollection(normalized);
   if (!collection) throw new Error(`No collection exists at ${normalized}`);
+
+  if (ifRev !== undefined && ifRev !== collection.rev)
+    throw new Error(
+      `Collection ${normalized} has changed since you read it: you have rev ${ifRev}, it is now ` +
+        `rev ${collection.rev}. Call list_items again before reordering.`,
+    );
 
   const byId = new Map(collection.items.map((i) => [i.id, i]));
   const missing = ids.filter((id) => !byId.has(id));

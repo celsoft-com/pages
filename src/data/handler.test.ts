@@ -103,3 +103,51 @@ describe("misses", () => {
     expect((await get("/data/../secret.json")).status).toBe(404);
   });
 });
+
+describe("the address the tools advertise", () => {
+  it("serves exactly the url put_item reports, for every shape of path", async () => {
+    for (const [stored, url] of [
+      ["/products", "/data/products.json"],
+      ["/shop/items", "/data/shop/items.json"],
+      ["/a/b/c", "/data/a/b/c.json"],
+    ]) {
+      await saveCollection(stored, [{ id: "x" }]);
+      expect((await get(url)).status, url).toBe(200);
+    }
+  });
+
+  it("round-trips a collection at the root through /data/index.json", async () => {
+    await saveCollection("/", [{ id: "a" }]);
+    const response = await get("/data/index.json");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([{ id: "a" }]);
+  });
+
+  it("serves the bare array, not the envelope the tools return", async () => {
+    await saveCollection("/products", [{ id: "coat" }]);
+    const body = await (await get("/data/products.json")).json();
+    expect(Array.isArray(body)).toBe(true);
+    expect(body).not.toHaveProperty("items");
+  });
+});
+
+describe("revisions stay out of the served json", () => {
+  it("serves items with no rev field", async () => {
+    await saveCollection("/products", [{ id: "coat", title: "Coat" }]);
+    const body = (await (await get("/data/products.json")).json()) as Record<string, unknown>[];
+    expect(body[0]).toEqual({ id: "coat", title: "Coat" });
+    expect(body[0]).not.toHaveProperty("rev");
+  });
+
+  it("uses the collection rev as the etag", async () => {
+    const saved = await saveCollection("/products", [{ id: "coat" }]);
+    expect((await get("/data/products.json")).headers.get("etag")).toBe(`W/"${saved.rev}"`);
+  });
+
+  it("changes the etag on every write, even inside the same millisecond", async () => {
+    await saveCollection("/products", [{ id: "coat" }]);
+    const before = (await get("/data/products.json")).headers.get("etag");
+    await saveCollection("/products", [{ id: "coat" }, { id: "hat" }]);
+    expect((await get("/data/products.json")).headers.get("etag")).not.toBe(before);
+  });
+});

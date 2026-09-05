@@ -422,7 +422,7 @@ async function dataScreen(url: URL): Promise<Response> {
           (c) => `<tr>
 <td><a href="/admin/data/edit?path=${encodeURIComponent(c.path)}">${escapeHtml(c.path)}</a>
 <div class="small muted mono">/data${escapeHtml(c.path)}.json</div></td>
-<td class="small muted">${c.count} items</td>
+<td class="small muted">${c.count} items<div class="small muted">rev ${c.rev}</div></td>
 <td class="actions">
 <a class="button secondary" href="/data${escapeHtml(c.path)}.json" target="_blank" rel="noopener">Open</a>
 <form method="post" action="/admin/data/delete" style="display:inline"

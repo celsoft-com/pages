@@ -7,6 +7,7 @@ import {
   listCollections,
   putItem,
   reorderItems,
+  revOf,
 } from "../data/service";
 import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
 import { isValidPath, normalizePath } from "../pages/path";
@@ -51,6 +52,20 @@ function urlFor(ctx: ToolContext, path: string): string {
 function dataUrl(ctx: ToolContext, path: string): string {
   return `${ctx.siteUrl}/data${path === "/" ? "/index" : path}.json`;
 }
+
+const SERVING =
+  "How it is served: take the collection path, prefix /data and add .json. The collection /products is served at " +
+  "/data/products.json, and /shop/items at /data/shop/items.json. Paths are lowercased and any .json you pass is " +
+  "ignored, so /Products, products and /products.json are all the collection /products; the address always uses the " +
+  "normalized path, which every reply echoes back as url. Fetching it returns a bare JSON array of the items in " +
+  "stored order, with no wrapper object, public, unauthenticated and cached for 60 seconds.";
+
+const ENVELOPE = "GET the url returns just the items array, without this envelope";
+
+const REVS =
+  "Every item carries a rev, a number that changes whenever that item changes. It is kept outside the stored JSON, " +
+  "so it never appears in what the url serves. Pass the rev you read back as if_rev when you write, and a write " +
+  "built on a stale read is refused instead of silently clobbering someone else's edit.";
 
 function project(item: Item, fields: unknown): Record<string, unknown> {
   if (!Array.isArray(fields) || fields.length === 0) return item;
@@ -206,19 +221,26 @@ export const TOOLS: ToolDefinition[] = [
     name: "list_collections",
     title: "List data collections",
     description:
-      "List every JSON data collection on this site with its item count and public URL. A collection is an array of items a page can fetch and render.",
+      "List every JSON data collection on this site with its item count and public URL. A collection is an ordered array of items a page fetches and renders. " +
+      SERVING,
     inputSchema: object({}),
     handler: async (_args, ctx) => {
       const collections = await listCollections();
       if (collections.length === 0) return "No data collections yet. Use put_item to create one.";
-      return collections.map((c) => `${c.path}  ${c.count} items  ${dataUrl(ctx, c.path)}`).join("\n");
+      return collections
+        .map((c) => `${c.path}  ${c.count} items  rev ${c.rev}  served at ${dataUrl(ctx, c.path)}`)
+        .join("\n");
     },
   },
   {
     name: "list_items",
     title: "List items in a collection",
     description:
-      "Return items from a collection in order. Ask for only the fields you need and page with limit and offset; the whole collection is rarely worth reading.",
+      "Return items from a collection in order. Ask for only the fields you need and page with limit and offset; the whole collection is rarely worth reading. " +
+      "The reply wraps the items in an envelope with the collection total, its public url and a rev for each item; the url itself serves the bare array. " +
+      SERVING +
+      " " +
+      REVS,
     inputSchema: object(
       {
         path: { type: "string", description: "Collection path, for example /products" },
@@ -232,7 +254,7 @@ export const TOOLS: ToolDefinition[] = [
       },
       ["path"],
     ),
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const path = requirePath(args.path);
       const collection = await getCollection(path);
       if (!collection) throw new Error(`No collection exists at ${path}. Use put_item to create it.`);
@@ -244,9 +266,12 @@ export const TOOLS: ToolDefinition[] = [
       return JSON.stringify(
         {
           path: collection.path,
+          url: dataUrl(ctx, collection.path),
+          served: ENVELOPE,
+          rev: collection.rev,
           total: collection.items.length,
           offset,
-          items: page.map((item) => project(item, args.fields)),
+          items: page.map((item) => ({ id: item.id, rev: revOf(collection, item.id), item: project(item, args.fields) })),
         },
         null,
         2,
@@ -256,21 +281,29 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "get_item",
     title: "Read one item",
-    description: "Return a single item from a collection by its id.",
+    description: "Return a single item from a collection by its id, with the rev to pass back as if_rev when you write. " + REVS,
     inputSchema: object({ path: { type: "string" }, id: { type: "string" } }, ["path", "id"]),
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const path = requirePath(args.path);
       const collection = await getCollection(path);
       const item = collection?.items.find((i) => i.id === String(args.id));
       if (!item) throw new Error(`No item ${args.id} in ${path}`);
-      return JSON.stringify(item, null, 2);
+      return JSON.stringify(
+        { path, url: dataUrl(ctx, path), id: item.id, rev: revOf(collection!, item.id), item },
+        null,
+        2,
+      );
     },
   },
   {
     name: "put_item",
     title: "Create or update an item",
     description:
-      "Write one item without rewriting the collection. By default the given fields are merged into the existing item and everything else is left alone; pass merge false to replace it outright. Creates the collection when it does not exist. Omit id to append a new item with a generated id.",
+      "Write one item without rewriting the collection. By default the given fields are merged into the existing item and everything else is left alone; pass merge false to replace it outright. Creates the collection when it does not exist. Omit id to append a new item with a generated id. " +
+      "Updating an item needs the if_rev you read from get_item, list_items or search_items, so a write from a stale read is refused rather than clobbering a newer one; pass overwrite true only when you mean to discard whatever is there. " +
+      SERVING +
+      " " +
+      REVS,
     inputSchema: object(
       {
         path: { type: "string", description: "Collection path, for example /products" },
@@ -278,6 +311,15 @@ export const TOOLS: ToolDefinition[] = [
         fields: { type: "object", description: "Field values to write", additionalProperties: true },
         merge: { type: "boolean", description: "Merge into the existing item. Defaults to true." },
         index: { type: "number", description: "Position in the collection. Defaults to the end for new items." },
+        if_rev: {
+          type: "number",
+          description:
+            "The rev you read for this item. Required to update an existing item, and the write is refused if the item has changed since. Leave it out when creating.",
+        },
+        overwrite: {
+          type: "boolean",
+          description: "Update an existing item without checking its rev. Use only when you mean to discard whatever is there.",
+        },
       },
       ["path", "fields"],
     ),
@@ -286,24 +328,35 @@ export const TOOLS: ToolDefinition[] = [
       if (typeof args.fields !== "object" || args.fields === null || Array.isArray(args.fields))
         throw new Error("fields must be an object");
 
-      const { item, created } = await putItem({
+      const { item, created, rev } = await putItem({
         path,
         id: args.id === undefined ? undefined : String(args.id),
         fields: args.fields as Record<string, unknown>,
         merge: args.merge !== false,
         index: args.index === undefined ? undefined : Number(args.index),
+        ifRev: args.if_rev === undefined ? undefined : Number(args.if_rev),
+        overwrite: args.overwrite === true,
       });
-      return `${created ? "Created" : "Updated"} ${item.id} in ${path}  ${dataUrl(ctx, path)}`;
+      return `${created ? "Created" : "Updated"} ${item.id} at rev ${rev} in collection ${path}, served at ${dataUrl(ctx, path)}`;
     },
   },
   {
     name: "delete_item",
     title: "Delete an item",
-    description: "Remove one item from a collection by its id. The rest of the collection is untouched.",
-    inputSchema: object({ path: { type: "string" }, id: { type: "string" } }, ["path", "id"]),
+    description:
+      "Remove one item from a collection by its id. The rest of the collection is untouched. Pass the rev you read as if_rev and the delete is refused if the item changed since.",
+    inputSchema: object(
+      {
+        path: { type: "string" },
+        id: { type: "string" },
+        if_rev: { type: "number", description: "The rev you read for this item" },
+      },
+      ["path", "id"],
+    ),
     handler: async (args) => {
       const path = requirePath(args.path);
-      if (!(await deleteItem(path, String(args.id)))) throw new Error(`No item ${args.id} in ${path}`);
+      const ifRev = args.if_rev === undefined ? undefined : Number(args.if_rev);
+      if (!(await deleteItem(path, String(args.id), ifRev))) throw new Error(`No item ${args.id} in ${path}`);
       return `Deleted ${args.id} from ${path}`;
     },
   },
@@ -311,18 +364,24 @@ export const TOOLS: ToolDefinition[] = [
     name: "reorder_items",
     title: "Reorder a collection",
     description:
-      "Move the given ids to the front of the collection, in the order listed. Items left out keep their relative order behind them, so moving one item to the top only needs one id.",
+      "Move the given ids to the front of the collection, in the order listed. Items left out keep their relative order behind them, so moving one item to the top only needs one id. " +
+      "Pass the collection rev as if_rev and the reorder is refused if the collection changed since you read it.",
     inputSchema: object(
       {
         path: { type: "string" },
         ids: { type: "array", items: { type: "string" }, description: "Ids in the order they should appear" },
+        if_rev: {
+          type: "number",
+          description: "The collection rev you read from list_items or list_collections",
+        },
       },
       ["path", "ids"],
     ),
     handler: async (args) => {
       const path = requirePath(args.path);
       if (!Array.isArray(args.ids) || args.ids.length === 0) throw new Error("ids must be a non-empty array");
-      const items = await reorderItems(path, args.ids.map(String));
+      const ifRev = args.if_rev === undefined ? undefined : Number(args.if_rev);
+      const items = await reorderItems(path, args.ids.map(String), ifRev);
       return `Order in ${path}: ${items.map((i) => i.id).join(", ")}`;
     },
   },
@@ -330,7 +389,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "search_items",
     title: "Search items",
     description:
-      "Find items across one collection or all of them. Returns each match with its collection path and id so it can be edited with get_item, put_item or delete_item. " +
+      "Find items across one collection or all of them. Returns each match with its collection path, id and rev so it can be edited straight away with put_item or delete_item. " +
       "Query syntax: bare words match any field; field:value matches part of a field; field=value matches it exactly; field>10, field<10, field>=10 and field<=10 compare numbers; " +
       'field!=value excludes; has:field requires the field to be set; -term excludes matches; "quoted words" match a phrase. Terms combine with AND, and dotted paths reach nested fields.',
     inputSchema: object(
@@ -342,7 +401,7 @@ export const TOOLS: ToolDefinition[] = [
       },
       ["query"],
     ),
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       if (typeof args.query !== "string" || args.query.trim() === "") throw new Error("query is required");
       const terms = parseQuery(args.query);
       const limit = Math.max(1, Number(args.limit) || 25);
@@ -356,7 +415,15 @@ export const TOOLS: ToolDefinition[] = [
         const collection = await getCollection(path);
         if (!collection) continue;
         collection.items.forEach((item, index) => {
-          if (matchItem(item, terms)) matches.push({ path, id: item.id, index, item: project(item, args.fields) });
+          if (matchItem(item, terms))
+            matches.push({
+              path,
+              url: dataUrl(ctx, path),
+              id: item.id,
+              rev: revOf(collection, item.id),
+              index,
+              item: project(item, args.fields),
+            });
         });
       }
 

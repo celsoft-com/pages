@@ -42,6 +42,10 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   owner that choice, and the page tools repeat it. Weaken that steering and Claude will paste data into pages again.
 - **Items change one at a time.** Every data tool reads or writes a single item, so editing one costs one small call.
   Never add a tool that makes a client send a whole collection back to change one field.
+- **Revisions live outside the items.** `rev` and `revs` sit on the collection envelope, never in an item, because
+  [handler.ts](src/data/handler.ts) serves `collection.items` verbatim. Updating an item needs a matching `if_rev`,
+  so a client writing from a stale read is refused. [saveCollection](src/data/service.ts) assigns revs by comparing
+  canonical JSON, so an unchanged item keeps its rev and a no-op write does not invalidate anyone.
 - **The build stamp is baked in, not looked up.** Netlify exposes no deploy timestamp and no API call is allowed,
   so [build-info.mjs](scripts/build-info.mjs) writes [build-info.ts](src/build-info.ts) during `build:deploy`. The
   committed copy is blank on purpose; a local `npm run build` must never overwrite it.
