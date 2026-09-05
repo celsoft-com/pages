@@ -7,7 +7,9 @@ Deploy it to your own Cloudflare account, connect Claude, and ask it to publish 
 ## Deploy
 
 1. [Fork this repo.](https://github.com/seanodell/pages/fork)
-2. [Deploy it on Cloudflare.](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create/workers/import-repository) Pick your fork from the list.
+2. Deploy it, and pick your fork from the list:
+
+   [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create/workers/import-repository)
 
 Then open your site and pick an admin password. Claude does the rest.
 
