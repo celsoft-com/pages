@@ -6,7 +6,7 @@ Deploy it to your own Netlify account, connect Claude, and ask it to publish pag
 
 ## Deploy
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/seanodell/pages)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/celsoft-com/pages)
 
 Open your site and pick an admin password. That's the whole setup.
 

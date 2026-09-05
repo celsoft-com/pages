@@ -113,7 +113,7 @@ ${options.siteDescription ? `<p>${escapeHtml(options.siteDescription)}</p>` : ""
 ${nav ? `<nav class="site">${nav}</nav>` : ""}
 </header>
 <main>${options.content}</main>
-<footer class="site">Published with <a href="https://github.com/seanodell/pages">pages</a></footer>
+<footer class="site">Published with <a href="https://github.com/celsoft-com/pages">pages</a></footer>
 </div>
 </body>
 </html>`;
