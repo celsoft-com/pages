@@ -43,6 +43,8 @@ function setupScreen(error?: string): Response {
 <p class="lede">Pick an admin password. It protects this dashboard and authorizes Claude when you connect it.</p>
 ${error ? notice("bad", error) : ""}
 <form method="post" class="panel">
+  <input type="text" name="username" value="admin" autocomplete="username"
+    readonly hidden aria-hidden="true" tabindex="-1" style="display:none">
   <div class="field">
     <label for="password">Admin password<span class="hint">At least 12 characters.</span></label>
     <input id="password" name="password" type="password" autocomplete="new-password" required minlength="12">
@@ -92,6 +94,8 @@ function loginScreen(error?: string): Response {
 <h1>Sign in</h1>
 ${error ? notice("bad", error) : ""}
 <form method="post" class="panel">
+  <input type="text" name="username" value="admin" autocomplete="username"
+    readonly hidden aria-hidden="true" tabindex="-1" style="display:none">
   <div class="field">
     <label for="password">Admin password</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
@@ -352,6 +356,9 @@ async function settingsScreen(url: URL): Promise<Response> {
 </form>
 <form method="post" action="/admin/settings/password" class="panel">
 <h2 style="margin-top:0">Password</h2>
+  <input type="text" name="username" value="admin" autocomplete="username"
+    readonly hidden aria-hidden="true" tabindex="-1" style="display:none">
+
 <div class="field"><label for="password">New password<span class="hint">At least 12 characters.</span></label>
 <input id="password" name="password" type="password" minlength="12" required autocomplete="new-password"></div>
 <div class="field"><label for="confirm">Confirm</label>
