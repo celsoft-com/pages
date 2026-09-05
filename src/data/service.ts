@@ -4,6 +4,9 @@ import type { Collection, CollectionSummary, Item } from "../types";
 
 const ID_PATTERN = /^[A-Za-z0-9._~-]{1,128}$/;
 
+// Reserved: served as the browser-readable index of every collection.
+export const MANIFEST_PATH = "/_collections";
+
 export function isValidId(id: string): boolean {
   return ID_PATTERN.test(id);
 }
@@ -58,6 +61,9 @@ export async function listCollections(): Promise<CollectionSummary[]> {
 
 export async function saveCollection(path: string, items: Item[]): Promise<Collection> {
   const normalized = normalizeCollectionPath(path);
+  if (normalized === MANIFEST_PATH)
+    throw new Error(`${MANIFEST_PATH} is reserved for the index of collections. Pick another path.`);
+
   const existing = await getCollection(normalized);
   const now = Date.now();
   const rev = (existing?.rev ?? 0) + 1;
@@ -79,6 +85,18 @@ export async function saveCollection(path: string, items: Item[]): Promise<Colle
   };
   await stores.data().setJSON(encodeKey(normalized), collection);
   return collection;
+}
+
+export async function manifest(): Promise<
+  { path: string; url: string; count: number; rev: number; updatedAt: number }[]
+> {
+  return (await listCollections()).map((c) => ({
+    path: c.path,
+    url: `/data${c.path === "/" ? "/index" : c.path}.json`,
+    count: c.count,
+    rev: c.rev,
+    updatedAt: c.updatedAt,
+  }));
 }
 
 export async function deleteCollection(path: string): Promise<boolean> {

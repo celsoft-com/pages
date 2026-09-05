@@ -96,3 +96,23 @@ describe("tools/call", () => {
     expect(reply.error.code).toBe(-32602);
   });
 });
+
+describe("instructions cover what a page author needs", () => {
+  it("guarantees order", () => {
+    expect(INSTRUCTIONS).toMatch(/Order is guaranteed/);
+  });
+
+  it("says the served item carries its id", () => {
+    expect(INSTRUCTIONS).toMatch(/Every served item includes its id/);
+  });
+
+  it("covers nested values and shallow merging", () => {
+    expect(INSTRUCTIONS).toMatch(/Nested objects and arrays of objects are stored and served unchanged/);
+    expect(INSTRUCTIONS).toMatch(/[Mm]erging is shallow/);
+  });
+
+  it("names the discovery url and that it is reserved", () => {
+    expect(INSTRUCTIONS).toContain("/data/_collections.json");
+    expect(INSTRUCTIONS).toMatch(/reserved and cannot be used as a collection path/);
+  });
+});

@@ -54,11 +54,15 @@ function dataUrl(ctx: ToolContext, path: string): string {
 }
 
 const SERVING =
-  "How it is served: take the collection path, prefix /data and add .json. The collection /products is served at " +
-  "/data/products.json, and /shop/items at /data/shop/items.json. Paths are lowercased and any .json you pass is " +
-  "ignored, so /Products, products and /products.json are all the collection /products; the address always uses the " +
-  "normalized path, which every reply echoes back as url. Fetching it returns a bare JSON array of the items in " +
-  "stored order, with no wrapper object, public, unauthenticated and cached for 60 seconds.";
+  "How it is served: take the collection path, prefix /data and add .json. Collection /a/b is served at /data/a/b.json, " +
+  "/products at /data/products.json. Paths are lowercased and any .json you pass is ignored, so /Products, products " +
+  "and /products.json are all the collection /products; the address always uses the normalized path, which every reply " +
+  "echoes back as url. A GET returns a bare JSON array of the items, with no wrapper object, and each served item " +
+  "includes its id along with the fields you wrote. Array order is the collection order set by reorder_items and by " +
+  "put_item's index, and is preserved exactly, so a page needs no sort field. Nested objects and arrays of objects are " +
+  "stored and served unchanged. It is public, unauthenticated and cached for 60 seconds. " +
+  "GET /data/_collections.json for the index of every collection: an array of {path, url, count, rev, updatedAt} " +
+  "sorted by path, so a page can discover collections over plain HTTP with no access to these tools.";
 
 const ENVELOPE = "GET the url returns just the items array, without this envelope";
 
@@ -301,6 +305,7 @@ export const TOOLS: ToolDefinition[] = [
     description:
       "Write one item without rewriting the collection. By default the given fields are merged into the existing item and everything else is left alone; pass merge false to replace it outright. Creates the collection when it does not exist. Omit id to append a new item with a generated id. " +
       "Updating an item needs the if_rev you read from get_item, list_items or search_items, so a write from a stale read is refused rather than clobbering a newer one; pass overwrite true only when you mean to discard whatever is there. " +
+      "fields takes any JSON value, nested objects and arrays of objects included, and they round-trip unchanged. Merging is shallow: a nested object or array you pass replaces the stored one outright rather than being merged key by key, so send the whole nested value. " +
       SERVING +
       " " +
       REVS,

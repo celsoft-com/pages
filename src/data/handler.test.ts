@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetBlobs } from "../test/blobs";
 import { handleData } from "./handler";
-import { saveCollection } from "./service";
+import { putItem, reorderItems, saveCollection } from "./service";
 
 beforeEach(resetBlobs);
 
@@ -149,5 +149,143 @@ describe("revisions stay out of the served json", () => {
     const before = (await get("/data/products.json")).headers.get("etag");
     await saveCollection("/products", [{ id: "coat" }, { id: "hat" }]);
     expect((await get("/data/products.json")).headers.get("etag")).not.toBe(before);
+  });
+});
+
+describe("the served payload contract", () => {
+  it("returns a bare array, never an envelope", async () => {
+    await saveCollection("/products", [{ id: "coat" }]);
+    const body = await (await get("/data/products.json")).json();
+    expect(Array.isArray(body)).toBe(true);
+  });
+
+  it("includes each item's id in the served json", async () => {
+    await saveCollection("/products", [{ id: "coat", title: "Coat" }]);
+    const body = (await (await get("/data/products.json")).json()) as Record<string, unknown>[];
+    expect(body[0].id).toBe("coat");
+  });
+
+  it("maps /a/b to /data/a/b.json", async () => {
+    await saveCollection("/a/b", [{ id: "x" }]);
+    expect((await get("/data/a/b.json")).status).toBe(200);
+  });
+});
+
+describe("order preservation", () => {
+  it("serves items in the order reorder_items set", async () => {
+    await putItem({ path: "/p", id: "a", fields: {}, merge: true });
+    await putItem({ path: "/p", id: "b", fields: {}, merge: true });
+    await putItem({ path: "/p", id: "c", fields: {}, merge: true });
+    await reorderItems("/p", ["c", "b"]);
+
+    const body = (await (await get("/data/p.json")).json()) as { id: string }[];
+    expect(body.map((i) => i.id)).toEqual(["c", "b", "a"]);
+  });
+
+  it("serves items in the order put_item's index set", async () => {
+    await putItem({ path: "/p", id: "a", fields: {}, merge: true });
+    await putItem({ path: "/p", id: "b", fields: {}, merge: true, index: 0 });
+
+    const body = (await (await get("/data/p.json")).json()) as { id: string }[];
+    expect(body.map((i) => i.id)).toEqual(["b", "a"]);
+  });
+
+  it("keeps the order across an unrelated edit", async () => {
+    await putItem({ path: "/p", id: "a", fields: {}, merge: true });
+    await putItem({ path: "/p", id: "b", fields: {}, merge: true });
+    await reorderItems("/p", ["b"]);
+    await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true, overwrite: true });
+
+    const body = (await (await get("/data/p.json")).json()) as { id: string }[];
+    expect(body.map((i) => i.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("nested values", () => {
+  const nested = {
+    id: "coat",
+    title: "Coat",
+    price: { amount: 120, currency: "USD" },
+    sizes: [
+      { label: "S", stock: 2 },
+      { label: "M", stock: 0 },
+    ],
+    tags: ["outer", "sale"],
+    meta: { seo: { title: "A coat", keywords: ["warm", "wool"] } },
+    discontinued: false,
+    replacedBy: null,
+  };
+
+  it("serves nested objects and arrays of objects unchanged", async () => {
+    await saveCollection("/products", [nested]);
+    expect(await (await get("/data/products.json")).json()).toEqual([nested]);
+  });
+
+  it("round-trips them through put_item", async () => {
+    const { id, ...fields } = nested;
+    await putItem({ path: "/products", id, fields, merge: true });
+    expect(await (await get("/data/products.json")).json()).toEqual([nested]);
+  });
+
+  it("replaces a nested value outright rather than merging into it", async () => {
+    const first = await putItem({
+      path: "/products",
+      id: "coat",
+      fields: { price: { amount: 120, currency: "USD" } },
+      merge: true,
+    });
+    await putItem({ path: "/products", id: "coat", fields: { price: { amount: 99 } }, merge: true, ifRev: first.rev });
+
+    const body = (await (await get("/data/products.json")).json()) as any[];
+    expect(body[0].price).toEqual({ amount: 99 });
+  });
+});
+
+describe("the collection index", () => {
+  it("lists every collection with a fetchable url", async () => {
+    await saveCollection("/products", [{ id: "a" }, { id: "b" }]);
+    await saveCollection("/shop/items", [{ id: "c" }]);
+
+    const body = (await (await get("/data/_collections.json")).json()) as any[];
+    expect(body.map((c) => [c.path, c.url, c.count])).toEqual([
+      ["/products", "/data/products.json", 2],
+      ["/shop/items", "/data/shop/items.json", 1],
+    ]);
+  });
+
+  it("gives urls that actually serve", async () => {
+    await saveCollection("/a/b", [{ id: "x" }]);
+    const [entry] = (await (await get("/data/_collections.json")).json()) as any[];
+    expect((await get(entry.url)).status).toBe(200);
+  });
+
+  it("carries the rev so a page can tell when data moved", async () => {
+    const saved = await saveCollection("/products", [{ id: "a" }]);
+    const [entry] = (await (await get("/data/_collections.json")).json()) as any[];
+    expect(entry.rev).toBe(saved.rev);
+  });
+
+  it("is an empty array before anything exists", async () => {
+    expect(await (await get("/data/_collections.json")).json()).toEqual([]);
+  });
+
+  it("is readable from another origin and revalidates", async () => {
+    await saveCollection("/products", [{ id: "a" }]);
+    const response = await get("/data/_collections.json");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect((await get("/data/_collections.json", { "if-none-match": response.headers.get("etag")! })).status).toBe(
+      304,
+    );
+  });
+
+  it("changes its etag when a collection changes", async () => {
+    await saveCollection("/products", [{ id: "a" }]);
+    const before = (await get("/data/_collections.json")).headers.get("etag");
+    await saveCollection("/products", [{ id: "a" }, { id: "b" }]);
+    expect((await get("/data/_collections.json")).headers.get("etag")).not.toBe(before);
+  });
+
+  it("refuses to let a collection squat on the reserved path", async () => {
+    await expect(saveCollection("/_collections", [{ id: "a" }])).rejects.toThrow(/reserved/);
   });
 });

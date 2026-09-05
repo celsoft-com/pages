@@ -1,4 +1,4 @@
-import { getCollection, normalizeCollectionPath } from "./service";
+import { getCollection, manifest, MANIFEST_PATH, normalizeCollectionPath } from "./service";
 
 export async function handleData(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -7,7 +7,10 @@ export async function handleData(request: Request): Promise<Response> {
   const raw = decodeURIComponent(url.pathname.slice("/data/".length));
   if (!raw || !/\.json$/i.test(raw)) return notFound();
 
-  const collection = await getCollection(normalizeCollectionPath(raw));
+  const path = normalizeCollectionPath(raw);
+  if (path === MANIFEST_PATH) return serveManifest(request);
+
+  const collection = await getCollection(path);
   if (!collection) return notFound();
 
   const etag = `W/"${collection.rev}"`;
@@ -20,6 +23,21 @@ export async function handleData(request: Request): Promise<Response> {
 
   if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
   return new Response(JSON.stringify(collection.items), { headers });
+}
+
+async function serveManifest(request: Request): Promise<Response> {
+  const collections = await manifest();
+  const body = JSON.stringify(collections);
+  const etag = `W/"m${collections.reduce((sum, c) => sum + c.rev, collections.length)}"`;
+  const headers = {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "public, max-age=60",
+    "access-control-allow-origin": "*",
+    etag,
+  };
+
+  if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
+  return new Response(body, { headers });
 }
 
 function notFound(): Response {

@@ -405,3 +405,40 @@ describe("stale writes", () => {
     expect(TOOLS.find((t) => t.name === "put_item")!.description).toMatch(/never appears in what the url serves/);
   });
 });
+
+describe("the contract a page has to write against", () => {
+  it("states the generic path rule, not just an example", () => {
+    for (const name of ["list_collections", "list_items", "put_item"])
+      expect(TOOLS.find((t) => t.name === name)!.description, name).toContain("/a/b is served at /data/a/b.json");
+  });
+
+  it("says the served item carries its id", () => {
+    expect(TOOLS.find((t) => t.name === "list_items")!.description).toMatch(/each served item includes its id/i);
+  });
+
+  it("guarantees order rather than leaving it open", () => {
+    const description = TOOLS.find((t) => t.name === "list_items")!.description;
+    expect(description).toMatch(/preserved exactly/);
+    expect(description).toMatch(/no sort field/);
+  });
+
+  it("says nested values round-trip and that merging is shallow", () => {
+    const description = TOOLS.find((t) => t.name === "put_item")!.description;
+    expect(description).toMatch(/[Nn]ested objects and arrays of objects are stored and served unchanged/);
+    expect(description).toMatch(/[Mm]erging is shallow/);
+  });
+
+  it("points at a fetchable index for discovery", () => {
+    expect(TOOLS.find((t) => t.name === "list_collections")!.description).toContain("/data/_collections.json");
+  });
+
+  it("round-trips a nested value through put_item and get_item", async () => {
+    const fields = { price: { amount: 120, currency: "USD" }, sizes: [{ label: "S", stock: 2 }] };
+    await call("put_item", { path: "/products", id: "coat", fields });
+    expect((await json("get_item", { path: "/products", id: "coat" })).item).toEqual({ id: "coat", ...fields });
+  });
+
+  it("refuses a collection on the reserved index path", async () => {
+    await expect(call("put_item", { path: "/_collections", fields: { title: "x" } })).rejects.toThrow(/reserved/);
+  });
+});

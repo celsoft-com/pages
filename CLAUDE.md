@@ -19,6 +19,7 @@ One function serves everything, routed in [app.ts](src/app.ts):
 - **Admin UI** — `/admin/*`, server-rendered HTML, no client framework.
 - **Assets** — `/assets/*`, uploaded files served from blobs.
 - **Data** — `/data/<path>.json`, a collection served whole as JSON for a page to fetch and render.
+  `/data/_collections.json` is the reserved index of every collection.
 - **MCP** — `/mcp`, JSON-RPC over Streamable HTTP.
 - **OAuth** — hand-rolled in [oauth/](src/oauth), authorization code with PKCE and dynamic client registration.
 
@@ -42,6 +43,10 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   owner that choice, and the page tools repeat it. Weaken that steering and Claude will paste data into pages again.
 - **Items change one at a time.** Every data tool reads or writes a single item, so editing one costs one small call.
   Never add a tool that makes a client send a whole collection back to change one field.
+- **The served contract is public API.** Collection `/a/b` is served at `/data/a/b.json` as a bare array, each item
+  carrying its `id`, in collection order, with nested values untouched. Pages are written against that with no MCP
+  access, so it cannot drift: the tool text, the MCP instructions and the tests all state it. Changing any of it means
+  changing every page anyone has published.
 - **Revisions live outside the items.** `rev` and `revs` sit on the collection envelope, never in an item, because
   [handler.ts](src/data/handler.ts) serves `collection.items` verbatim. Updating an item needs a matching `if_rev`,
   so a client writing from a stale read is refused. [saveCollection](src/data/service.ts) assigns revs by comparing
