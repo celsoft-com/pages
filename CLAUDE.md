@@ -2,6 +2,15 @@
 
 Self-deployable MCP-driven site host on Cloudflare Workers.
 
+## Local development
+
+```
+npm install
+npx wrangler dev
+```
+
+Local D1, R2 and KV are created automatically. `npx tsc --noEmit` typechecks.
+
 ## Architecture
 
 Single Worker, four surfaces, all routed in [index.ts](src/index.ts):

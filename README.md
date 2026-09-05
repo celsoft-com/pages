@@ -20,13 +20,6 @@ Sync your fork on GitHub. Cloudflare redeploys and the database migrates itself.
 
 Workers Paid, $5/month.
 
-## Local development
-
-```
-npm install
-npx wrangler dev
-```
-
 ## License
 
 MIT
