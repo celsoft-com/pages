@@ -8,7 +8,9 @@ Deploy it to your own Cloudflare account, connect Claude, and ask it to publish 
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/seanodell/pages)
 
-Name your site, then open it and pick an admin password.
+Name your site and deploy. Then open it in the Cloudflare dashboard under **Compute → Workers**, click your Worker, and follow its `.workers.dev` address.
+
+Pick an admin password on first visit.
 
 That's the whole setup. The site takes it from there.
 
