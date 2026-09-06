@@ -400,22 +400,24 @@ export const TOOLS: ToolDefinition[] = [
       // Resources needing the same fix travel together: four /trip/* collections are one
       // decision, not four.
       const groups = new Map<string, string[]>();
-      const add = (owner: string | null, line: string) => {
-        const key = owner ?? "/";
-        groups.set(key, [...(groups.get(key) ?? []), line]);
+      // Nothing here may suggest publishing a page at /: no page can exist there.
+      const unownable: string[] = hashed.map(
+        (a) => `  asset ${a.filename}  key ${a.key}  stored under a content hash rather than a path`,
+      );
+      const add = (owner: string | null, line: string, why: string) => {
+        if (owner === null) return void unownable.push(`  ${line}  ${why}`);
+        groups.set(owner, [...(groups.get(owner) ?? []), `  ${line}`]);
       };
-      for (const c of collections) add(c.wouldBeOwner, `  collection ${c.path}  ${c.count} items  rev ${c.rev}`);
-      for (const a of rooted) add(a.wouldBeOwner, `  asset ${a.path}  ${a.size} bytes`);
+      for (const c of collections)
+        add(c.wouldBeOwner, `collection ${c.path}  ${c.count} items  rev ${c.rev}`, "sits at /, where no page can be published");
+      for (const a of rooted) add(a.wouldBeOwner, `asset ${a.path}  ${a.size} bytes`, "sits at /");
 
       const out: string[] = [];
       for (const [owner, entries] of [...groups].sort(([a], [b]) => a.localeCompare(b)))
         out.push(`Publish a page at ${owner} to own these ${entries.length}:`, ...entries);
 
-      if (hashed.length > 0)
-        out.push(
-          `No page can ever own these ${hashed.length}: they are stored under a content hash rather than a path.`,
-          ...hashed.map((a) => `  asset ${a.filename}  key ${a.key}  ${a.size} bytes`),
-        );
+      if (unownable.length > 0)
+        out.push(`No page can ever own these ${unownable.length}:`, ...unownable);
       return out.join("\n");
     },
   },

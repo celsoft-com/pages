@@ -57,12 +57,18 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   `set_collection_refs` may cross bundles, a page may fetch any collection, and nothing is moved, renamed or
   deleted as a side effect of anything. A site whose data is all ungrouped is working correctly, and the tool text
   has to say so or a client will start "fixing" it.
-- **`/` is not a bundle and not a page path.** There is no root scope: every top-level path is a peer, the home
-  page included. It lives at `ROOT_BUNDLE` in [path.ts](src/pages/path.ts), is served at `/`, and `/root` itself
-  301s to `/` so a page has one URL. `savePage` and `saveCollection` refuse `/`; `list_bundle` and `delete_bundle`
-  refuse it too, because a bundle at `/` would contain the whole site and read as owning it. Anything already
-  stored at `/` keeps being served, since nothing is migrated. `ownerOf` still skips `/` as a guard for that
-  legacy data.
+- **`/` can hold a resource; `/` can never be a bundle.** Three separate things, and collapsing them breaks the
+  served contract:
+  - A **collection or asset at `/` is fine.** It parents nothing, and `/` stays served at `/data/index.json`.
+    It reports ungrouped forever, and `list_ungrouped` must never answer that with "publish a page at /".
+  - A **page at `/` is refused** by `savePage` and by the admin editor. A page is what creates a bundle, so a page
+    there would parent the whole site. The home page is an ordinary peer bundle at `ROOT_BUNDLE`
+    ([path.ts](src/pages/path.ts)), served at `/`, with `/root` itself 301ing to `/` so a page has one URL.
+  - **Bundle operations on `/` are refused.** `list_bundle` and `delete_bundle` throw, rather than returning or
+    deleting the whole site.
+
+  Nothing already stored at `/` is migrated, and `ownerOf` still skips `/` as a guard for a page written there
+  before the rule.
 - **An absence marker never sits where a value could.** `owner` is `null` in JSON, and in tool text `ungrouped`
   stands alone rather than following `owner `. A site with a page at `/ungrouped` must never emit a line a client
   can read either way, and [bundles.test.ts](src/bundles.test.ts) publishes exactly that page to pin it. Same

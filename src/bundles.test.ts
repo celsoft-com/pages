@@ -483,3 +483,36 @@ describe("the home page is a bundle, not a root", () => {
     expect(await (await visit("/")).text()).toContain("Welcome");
   });
 });
+
+describe("a resource may sit at / even though / is not a bundle", () => {
+  it("keeps a collection at / working", async () => {
+    await saveCollection("/", [{ id: "a" }]);
+    const response = await handleData(new Request("https://example.com/data/index.json"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([{ id: "a" }]);
+  });
+
+  it("reports it ungrouped, since no page can ever be above it", async () => {
+    await saveCollection("/", [{ id: "a" }]);
+    expect(await ownerReported("/")).toBeNull();
+  });
+
+  it("never suggests publishing a page at /", async () => {
+    await saveCollection("/", [{ id: "a" }]);
+    await saveCollection("/trip/items", [{ id: "b" }]);
+
+    const listed = await call("list_ungrouped");
+    expect(listed).not.toContain("Publish a page at /:");
+    expect(listed).not.toContain("Publish a page at / to");
+    expect(listed).toContain("No page can ever own these");
+    expect(listed).toContain("where no page can be published");
+    expect(listed).toContain("Publish a page at /trip to own these 1:");
+  });
+
+  it("does not pull a collection at / into another bundle", async () => {
+    await page("/trip");
+    await saveCollection("/", [{ id: "a" }]);
+    await saveCollection("/trip/items", [{ id: "b" }]);
+    expect(await call("list_bundle", { path: "/trip" })).not.toContain("collection /  ");
+  });
+});

@@ -78,10 +78,13 @@ See section 9.
 
 There is no root scope. Every top-level path is a peer scope, and nothing sits above everything else.
 
-- **`/` is not a page path.** `publish_page`, `update_page` and the admin editor refuse it.
-- **`/` is not a collection path.** `saveCollection` refuses it.
+- **A resource may still sit at `/`.** A collection there parents nothing, keeps its `/data/index.json` address
+  and simply reports as ungrouped forever. Nothing about this rule touches individual resources.
+- **`/` is not a page path.** `publish_page`, `update_page` and the admin editor refuse it. A page is what
+  creates a bundle, so a page at `/` is the one thing that would parent everything.
 - **`/` is not a listable or deletable bundle.** `list_bundle` and `delete_bundle` refuse it, rather than
-  returning the whole site, which would read as ownership of it.
+  returning or deleting the whole site.
+- **The ungrouped listing never suggests publishing a page at `/`**, since no page can exist there.
 - **The home page is an ordinary bundle.** It lives at `/root` and is served at `/`. `/root` itself redirects
   to `/`, so a page has one URL. Its collections sit at `/root/...` like any other bundle's.
 - **Nothing already stored at `/` is migrated.** A page or collection written there before this rule keeps
@@ -205,6 +208,8 @@ every collection beneath it, every asset beneath it. The path need not have a pa
 
 - `/bavaria` does not contain `/bavaria-lessons/lessons`, in listing or in delete.
 - A page cannot be published at `/` at all, and the home page at `/root` is served at `/`.
+- A collection at `/` still writes, still serves at `/data/index.json`, and reports as ungrouped.
+- The ungrouped listing never names `/` as a prospective owner.
 - With pages `/trip` and `/trip/day1` both present, `/trip/day1/items` is owned by `/trip/day1` **and**
   appears in the bundle listing for `/trip`, alongside the page `/trip/day1`.
 - Bundle listing for `/germanfunstuff` returns its collections and assets, and nothing belonging to
