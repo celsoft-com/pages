@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleData } from "../data/handler";
 import { saveCollection } from "../data/service";
+import { getPage, savePage } from "../pages/service";
 import { encodeKey, stores } from "../store";
 import { resetBlobs } from "../test/blobs";
 import { TOOLS, type ToolContext } from "./tools";
@@ -39,8 +40,14 @@ describe("tool definitions", () => {
     "delete_collection",
   ];
 
+  const pageTools = ["list_pages", "get_page", "publish_page", "update_page", "edit_page"];
+
   it("exposes every data tool", () => {
     for (const name of dataTools) expect(TOOLS.map((t) => t.name)).toContain(name);
+  });
+
+  it("exposes every page tool", () => {
+    for (const name of pageTools) expect(TOOLS.map((t) => t.name)).toContain(name);
   });
 
   it("gives every tool a unique name", () => {
@@ -1269,5 +1276,77 @@ describe("list_collections", () => {
     expect(await response.json()).toEqual([
       { path: "/trip/items", url: "/data/trip/items.json", count: 195, rev: 0, updatedAt: expect.any(Number) },
     ]);
+  });
+});
+
+describe("reading and editing part of a page", () => {
+  const body = [
+    "<h1>Coburg</h1>",
+    "<p>The Veste sits above the town.</p>",
+    "<p>Open from 9am.</p>",
+    "<p>Closed on Mondays.</p>",
+  ].join("\n");
+
+  beforeEach(async () => {
+    await savePage({ path: "/trip", contentType: "html", title: "Coburg", body });
+  });
+
+  it("returns the whole page when asked for nothing in particular", async () => {
+    const read = await json("get_page", { path: "/trip" });
+
+    expect(read.content).toBe(body);
+    expect(read.lines).toBeUndefined();
+  });
+
+  it("returns numbered lines for a find, and never the body", async () => {
+    const read = await json("get_page", { path: "/trip", find: "open" });
+
+    expect(read.lines).toEqual([{ line: 3, text: "<p>Open from 9am.</p>" }]);
+    expect(read.total).toBe(4);
+    expect(read.content).toBeUndefined();
+  });
+
+  it("pages through the lines with offset and limit", async () => {
+    const read = await json("get_page", { path: "/trip", offset: 2, limit: 2 });
+
+    expect(read.lines.map((l: { line: number }) => l.line)).toEqual([2, 3]);
+    expect(read.more).toBe(1);
+  });
+
+  it("replaces one occurrence and leaves every other byte alone", async () => {
+    expect(await call("edit_page", { path: "/trip", find: "9am", replace: "10am" })).toContain("at line 3");
+
+    const page = (await getPage("/trip"))!;
+    expect(page.body).toBe(body.replace("9am", "10am"));
+    expect(page.contentType).toBe("html");
+    expect(page.title).toBe("Coburg");
+  });
+
+  it("refuses a snippet that matches nothing", async () => {
+    await expect(call("edit_page", { path: "/trip", find: "Bamberg", replace: "Coburg" })).rejects.toThrow(
+      /matches that text exactly/,
+    );
+  });
+
+  // Refusing beats guessing: a silent partial edit of verbatim HTML is a broken page nobody looked at.
+  it("refuses an ambiguous snippet and counts the matches", async () => {
+    await expect(call("edit_page", { path: "/trip", find: "<p>", replace: "<p class=\"x\">" })).rejects.toThrow(
+      /appears 3 times/,
+    );
+
+    expect((await getPage("/trip"))!.body).toBe(body);
+  });
+
+  it("replaces every occurrence when told to", async () => {
+    const reply = await call("edit_page", { path: "/trip", find: "<p>", replace: "<p class=\"x\">", all: true });
+
+    expect(reply).toContain("Replaced 3 occurrences");
+    expect((await getPage("/trip"))!.body).toContain('<p class="x">The Veste');
+  });
+
+  it("deletes the match when replace is empty", async () => {
+    await call("edit_page", { path: "/trip", find: "\n<p>Closed on Mondays.</p>", replace: "" });
+
+    expect((await getPage("/trip"))!.body).toBe(body.replace("\n<p>Closed on Mondays.</p>", ""));
   });
 });

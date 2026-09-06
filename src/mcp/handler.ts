@@ -4,6 +4,7 @@ const PROTOCOL_VERSION = "2025-06-18";
 
 export const INSTRUCTIONS = [
   "Publish and edit pages on this site. Markdown is rendered into the site theme; full HTML documents are served exactly as written.",
+  "To change part of a page, read only that part with get_page, passing find or offset and limit, and change it with edit_page, which replaces an exact snippet and refuses one that matches more than once. Rewriting a whole page with update_page to change one line sends the document twice, once in and once back out, and that is what edit_page is for.",
   "",
   "Repeating content belongs in a data collection rather than hard-coded into a page: products, posts, events, team members, menu items, FAQs, anything the owner will add to or edit later.",
   "Write a collection one item at a time with put_item, change one field with put_item, drop one with delete_item, change the order with reorder_items, and find items with search_items.",

@@ -118,3 +118,58 @@ export async function findInPages(patterns: RegExp[]): Promise<PageMatch[]> {
   }
   return found;
 }
+
+export interface PageSlice {
+  page: Page;
+  lines: { line: number; text: string }[];
+  total: number;
+  more: number;
+}
+
+const SLICE_CAP = 200;
+
+// Reading a whole page to change one line of it costs the body twice, once in and once back out.
+export function slicePage(page: Page, options: { find?: string; offset?: number; limit?: number }): PageSlice {
+  const all = page.body.split("\n").map((text, index) => ({ line: index + 1, text }));
+  const matched = options.find
+    ? all.filter((entry) => entry.text.toLowerCase().includes(options.find!.toLowerCase()))
+    : all.slice(Math.max(0, (options.offset ?? 1) - 1));
+  const limit = Math.max(1, Math.min(options.limit ?? SLICE_CAP, SLICE_CAP));
+  return { page, lines: matched.slice(0, limit), total: all.length, more: Math.max(0, matched.length - limit) };
+}
+
+export async function editPage(input: {
+  path: string;
+  find: string;
+  replace: string;
+  all: boolean;
+}): Promise<{ page: Page; replaced: number; lines: number[] }> {
+  const path = normalizePath(input.path);
+  const page = await getPage(path);
+  if (!page) throw new Error(`No page exists at ${path}`);
+  if (input.find === "") throw new Error("find must not be empty");
+
+  const occurrences = page.body.split(input.find).length - 1;
+  if (occurrences === 0)
+    throw new Error(
+      `Nothing in ${path} matches that text exactly. Read the part you are editing with get_page, ` +
+        `passing find or offset and limit, and copy the snippet from what it returns.`,
+    );
+  if (occurrences > 1 && !input.all)
+    throw new Error(
+      `That text appears ${occurrences} times in ${path}. Pass a longer snippet that appears once, ` +
+        `or all: true to replace every occurrence.`,
+    );
+
+  const body = input.all ? page.body.split(input.find).join(input.replace) : page.body.replace(input.find, input.replace);
+  const lines: number[] = [];
+  let cursor = 0;
+  for (let n = 0; n < (input.all ? occurrences : 1); n++) {
+    const at = page.body.indexOf(input.find, cursor);
+    lines.push(page.body.slice(0, at).split("\n").length);
+    cursor = at + input.find.length;
+  }
+
+  const saved = await savePage({ path, contentType: page.contentType, title: page.title, body });
+  return { page: saved, replaced: input.all ? occurrences : 1, lines };
+}

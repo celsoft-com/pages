@@ -13,7 +13,7 @@ import {
   revOf,
   setRefs,
 } from "../data/service";
-import { deriveTitle, getPage, listPages, savePage } from "../pages/service";
+import { deriveTitle, editPage, getPage, listPages, savePage, slicePage } from "../pages/service";
 import {
   runTransfer,
   staleReferences,
@@ -273,15 +273,77 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "get_page",
     title: "Read a page",
-    description: "Return the stored source of one page so it can be edited. " + BUNDLES,
-    inputSchema: object({ path: { type: "string", description: "Page path, for example /about" } }, ["path"]),
+    description:
+      "Return the stored source of one page so it can be edited. Pass find, or offset and limit, to read only the " +
+      "part you are working on: the reply is then numbered lines rather than the whole document, which is what " +
+      "edit_page wants and costs a fraction of reading a long page to change one line of it. " +
+      BUNDLES,
+    inputSchema: object(
+      {
+        path: { type: "string", description: "Page path, for example /about" },
+        find: { type: "string", description: "Return only lines containing this text, ignoring case" },
+        offset: { type: "number", description: "First line to return, 1 based. Ignored when find is given." },
+        limit: { type: "number", description: "Maximum lines to return. Defaults to 200, which is also the cap." },
+      },
+      ["path"],
+    ),
     handler: async (args) => {
       const path = requirePath(args.path);
       const page = await getPage(path);
       if (!page) throw new Error(`No page exists at ${path}`);
-      return JSON.stringify(
-        { path: page.path, title: page.title, format: page.contentType, content: page.body },
-      );
+
+      const whole = args.find === undefined && args.offset === undefined && args.limit === undefined;
+      if (whole)
+        return JSON.stringify({ path: page.path, title: page.title, format: page.contentType, content: page.body });
+
+      const slice = slicePage(page, {
+        find: args.find === undefined ? undefined : String(args.find),
+        offset: args.offset === undefined ? undefined : Number(args.offset),
+        limit: args.limit === undefined ? undefined : Number(args.limit),
+      });
+      return JSON.stringify({
+        path: page.path,
+        title: page.title,
+        format: page.contentType,
+        total: slice.total,
+        more: slice.more,
+        lines: slice.lines,
+      });
+    },
+  },
+  {
+    name: "edit_page",
+    title: "Edit part of a page",
+    description:
+      "Replace an exact string in a published page and leave every other byte of it alone. Read the part you are " +
+      "changing with get_page first, passing find or offset and limit, and copy the snippet from what it returns. " +
+      "The edit is refused if the snippet matches nothing, and refused with a count if it matches more than once, " +
+      "so pass enough surrounding text to name one spot, or all true to change every occurrence. " +
+      "If you are editing the page to change items in a list, move that list into a data collection instead and " +
+      "let the page fetch it. " +
+      BUNDLES,
+    inputSchema: object(
+      {
+        path: { type: "string", description: "Page path, for example /about" },
+        find: { type: "string", description: "Exact text to replace, copied from get_page" },
+        replace: { type: "string", description: "Text to put in its place. Empty string deletes the match." },
+        all: { type: "boolean", description: "Replace every occurrence instead of refusing an ambiguous match" },
+      },
+      ["path", "find", "replace"],
+    ),
+    handler: async (args, ctx) => {
+      const path = requirePath(args.path);
+      if (typeof args.find !== "string") throw new Error("find is required");
+      if (typeof args.replace !== "string") throw new Error("replace is required");
+
+      const { page, replaced, lines } = await editPage({
+        path,
+        find: args.find,
+        replace: args.replace,
+        all: args.all === true,
+      });
+      const where = lines.length > 3 ? `${lines.slice(0, 3).join(", ")} and ${lines.length - 3} more` : lines.join(", ");
+      return `Replaced ${replaced} occurrence${replaced === 1 ? "" : "s"} at line ${where} in ${urlFor(ctx, page.path)}`;
     },
   },
   {

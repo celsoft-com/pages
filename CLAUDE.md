@@ -117,6 +117,13 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 - **Repeating content belongs in a collection.** A page that lists things fetches `/data/<path>.json`; it does not
   bake the list into its HTML. The MCP instructions in [handler.ts](src/mcp/handler.ts) tell clients to offer the
   owner that choice, and the page tools repeat it. Weaken that steering and Claude will paste data into pages again.
+- **A page is edited in place, not shipped twice.** `get_page` returns the whole source only when asked for
+  nothing in particular; `find`, or `offset` and `limit`, return numbered lines, and `edit_page` replaces an exact
+  snippet. Rewriting a 31 KB page through `update_page` to change one line spends that body twice, in and out, of
+  a client's context. `edit_page` refuses a snippet matching nothing and refuses an ambiguous one with the count,
+  because a silent partial edit of verbatim HTML is a broken page nobody looked at. It carries the collection
+  steering in its description like every page tool: a cheap targeted edit is exactly what makes pasting one more
+  row into a hardcoded table tempting.
 - **Reads are shaped to fit a context window.** `list_items` projects and pages, `count_items` answers questions
   about shape without returning records at all, and their descriptions name each other so a client picks the cheap
   one. A tool that returns a few hundred records of prose to answer a question about counts is a bug. That applies
