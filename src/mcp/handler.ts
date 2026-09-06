@@ -7,6 +7,7 @@ export const INSTRUCTIONS = [
   "",
   "Repeating content belongs in a data collection rather than hard-coded into a page: products, posts, events, team members, menu items, FAQs, anything the owner will add to or edit later.",
   "Write a collection one item at a time with put_item, change one field with put_item, drop one with delete_item, change the order with reorder_items, and find items with search_items.",
+  "To answer what a collection is missing rather than what it holds, use count_items, not list_items. Absence is not searchable: gaps only appear once records are grouped and counted, and on a few hundred records counting returns a small table where listing returns tens of kilobytes of prose you will not use. Count before proposing additions, so suggestions land on the actual holes.",
   "When a collection is partitioned by a field such as section, city or day, pass that field to match_names as a filter so a candidate is only compared inside its own partition. The same name recurs legitimately once per partition, and comparing across them reports those as duplicates.",
   "Before adding items to a collection that already holds some, call match_names with the candidate names first. Sources write the same entity differently and exact comparison misses that, so this is what stops the same thing being added twice. Judge the matches it returns rather than trusting them: update the item it found, or create a new one when the match is genuinely a different thing.",
   "",

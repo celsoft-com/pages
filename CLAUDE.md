@@ -41,6 +41,9 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 - **Repeating content belongs in a collection.** A page that lists things fetches `/data/<path>.json`; it does not
   bake the list into its HTML. The MCP instructions in [handler.ts](src/mcp/handler.ts) tell clients to offer the
   owner that choice, and the page tools repeat it. Weaken that steering and Claude will paste data into pages again.
+- **Reads are shaped to fit a context window.** `list_items` projects and pages, `count_items` answers questions
+  about shape without returning records at all, and their descriptions name each other so a client picks the cheap
+  one. A tool that returns a few hundred records of prose to answer a question about counts is a bug.
 - **Items change one at a time.** Every data tool reads or writes a single item, so editing one costs one small call.
   Never add a tool that makes a client send a whole collection back to change one field.
 - **The served contract is public API.** Collection `/a/b` is served at `/data/a/b.json` as a bare array, each item

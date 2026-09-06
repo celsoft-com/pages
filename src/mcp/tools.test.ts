@@ -714,3 +714,135 @@ describe("match_names scoring regressions", () => {
     expect(await best("Hirsh")).toMatchObject({ id: "hirsch", score: 0.625 });
   });
 });
+
+describe("count_items", () => {
+  const sections = ["bamberg", "coburg", "erlangen", "forchheim", "fuerth", "nurnberg", "wuerzburg", "zeil"];
+  const groups = ["sights", "drink", "food", "walk", "museum", "market", "stay"];
+
+  async function seedTrip(): Promise<void> {
+    const items: any[] = [];
+    let n = 0;
+    while (items.length < 195) {
+      const section = sections[n % sections.length];
+      const group = groups[Math.floor(n / sections.length) % groups.length];
+      items.push({ id: `i${n}`, name: `Place ${n}`, section, group });
+      n++;
+    }
+    await saveCollection("/trip/items", items);
+  }
+
+  beforeEach(seedTrip);
+
+  it("groups by one field and accounts for every record", async () => {
+    const result = await json("count_items", { path: "/trip/items", group_by: ["section"] });
+    expect(result.rows).toHaveLength(8);
+    expect(result.rows.reduce((sum: number, r: any) => sum + r.count, 0)).toBe(195);
+    expect(result.total).toBe(195);
+  });
+
+  it("groups by two fields with no empty rows", async () => {
+    const result = await json("count_items", { path: "/trip/items", group_by: ["section", "group"] });
+    expect(result.rows.reduce((sum: number, r: any) => sum + r.count, 0)).toBe(195);
+    for (const row of result.rows) expect(row.count).toBeGreaterThan(0);
+  });
+
+  it("omits combinations that do not occur rather than reporting them as zero", async () => {
+    await saveCollection("/trip/items", [
+      { id: "a", section: "coburg", group: "sights" },
+      { id: "b", section: "bamberg", group: "drink" },
+    ]);
+    const result = await json("count_items", { path: "/trip/items", group_by: ["section", "group"] });
+    expect(result.rows).toHaveLength(2);
+  });
+
+  it("narrows to a filter and reports that partition's total", async () => {
+    const result = await json("count_items", {
+      path: "/trip/items",
+      group_by: ["group"],
+      filter: { section: "fuerth" },
+    });
+    const fuerth = result.rows.reduce((sum: number, r: any) => sum + r.count, 0);
+    expect(result.total).toBe(fuerth);
+    expect(result.total).toBeLessThan(195);
+    expect(result.filter).toEqual({ section: "fuerth" });
+  });
+
+  it("keeps records missing the field visible under null", async () => {
+    await saveCollection("/trip/items", [
+      { id: "a", section: "coburg", group: "sights" },
+      { id: "b", section: "coburg" },
+    ]);
+    const result = await json("count_items", { path: "/trip/items", group_by: ["group"] });
+    expect(result.rows).toContainEqual({ group: null, count: 1 });
+  });
+
+  it("errors on an array field, naming it", async () => {
+    await saveCollection("/trip/items", [{ id: "a", links: ["https://example.com"] }]);
+    await expect(call("count_items", { path: "/trip/items", group_by: ["links"] })).rejects.toThrow(
+      /"links" holds an array/,
+    );
+  });
+
+  it("errors on an object field, naming it", async () => {
+    await saveCollection("/trip/items", [{ id: "a", price: { amount: 1 } }]);
+    await expect(call("count_items", { path: "/trip/items", group_by: ["price"] })).rejects.toThrow(
+      /"price" holds an object/,
+    );
+  });
+
+  it("answers a 195 item collection in under 4KB", async () => {
+    const counted = await call("count_items", { path: "/trip/items", group_by: ["section", "group"] });
+    const listed = await call("list_items", { path: "/trip/items", limit: 195 });
+
+    expect(counted.length).toBeLessThan(4096);
+    expect(counted.length * 4).toBeLessThan(listed.length);
+  });
+
+  it("orders rows deterministically by the grouped fields", async () => {
+    const first = await call("count_items", { path: "/trip/items", group_by: ["section", "group"] });
+    const again = await call("count_items", { path: "/trip/items", group_by: ["section", "group"] });
+    expect(first).toBe(again);
+
+    const rows = JSON.parse(first).rows;
+    const keys = rows.map((r: any) => `${r.section}|${r.group}`);
+    expect(keys).toEqual([...keys].sort());
+  });
+
+  it("sorts numbers as numbers and puts null first", async () => {
+    await saveCollection("/trip/items", [
+      { id: "a", day: 10 },
+      { id: "b", day: 9 },
+      { id: "c" },
+    ]);
+    const result = await json("count_items", { path: "/trip/items", group_by: ["day"] });
+    expect(result.rows.map((r: any) => r.day)).toEqual([null, 9, 10]);
+  });
+
+  it("refuses more than three grouping fields", async () => {
+    await expect(
+      call("count_items", { path: "/trip/items", group_by: ["a", "b", "c", "d"] }),
+    ).rejects.toThrow(/3 is the most/);
+  });
+
+  it("requires a collection and at least one field", async () => {
+    await expect(call("count_items", { path: "/trip/items", group_by: [] })).rejects.toThrow(/non-empty/);
+    await expect(call("count_items", { path: "/nope", group_by: ["section"] })).rejects.toThrow(
+      /No collection exists/,
+    );
+  });
+
+  it("refuses to truncate beyond a thousand combinations", async () => {
+    await saveCollection("/wide", Array.from({ length: 1200 }, (_, n) => ({ id: `i${n}`, key: `k${n}` })));
+    await expect(call("count_items", { path: "/wide", group_by: ["key"] })).rejects.toThrow(
+      /more than 1000 combinations/,
+    );
+  });
+
+  it("names list_items and the other tools so the choice is explicit", () => {
+    const description = TOOLS.find((t) => t.name === "count_items")!.description;
+    expect(description).toMatch(/Prefer it over list_items/);
+    expect(description).toMatch(/search_items/);
+    expect(description).toMatch(/match_names/);
+    expect(description).toMatch(/before proposing additions/);
+  });
+});

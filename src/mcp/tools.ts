@@ -72,6 +72,29 @@ const REVS =
   "so it never appears in what the url serves. Pass the rev you read back as if_rev when you write, and a write " +
   "built on a stale read is refused instead of silently clobbering someone else's edit.";
 
+function parseFilter(raw: unknown): [string, unknown][] {
+  if (raw === undefined) return [];
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+    throw new Error("filter must be an object of field/value pairs");
+  return Object.entries(raw as Record<string, unknown>);
+}
+
+function rankOf(value: unknown): number {
+  if (value === null) return 0;
+  if (typeof value === "number") return 1;
+  if (typeof value === "boolean") return 2;
+  return 3;
+}
+
+function compareValues(a: unknown, b: unknown): number {
+  const [left, right] = [rankOf(a), rankOf(b)];
+  if (left !== right) return left - right;
+  if (left === 1) return (a as number) - (b as number);
+  if (left === 2) return Number(a) - Number(b);
+  if (left === 3) return String(a).localeCompare(String(b));
+  return 0;
+}
+
 function project(item: Item, fields: unknown): Record<string, unknown> {
   if (!Array.isArray(fields) || fields.length === 0) return item;
   const picked: Record<string, unknown> = { id: item.id };
@@ -284,6 +307,98 @@ export const TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: "count_items",
+    title: "Count items by field",
+    description:
+      "Count records grouped by one or more fields, without reading them. " +
+      "Use this when the question is about the shape of a collection rather than its contents: what is missing, what is thin, where coverage is uneven, how many of each kind there are. " +
+      "Gaps show up as combinations that return no row, so this answers \"what haven't we covered\" as well as \"how many\". " +
+      "Reach for it before proposing additions to a collection, so suggestions target the actual holes rather than areas already well covered. " +
+      "Prefer it over list_items whenever you only need counts: on a collection of a few hundred records the response is a small table rather than tens of kilobytes, and it does not fill your context with prose you will not use. " +
+      "Use list_items when you need record contents, search_items when looking for particular records, and match_names when checking whether one specific thing already exists. " +
+      "On collections of only a few dozen records this is not worth it; the value scales with size and is substantial by a couple of hundred.",
+    inputSchema: object(
+      {
+        path: { type: "string", description: "Collection to aggregate, for example /trip/items" },
+        group_by: {
+          type: "array",
+          items: { type: "string" },
+          description: "Field names to group by, at most 3, applied in the order given",
+        },
+        filter: {
+          type: "object",
+          additionalProperties: true,
+          description:
+            "Count only records where every named field equals the given value. Exact equality, combined with AND, the same as the match_names filter.",
+        },
+      },
+      ["path", "group_by"],
+    ),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      if (!Array.isArray(args.group_by) || args.group_by.length === 0)
+        throw new Error("group_by must be a non-empty array of field names");
+      if (args.group_by.length > 3)
+        throw new Error(`group_by holds ${args.group_by.length} fields; 3 is the most that can be grouped at once`);
+
+      const fields = args.group_by.map(String);
+      const filter = parseFilter(args.filter);
+
+      const collection = await getCollection(path);
+      if (!collection) throw new Error(`No collection exists at ${path}. Nothing to count.`);
+
+      const inScope = collection.items.filter((item) => filter.every(([key, value]) => item[key] === value));
+
+      for (const item of inScope)
+        for (const field of fields) {
+          const value = item[field];
+          if (typeof value === "object" && value !== null)
+            throw new Error(
+              `Field "${field}" holds ${Array.isArray(value) ? "an array" : "an object"} on item "${item.id}", ` +
+                `so it cannot be grouped. Group on a short scalar field instead.`,
+            );
+        }
+
+      const groups = new Map<string, { values: unknown[]; count: number }>();
+      for (const item of inScope) {
+        const values = fields.map((field) => (item[field] === undefined ? null : item[field]));
+        const key = JSON.stringify(values);
+        const found = groups.get(key);
+        if (found) {
+          found.count++;
+          continue;
+        }
+        if (groups.size === 1000)
+          throw new Error(
+            `Grouping by ${fields.join(", ")} produces more than 1000 combinations. ` +
+              `Pass a filter to narrow the collection, or group by fewer fields.`,
+          );
+        groups.set(key, { values, count: 1 });
+      }
+
+      const rows = [...groups.values()]
+        .sort((a, b) => {
+          for (let i = 0; i < fields.length; i++) {
+            const order = compareValues(a.values[i], b.values[i]);
+            if (order !== 0) return order;
+          }
+          return 0;
+        })
+        .map(({ values, count }) => ({
+          ...Object.fromEntries(fields.map((field, i) => [field, values[i]])),
+          count,
+        }));
+
+      return JSON.stringify({
+        path: collection.path,
+        total: inScope.length,
+        group_by: fields,
+        ...(filter.length > 0 ? { filter: Object.fromEntries(filter) } : {}),
+        rows,
+      });
+    },
+  },
+  {
     name: "get_item",
     title: "Read one item",
     description: "Return a single item from a collection by its id, with the rev to pass back as if_rev when you write. " + REVS,
@@ -484,9 +599,7 @@ export const TOOLS: ToolDefinition[] = [
       const threshold = args.threshold === undefined ? 0.6 : Math.min(1, Math.max(0, Number(args.threshold)));
       const limit = Math.max(1, Number(args.limit_per_name) || 3);
 
-      if (args.filter !== undefined && (typeof args.filter !== "object" || args.filter === null || Array.isArray(args.filter)))
-        throw new Error("filter must be an object of field/value pairs");
-      const filter = Object.entries((args.filter ?? {}) as Record<string, unknown>);
+      const filter = parseFilter(args.filter);
 
       const inScope = collection.items.filter((item) => filter.every(([key, value]) => item[key] === value));
       const candidates = inScope

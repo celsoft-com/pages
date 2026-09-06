@@ -134,3 +134,11 @@ describe("instructions on partitioned collections", () => {
     expect(INSTRUCTIONS).toMatch(/filter/);
   });
 });
+
+describe("instructions on counting", () => {
+  it("sends questions about gaps to count_items rather than list_items", () => {
+    expect(INSTRUCTIONS).toContain("count_items");
+    expect(INSTRUCTIONS).toMatch(/[Aa]bsence is not searchable/);
+    expect(INSTRUCTIONS).toMatch(/[Cc]ount before proposing additions/);
+  });
+});
