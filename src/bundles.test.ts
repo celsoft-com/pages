@@ -162,13 +162,11 @@ describe("the home page is a folder like any other", () => {
     expect(response.headers.get("location")).toBe("/");
   });
 
-  it("keeps serving a page stored at / before / stopped being a path", async () => {
+  it("never serves a page stored at /, only the one in /root", async () => {
     await savePageDirect("/", "# Old home");
-    expect(await (await visit("/")).text()).toContain("Old home");
-  });
+    const body = await (await visit("/")).text();
+    expect(body).not.toContain("Old home");
 
-  it("prefers the home bundle over a page left at /", async () => {
-    await savePageDirect("/", "# Old home");
     await call("publish_page", { path: "/root", content: "# New home", overwrite: true });
     expect(await (await visit("/")).text()).toContain("New home");
   });
@@ -319,5 +317,14 @@ describe("bundles are organization, never a boundary", () => {
     const response = await handleData(new Request("https://example.com/data/loose/items.json"));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([{ id: "one" }]);
+  });
+});
+
+describe("the site root with no home page", () => {
+  it("lists the pages and says where a home page would go", async () => {
+    await call("publish_page", { path: "/hello", content: "# Hello", overwrite: true });
+    const body = await (await handlePage(new Request("https://example.com/"))).text();
+    expect(body).toContain("/hello");
+    expect(body).toContain("/root");
   });
 });

@@ -49,13 +49,18 @@ async function renderIndex(): Promise<string> {
         .join("")}</ul>`
     : `<p>No pages published yet. Connect Claude to this site and ask it to publish one.</p>`;
 
+  // Reached only when the /root bundle has no page, so say what would replace this listing.
+  const hint = `<p class="muted">This listing stands in for a home page. Ask Claude to publish one at <code>${escapeHtml(
+    ROOT_BUNDLE,
+  )}</code> and it will be served here.</p>`;
+
   return layout({
     title: site.settings.title,
     siteTitle: site.settings.title,
     siteDescription: site.settings.description || undefined,
     nav: site.nav,
     currentPath: "/",
-    content,
+    content: content + hint,
   });
 }
 
@@ -78,8 +83,8 @@ export async function handlePage(request: Request): Promise<Response> {
   // The home page lives in its own bundle and is served at /, so it has one URL, not two.
   if (path === ROOT_BUNDLE) return new Response(null, { status: 301, headers: { location: "/" } });
 
-  // A page stored at / predates the home bundle. Keep serving it; nothing new can be written there.
-  const page = path === "/" ? ((await getPage(ROOT_BUNDLE)) ?? (await getPage("/"))) : await getPage(path);
+  // / serves the /root page and nothing else. A page stored at / is an ordinary resource nobody serves.
+  const page = await getPage(path === "/" ? ROOT_BUNDLE : path);
 
   if (!page) {
     if (path === "/") return html(await renderIndex());
