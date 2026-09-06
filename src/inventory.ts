@@ -1,13 +1,17 @@
 import { deleteAsset, listAssets } from "./assets/service";
-import { contains, ownerOf, wouldBeOwner } from "./bundle";
+import { contains } from "./bundle";
 import { deleteCollection, getCollection, listCollections, MANIFEST_PATH } from "./data/service";
 import { ROOT_BUNDLE } from "./pages/path";
-import { deletePage, listPages, pagePaths } from "./pages/service";
+import { deletePage, listPages } from "./pages/service";
+
+export const ROOT_IS_NOT_A_BUNDLE =
+  "/ is not a bundle: it would hold every page, collection and asset on the site. Every other path is, " +
+  `including ${ROOT_BUNDLE}, where the home page lives and which is served at /. ` +
+  "Call list_pages or list_collections to see what exists.";
 
 export interface PageEntry {
   path: string;
   title: string;
-  owner: string | null;
 }
 
 export interface CollectionEntry {
@@ -15,7 +19,6 @@ export interface CollectionEntry {
   count: number;
   rev: number;
   refs: Record<string, string>;
-  owner: string | null;
 }
 
 export interface AssetEntry {
@@ -23,7 +26,6 @@ export interface AssetEntry {
   key: string;
   filename: string;
   size: number;
-  owner: string | null;
 }
 
 export interface BundleContents {
@@ -40,66 +42,29 @@ export interface BrokenReference {
   count: number;
 }
 
-export const ROOT_IS_NOT_A_BUNDLE =
-  "/ is not a bundle. There is no root scope: every top-level path is its own scope, the home page included, " +
-  `which lives at ${ROOT_BUNDLE} and is served at /. Call list_pages or list_ungrouped to see what exists.`;
-
-function ownable(path: string): boolean {
-  return path !== MANIFEST_PATH;
+export async function collectionEntries(): Promise<CollectionEntry[]> {
+  return (await listCollections())
+    .filter((c) => c.path !== MANIFEST_PATH)
+    .map((c) => ({ path: c.path, count: c.count, rev: c.rev, refs: c.refs }));
 }
 
-export async function ownedCollections(): Promise<CollectionEntry[]> {
-  const [pages, collections] = await Promise.all([pagePaths(), listCollections()]);
-  return collections.filter((c) => ownable(c.path)).map((c) => ({
-    path: c.path,
-    count: c.count,
-    rev: c.rev,
-    refs: c.refs,
-    owner: ownerOf(c.path, pages),
-  }));
-}
-
-export async function ownedAssets(): Promise<AssetEntry[]> {
-  const [pages, assets] = await Promise.all([pagePaths(), listAssets()]);
-  return assets.map((a) => ({
+export async function assetEntries(): Promise<AssetEntry[]> {
+  return (await listAssets()).map((a) => ({
     path: a.path ?? null,
     key: a.key,
     filename: a.filename,
     size: a.size,
-    owner: a.path ? ownerOf(a.path, pages) : null,
   }));
 }
 
 export async function bundleContents(path: string): Promise<BundleContents> {
-  const [pages, collections, assets] = await Promise.all([listPages(), ownedCollections(), ownedAssets()]);
-  const paths = pages.map((p) => p.path);
+  const [pages, collections, assets] = await Promise.all([listPages(), collectionEntries(), assetEntries()]);
 
   return {
     path,
-    pages: pages
-      .filter((p) => p.path !== "/" && contains(path, p.path))
-      .map((p) => ({
-        path: p.path,
-        title: p.title,
-        owner: ownerOf(p.path, paths.filter((other) => other !== p.path)),
-      })),
+    pages: pages.filter((p) => contains(path, p.path)).map((p) => ({ path: p.path, title: p.title })),
     collections: collections.filter((c) => contains(path, c.path)),
     assets: assets.filter((a) => a.path !== null && contains(path, a.path)),
-  };
-}
-
-export async function ungrouped(): Promise<{
-  collections: (CollectionEntry & { wouldBeOwner: string | null })[];
-  assets: (AssetEntry & { wouldBeOwner: string | null })[];
-}> {
-  const [collections, assets] = await Promise.all([ownedCollections(), ownedAssets()]);
-  return {
-    collections: collections
-      .filter((c) => c.owner === null)
-      .map((c) => ({ ...c, wouldBeOwner: wouldBeOwner(c.path) })),
-    assets: assets
-      .filter((a) => a.owner === null)
-      .map((a) => ({ ...a, wouldBeOwner: a.path ? wouldBeOwner(a.path) : null })),
   };
 }
 

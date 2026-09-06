@@ -1,231 +1,87 @@
-# Requirements: path bundles for the Pages MCP server
+# Path bundles
 
-Status: draft for review. Written 2026-09-06 against the live state of `pages.odellfambly.us`.
+Everything on the site is organized by path, exactly like a folder tree. Nothing else.
 
-## 1. Goal
+## The rule
 
-Every page, collection and asset on a site groups by path alone. Given a path, list everything in it.
-Given a collection or asset, say which page it belongs to.
+A path is a **bundle**. It holds every page, collection and asset at or under it.
 
-Today nothing expresses this. Pages, collections and assets are separate flat namespaces that happen to
-sit next to each other, and the relationship between them lives only inside each page's JavaScript.
+```
+/trip                  bundle
+/trip                  page
+/trip/items            collection, in /trip
+/trip/day1             page, in /trip
+/trip/day1/items       collection, in /trip/day1 and in /trip
+/trip/images/coburg.jpg  asset, in /trip
+```
 
-## 2. Current state
+Pages, collections and assets are all just things at paths. None of them owns any other. Bundles nest,
+so a resource is in every bundle above it, and a path is a bundle whether or not a page sits at it.
 
-Six pages, six collections, as of this writing.
+Nothing is stored. The rule is computed from paths on every request.
 
-| Page | Format | Collections it fetches |
+## Matching is on segments, never string prefixes
+
+This is the one place the implementation goes wrong, and the bug is silent.
+
+`"/bavaria-lessons/lessons".startsWith("/bavaria")` is true, but `bavaria` and `bavaria-lessons` are
+different segments, so `/bavaria` does not hold it. That pair exists on the live site. Compare segment
+arrays, not strings.
+
+| Bundle | Path | Held |
 |---|---|---|
-| `/` | markdown | none |
-| `/bavaria-lessons` | html | `/bavaria/lessons`, `/bavaria/meta` |
-| `/fancy` | html | none |
-| `/germanfunstuff` | html | `/trip/sections`, `/trip/filters`, `/trip/items`, `/trip/text` |
-| `/hello` | markdown | none |
-| `/hi` | html | none |
-
-All six collections group under paths with no page, so after this release they report as ungrouped.
-Rearranging them is the site owner's business, done through the ordinary tools whenever they get to it.
-
-## 3. Definitions
-
-- **Path**: the address of a page, collection or asset. Normalized to lowercase, leading slash, no
-  trailing slash.
-- **Bundle**: a path, plus every page, collection and asset at or under it. `/trip` is a bundle
-  containing `/trip`, `/trip/items` and `/trip/day1/photo.jpg`. A bundle needs no page at its path.
-- **Owner**: the page a resource belongs to. The nearest page above it. Computed from paths on every
-  request, never stored.
-- **Ungrouped**: no page above it. A description, not an error state.
-
-## 4. The grouping rule
-
-A path `P` contains a path `C` if `C` equals `P`, or `C` begins with `P` followed by `/`.
-
-That single rule defines both operations:
-
-- **A bundle** at `P` is every resource `P` contains.
-- **The owner** of a resource is the longest page path containing it.
-
-Bundles nest and overlap; owners do not. `/trip/day1/items` is in the bundle `/trip` and in the bundle
-`/trip/day1`, and its owner is whichever of those is a page, the deeper one winning. A page at `/trip`
-scopes everything below it even where a page at `/trip/day1` owns some of it directly.
-
-### 4.1 Matching is on segment boundaries, not string prefixes
-
-This is the requirement most likely to be implemented wrong, and the bug it prevents is silent.
-
-A naive `C.startsWith(P)` check reports that `/bavaria` contains `/bavaria-lessons/lessons`. It does not.
-`bavaria` and `bavaria-lessons` are different segments. This exact pair exists on the site today, which
-is why it is called out rather than left to judgement.
-
-Compare segment arrays, not strings. That removes the bug as a class rather than as a test case.
-
-| Path | Resource | Contains |
-|---|---|---|
-| `/germanfunstuff` | `/germanfunstuff/items` | yes |
-| `/germanfunstuff` | `/germanfunstuff` | yes |
-| `/germanfunstuff` | `/germanfunstuff/a/b/c` | yes |
+| `/trip` | `/trip` | yes |
+| `/trip` | `/trip/items` | yes |
+| `/trip` | `/trip/day1/items` | yes |
+| `/trip` | `/tripwire/items` | **no** |
 | `/bavaria` | `/bavaria-lessons/lessons` | **no** |
 | `/bavaria-lessons` | `/bavaria-lessons/lessons` | yes |
-| `/trip` | `/tripwire/items` | **no** |
-| `/trip` | `/trip/day1/items` | yes |
-| `/trip/day1` | `/trip/day1/items` | yes, and owns it over `/trip` |
-| `/` | anything | **not a bundle**, see 4.2 |
 
-**In `delete_bundle` this rule is the difference between a wrong listing and permanent data loss.**
-See section 9.
+In `delete_bundle` this is the difference between a wrong listing and permanent data loss.
 
-### 4.2 `/` is not a bundle
+## The one exception: nothing holds the whole site
 
-There is no root scope. Every top-level path is a peer scope, and nothing sits above everything else.
+`/` would hold everything, so it is not a bundle.
 
-- **A resource may still sit at `/`.** A collection there parents nothing, keeps its `/data/index.json` address
-  and simply reports as ungrouped forever. Nothing about this rule touches individual resources.
-- **`/` is not a page path.** `publish_page`, `update_page` and the admin editor refuse it. A page is what
-  creates a bundle, so a page at `/` is the one thing that would parent everything.
-- **`/` is not a listable or deletable bundle.** `list_bundle` and `delete_bundle` refuse it, rather than
-  returning or deleting the whole site.
-- **The ungrouped listing never suggests publishing a page at `/`**, since no page can exist there.
-- **The home page is an ordinary bundle.** It lives at `/root` and is served at `/`. `/root` itself redirects
-  to `/`, so a page has one URL. Its collections sit at `/root/...` like any other bundle's.
-- **Nothing already stored at `/` is migrated.** A page or collection written there before this rule keeps
-  serving exactly as it did. Only new writes are refused, and ownership still skips `/` so such a page owns
-  nothing.
+- **`list_bundle` and `delete_bundle` refuse `/`.**
+- **A page may not be published at `/`.** The home page is an ordinary folder at `/root`, served at `/`,
+  and `/root` itself redirects to `/` so a page has one URL.
+- **A resource may still sit at `/`.** A collection there holds nothing and keeps its `/data/index.json`
+  address. This rule is about bundles, not about individual resources.
+- **Nothing stored at `/` before this rule is migrated.** It keeps serving exactly as it did.
 
-### 4.3 `/_collections` is reserved
+## Organization is not a boundary
 
-The collection index is excluded from ownership, from bundle listings and from `delete_bundle`.
+A bundle says where something lives. It says nothing about who may read or write it.
 
-## 5. The rule applies to everything
+- Any page may fetch any collection, from any bundle. Served JSON stays public at `/data/<path>.json`.
+- `set_collection_refs` may point at a collection in another bundle.
+- No write is ever rejected, and nothing is ever moved, renamed or deleted as a side effect.
 
-Pages, collections and assets group identically. A page's data and its images live in the same bundle.
+## Operations
 
-- **Collection paths** already look like paths and need no change in shape.
-- **Asset paths take the same form.** An image belonging to `/germanfunstuff` lives at
-  `/germanfunstuff/images/coburg.jpg` and is served at `/assets/germanfunstuff/images/coburg.jpg`.
-- **Pages nest.** A bundle listing for `/trip` includes the page `/trip/day1` as well as its resources.
+- **`list_bundle <path>`** — every page, collection and asset at or under the path, with item counts,
+  revs, declared refs, sizes and public URLs. Errors where nothing is published at the path at all,
+  which is a different situation from a bundle holding only its own page.
+- **`delete_bundle <path>`** — deletes everything at and under the path. The only tool that deletes more
+  than one thing. Without `confirm: true` it deletes nothing and returns the inventory it would delete,
+  plus every record in another bundle that references an id it would remove.
+- **`delete_page <path>`** — deletes one page and leaves the rest of its bundle untouched, naming it.
+- **`upload_asset`** — takes an optional `path` to file the asset into a bundle. Without one it is stored
+  under a content hash, which keeps working forever but sits in no bundle.
 
-### 5.1 Existing asset URLs keep working
+Serving is unchanged. Collection `/a/b` is served at `/data/a/b.json` as a bare JSON array.
 
-Assets are currently keyed by a hash of their contents and served at `/assets/<hash>.<ext>`. Those URLs
-keep resolving, unchanged, forever. The rooted form is additive. Hash-keyed assets have no path and are
-therefore always ungrouped, which is correct: they are not in any bundle.
+## Acceptance
 
-Two consequences to be deliberate about:
-
-- **Hash keys deduplicate identical bytes; path keys do not.** Two pages uploading the same image share
-  one blob today and will not once they name it themselves. That is the cost of naming it.
-- **Asset paths must not use the page path normalizer.** `normalizePath` strips `.md`, `.markdown`,
-  `.htm` and `.html`, and pops a trailing `index` segment, so it would turn an asset at
-  `/foo/index.html` into `/foo` and `/notes.md` into `/notes`. Assets need normalization that lowercases
-  and cleans segments but preserves the filename whole.
-
-## 6. Grouping is organizational, not a boundary
-
-A bundle says where a resource lives. It says nothing about who may read it or write it.
-
-- **Cross-bundle reads are expected.** A page at `/germanfunstuff` fetching `/bavaria-lessons/meta.json`
-  is a legitimate thing for a client to do, and the server has no opinion about it. Served JSON stays
-  public and unauthenticated at `/data/<path>.json`.
-- **Cross-bundle references are allowed.** `set_collection_refs` may point a field at a collection in a
-  different bundle. The client decides when pulling from elsewhere makes sense.
-- **Shared resources are therefore possible** by putting them in whichever bundle suits and reading them
-  from anywhere.
-
-## 7. The server neither enforces nor mutates as a side effect
-
-The server computes grouping and reports it. It changes nothing on its own.
-
-- **No write is ever rejected on grouping grounds.** Creating a collection at an ungrouped path, writing
-  items to one, reordering, deleting, uploading an asset: all continue to work exactly as they do today.
-- **No read is ever blocked.** Every collection and asset stays reachable at its current URL.
-- **Nothing is moved, copied, renamed or deleted as a side effect of any operation.** No migration,
-  backfill or normalization pass at startup or on upgrade.
-- **`delete_page` deletes one page.** Resources under that path are untouched. Their owner becomes
-  whatever page remains above them, or none. Report which ones in the response so the effect is visible.
-
-The one operation that destroys anything is `delete_bundle`, where destruction is the stated purpose
-rather than a side effect. It is specified in section 9.
-
-A site whose data does not conform is not blocked, degraded or at risk. Its resources report as
-ungrouped, and its owner has the full tool surface available to rearrange them whenever they choose.
-
-## 8. Read operations
-
-- **`list_collections` and `list_assets` gain an `owner` field**: the full normalized page path that owns each
-  entry, or null. Nearest page, per section 4. A client must be able to pass the value straight to `get_page`.
-- **Absence is never a word in the value position.** `owner` is null in JSON. In tool text the marker `ungrouped`
-  stands alone rather than following `owner `, so a site with a page published at `/ungrouped` stays unambiguous.
-- **New operation, bundle listing**: given a path, return every page, collection and asset it contains,
-  with item counts, revs, declared refs, sizes and public URLs. Includes resources owned by deeper pages, and
-  those deeper pages themselves. This is the operation the change exists to make possible.
-  - A page that owns nothing lists the page and says so. A path where nothing at all is published is an error.
-    Those are different situations and a client has to tell them apart.
-  - A path with resources but no page lists them and says no page is published there.
-  - `/` is refused, because it is not a bundle. See section 4.2.
-- **New operation, ungrouped listing**: every collection and asset with no page above it, grouped by the path
-  that would own it if a page were published there, because resources needing the same fix are one decision
-  rather than several. Assets stored under a content hash are listed apart, since no page can ever own them.
-  Read-only. This is what an owner uses to see what to move and to confirm they are done.
-- **`/data/_collections.json` gains the same `owner` field.** The served index already lets a page
-  discover collections over plain HTTP with no tool access, so grouping belongs there too.
-
-Serving is unchanged. `/a/b` is still served at `/data/a/b.json` as a bare JSON array.
-
-**Implementation note.** Ownership needs the set of page paths, not the pages. Page blob keys are
-`encodeKey(path)` and `decodeKey` recovers the path, so one `list()` on the pages store yields every
-page path. Do not call `listPages`, which issues one GET per page; `/data/_collections.json` is public
-and cached and must not fan out.
-
-## 9. Deleting a bundle
-
-`delete_bundle` removes everything at and under a path: the page at that path, every page beneath it,
-every collection beneath it, every asset beneath it. The path need not have a page.
-
-- **Matching is on segment boundaries** per section 4.1. `delete_bundle('/bavaria')` does not touch
-  `/bavaria-lessons/lessons`. Here that rule is load-bearing: got wrong, it destroys a bundle nobody
-  named.
-- **`/` and `/_collections` are refused.**
-- **Called without `confirm: true`, it deletes nothing** and returns the full inventory of what it would
-  delete, plus every record in another bundle that references an id it would remove.
-- **Called with `confirm: true`, it deletes** and returns the same inventory as a record of what it did,
-  including references it broke elsewhere. The caller who reached for a bundle delete is the one least
-  likely to audit afterwards, and the information is already in hand.
-- **Hash-keyed assets are never in a bundle** and are never touched by this operation.
-
-## 10. Non-goals
-
-- Validating, rejecting or warning on any write.
-- Any form of migration, backfill or compatibility mode.
-- Changing the `/data/<path>.json` serving scheme, the 60 second cache, or the bare-array response shape.
-- Changing existing `/assets/<hash>.<ext>` URLs.
-- Changing rev or `if_rev` optimistic concurrency semantics.
-- Adding authentication to served data.
-- Restricting which collections a page may read.
-- Enforcing anything about resource names within a bundle. `/foo/items` and `/foo/whatever` are equally
-  valid.
-
-## 11. Acceptance criteria
-
-- `/bavaria` does not contain `/bavaria-lessons/lessons`, in listing or in delete.
-- A page cannot be published at `/` at all, and the home page at `/root` is served at `/`.
-- A collection at `/` still writes, still serves at `/data/index.json`, and reports as ungrouped.
-- The ungrouped listing never names `/` as a prospective owner.
-- With pages `/trip` and `/trip/day1` both present, `/trip/day1/items` is owned by `/trip/day1` **and**
-  appears in the bundle listing for `/trip`, alongside the page `/trip/day1`.
-- Bundle listing for `/germanfunstuff` returns its collections and assets, and nothing belonging to
-  `/bavaria-lessons`.
-- A collection declaring a ref to a collection in a different bundle is accepted.
-- `delete_page` on `/trip` leaves every collection and asset under `/trip` intact and names them.
-- `delete_bundle` without `confirm` deletes nothing and lists what it would remove.
-- `delete_bundle('/')` is refused.
-- An asset uploaded at `/germanfunstuff/images/coburg.jpg` is owned by `/germanfunstuff` and served at
-  `/assets/germanfunstuff/images/coburg.jpg`.
-- An asset uploaded before this release keeps its exact URL and reports as ungrouped.
-- No tool reply or served endpoint puts the word `ungrouped` where a page path goes, with a page at `/ungrouped`
-  published to prove it.
-- `list_bundle` on a page that owns nothing succeeds; on a path where nothing is published it errors.
-- The full segment-boundary matrix is covered by automated tests, not by inspection of a live site.
+- `/bavaria` does not hold `/bavaria-lessons/lessons`, in listing or in delete.
+- `list_bundle('/trip')` holds `/trip/day1/items`, and so does `list_bundle('/trip/day1')`.
+- `list_bundle` and `delete_bundle` refuse `/`; a page cannot be published at `/`.
+- A collection at `/` still writes and still serves at `/data/index.json`.
+- The home page at `/root` serves at `/`, and `/root` redirects there.
+- An asset at `/trip/images/coburg.jpg` serves at `/assets/trip/images/coburg.jpg`; one uploaded before
+  paths keeps its exact hash URL.
 - An asset named `index.html` or `notes.md` keeps its filename.
-- Against the current site: the release changes zero bytes of stored data, `GET /data/trip/items.json`
-  still returns all 195 items, `put_item` to `/trip/items` still succeeds, and the ungrouped listing
-  names all six existing collections.
+- `delete_bundle` without `confirm` deletes nothing and lists what it would remove.
+- Against the current site: zero bytes of stored data change, `GET /data/trip/items.json` still returns
+  all 195 items, and `put_item` to `/trip/items` still succeeds.

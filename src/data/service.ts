@@ -1,7 +1,5 @@
 import { similarity } from "./match";
-import { ownerOf } from "../bundle";
 import { normalizePath } from "../pages/path";
-import { pagePaths } from "../pages/service";
 import { encodeKey, stores } from "../store";
 import type { Collection, CollectionSummary, Item } from "../types";
 
@@ -105,15 +103,13 @@ export async function saveCollection(path: string, items: Item[]): Promise<Colle
 }
 
 export async function manifest(): Promise<
-  { path: string; url: string; count: number; rev: number; owner: string | null; updatedAt: number }[]
+  { path: string; url: string; count: number; rev: number; updatedAt: number }[]
 > {
-  const [pages, collections] = await Promise.all([pagePaths(), listCollections()]);
-  return collections.map((c) => ({
+  return (await listCollections()).map((c) => ({
     path: c.path,
     url: `/data${c.path === "/" ? "/index" : c.path}.json`,
     count: c.count,
     rev: c.rev,
-    owner: ownerOf(c.path, pages),
     updatedAt: c.updatedAt,
   }));
 }

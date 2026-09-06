@@ -47,37 +47,20 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   Adding a field to `Collection` means defaulting it in [hydrate](src/data/service.ts) and nowhere else. Skipping
   that shipped a `list_collections` that threw on every pre-existing collection while every test passed, because
   the tests only ever read blobs this code had just written.
-- **Grouping is by path and nothing else.** A bundle is a path plus everything at or under it;
-  [bundle.ts](src/bundle.ts) is the whole rule and it stores nothing. A resource's owner is the nearest page above
-  it, `/` owns nothing, and matching is on segment arrays, never string prefixes: `/bavaria` does not own
-  `/bavaria-lessons/lessons`, and that pair exists on the live site. The `startsWith` version of this bug passes
-  most tests, so [bundles.test.ts](src/bundles.test.ts) pins the neighbour cases deliberately. In `delete_bundle`
-  the same bug destroys a bundle nobody named.
-- **Ungrouped is a description, not a defect.** Grouping never gates a read, a write or a reference.
-  `set_collection_refs` may cross bundles, a page may fetch any collection, and nothing is moved, renamed or
-  deleted as a side effect of anything. A site whose data is all ungrouped is working correctly, and the tool text
-  has to say so or a client will start "fixing" it.
-- **`/` can hold a resource; `/` can never be a bundle.** Three separate things, and collapsing them breaks the
-  served contract:
-  - A **collection or asset at `/` is fine.** It parents nothing, and `/` stays served at `/data/index.json`.
-    It reports ungrouped forever, and `list_ungrouped` must never answer that with "publish a page at /".
-  - A **page at `/` is refused** by `savePage` and by the admin editor. A page is what creates a bundle, so a page
-    there would parent the whole site. The home page is an ordinary peer bundle at `ROOT_BUNDLE`
-    ([path.ts](src/pages/path.ts)), served at `/`, with `/root` itself 301ing to `/` so a page has one URL.
-  - **Bundle operations on `/` are refused.** `list_bundle` and `delete_bundle` throw, rather than returning or
-    deleting the whole site.
-
-  Nothing already stored at `/` is migrated, and `ownerOf` still skips `/` as a guard for a page written there
-  before the rule.
-- **An absence marker never sits where a value could.** `owner` is `null` in JSON, and in tool text `ungrouped`
-  stands alone rather than following `owner `. A site with a page at `/ungrouped` must never emit a line a client
-  can read either way, and [bundles.test.ts](src/bundles.test.ts) publishes exactly that page to pin it. Same
-  reason a page that owns nothing and a path where nothing exists are different replies from `list_bundle`: one
-  lists the page, the other throws.
-- **`delete_bundle` is the only tool that deletes more than one thing.** Without `confirm` it deletes nothing and
-  returns the inventory, including records in other bundles left pointing at nothing. `delete_page` still deletes
-  exactly one page and reports where everything beneath it landed. Keep those two apart: collapsing them turns a
-  routine edit into data loss.
+- **Organization is a filesystem, and nothing more.** A path is a bundle holding everything at or under it;
+  [bundle.ts](src/bundle.ts) is the whole rule, twelve lines, and it stores nothing. Pages, collections and assets
+  are all just things at paths, with no ownership relation between them. Matching is on segment arrays, never
+  string prefixes: `/bavaria` does not hold `/bavaria-lessons/lessons`, and that pair exists on the live site.
+  The `startsWith` version passes most tests, so [bundles.test.ts](src/bundles.test.ts) pins the neighbour cases;
+  in `delete_bundle` the same bug destroys a bundle nobody named. Resist reintroducing an owner or a "belongs to"
+  field: the path already says it, and a second vocabulary for the same fact is what made this hard the first time.
+- **Nothing may hold the whole site.** `/` is not a bundle: `list_bundle` and `delete_bundle` refuse it, and
+  `savePage` and the admin editor refuse a page there. A resource may still sit at `/` — a collection there holds
+  nothing and keeps its `/data/index.json` address. The home page is an ordinary folder at `ROOT_BUNDLE`
+  ([path.ts](src/pages/path.ts)), served at `/`, with `/root` itself 301ing to `/` so a page has one URL. Nothing
+  stored at `/` before this rule is migrated.
+- **Bundles are organization, never a boundary.** Nothing is rejected, moved or blocked by them.
+  `set_collection_refs` may cross bundles and a page may fetch any collection.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
 - **Repeating content belongs in a collection.** A page that lists things fetches `/data/<path>.json`; it does not

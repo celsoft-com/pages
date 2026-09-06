@@ -1,13 +1,11 @@
 import { assetUrlFor, deleteAsset, putAsset } from "../assets/service";
-import { ownerOf } from "../bundle";
 import {
   applyBundleDelete,
+  assetEntries,
   bundleContents,
-  ownedAssets,
-  ownedCollections,
+  collectionEntries,
   planBundleDelete,
   ROOT_IS_NOT_A_BUNDLE,
-  ungrouped,
   type BundlePlan,
 } from "../inventory";
 import { similarity } from "../data/match";
@@ -23,7 +21,7 @@ import {
   revOf,
   setRefs,
 } from "../data/service";
-import { deletePage, deriveTitle, getPage, listPages, pagePaths, savePage } from "../pages/service";
+import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
 import { ROOT_BUNDLE, isValidPath, normalizePath } from "../pages/path";
 import { getSettings, saveSettings } from "../settings";
 import type { Item } from "../types";
@@ -75,16 +73,15 @@ const SERVING =
   "includes its id along with the fields you wrote. Array order is the collection order set by reorder_items and by " +
   "put_item's index, and is preserved exactly, so a page needs no sort field. Nested objects and arrays of objects are " +
   "stored and served unchanged. It is public, unauthenticated and cached for 60 seconds. " +
-  "GET /data/_collections.json for the index of every collection: an array of {path, url, count, rev, owner, updatedAt} " +
+  "GET /data/_collections.json for the index of every collection: an array of {path, url, count, rev, updatedAt} " +
   "sorted by path, so a page can discover collections over plain HTTP with no access to these tools.";
 
 const BUNDLES =
-  "Grouping: a bundle is a path plus everything at or under it. A page owns the collections and assets beneath " +
-  "its own path, and a resource's owner is the nearest page above it, so with pages /trip and /trip/day1 the " +
-  "collection /trip/day1/items is owned by /trip/day1 and still appears in the bundle /trip. Matching is on whole " +
-  "path segments, so a page at /bavaria does not own /bavaria-lessons/lessons, and a page at / owns nothing. " +
-  "A resource with no page above it is ungrouped. That is a description, not a problem: grouping is organizational, " +
-  "and nothing is ever rejected, moved or blocked because of it. Reading and referencing across bundles is expected.";
+  "Organization: a path is a bundle, and it holds everything at or under it. The collection /trip/items and the " +
+  "asset /trip/images/coburg.jpg are both in the bundle /trip, and /trip/day1/items is in /trip/day1 and in /trip " +
+  "alike. Matching is on whole path segments, so /bavaria does not hold /bavaria-lessons/lessons. Give a new " +
+  "collection or asset a path under the page that uses it and it files itself. This is organization only: nothing " +
+  "is ever rejected, moved or blocked by it, any page may fetch any collection, and references may cross bundles.";
 
 const ENVELOPE = "GET the url returns just the items array, without this envelope";
 
@@ -121,12 +118,6 @@ function project(item: Item, fields: unknown): Record<string, unknown> {
   const picked: Record<string, unknown> = { id: item.id };
   for (const field of fields) if (field !== "id") picked[String(field)] = item[String(field)];
   return picked;
-}
-
-// "ungrouped" stands alone rather than sitting where a page path goes: a site with a page at
-// /ungrouped must never produce a line a client could read either way.
-function describeOwner(owner: string | null): string {
-  return owner === null ? "ungrouped" : `owner ${owner}`;
 }
 
 function refsOf(refs: Record<string, string>): string {
@@ -241,9 +232,8 @@ export const TOOLS: ToolDefinition[] = [
     name: "delete_page",
     title: "Delete a page",
     description:
-      "Remove one page permanently. Collections and assets under its path are left exactly as they are; only their " +
-      "owner changes, to whatever page remains above them or to none. The reply names every one of them, so the " +
-      "effect is visible. To delete a page together with everything under it, use delete_bundle instead. " +
+      "Remove one page permanently. Everything else in its bundle is left exactly as it is, and the reply names " +
+      "all of it so the effect is visible. To delete a page together with everything under it, use delete_bundle. " +
       BUNDLES,
     inputSchema: object({ path: { type: "string" } }, ["path"]),
     handler: async (args) => {
@@ -251,26 +241,22 @@ export const TOOLS: ToolDefinition[] = [
       const contents = await bundleContents(path);
       if (!(await deletePage(path))) throw new Error(`No page exists at ${path}`);
 
-      const remaining = await pagePaths();
-      const moved: string[] = [];
-      for (const page of contents.pages)
-        if (page.path !== path) moved.push(`page ${page.path}  kept`);
+      const kept: string[] = [];
+      for (const page of contents.pages) if (page.path !== path) kept.push(`page ${page.path}`);
       for (const collection of contents.collections)
-        moved.push(`collection ${collection.path}  ${collection.count} items  ${describeOwner(ownerOf(collection.path, remaining))}`);
-      for (const asset of contents.assets)
-        if (asset.path) moved.push(`asset ${asset.path}  ${describeOwner(ownerOf(asset.path, remaining))}`);
+        kept.push(`collection ${collection.path}  ${collection.count} items`);
+      for (const asset of contents.assets) if (asset.path) kept.push(`asset ${asset.path}`);
 
-      if (moved.length === 0) return `Deleted ${path}. Nothing else was under it.`;
-      return `Deleted ${path}. Everything below it is untouched, and now belongs as follows:\n${moved.join("\n")}`;
+      if (kept.length === 0) return `Deleted ${path}. Nothing else was in that bundle.`;
+      return `Deleted ${path}. The rest of the bundle is untouched:\n${kept.join("\n")}`;
     },
   },
   {
     name: "upload_asset",
     title: "Upload an asset",
     description:
-      "Store an image or file and return its public URL for use on any page. Pass path to file it into a bundle so " +
-      "it belongs to a page; without one it is stored under a content hash, keeps working forever, and belongs to no " +
-      "bundle. " +
+      "Store an image or file and return its public URL for use on any page. Pass path to file it into a bundle; " +
+      "without one it is stored under a content hash, which keeps working forever but sits in no bundle. " +
       BUNDLES,
     inputSchema: object(
       {
@@ -280,8 +266,8 @@ export const TOOLS: ToolDefinition[] = [
         path: {
           type: "string",
           description:
-            "Optional path to file this asset under, for example /germanfunstuff/images/coburg.jpg. It is served at " +
-            "/assets plus that path, and owned by the nearest page above it.",
+            "Optional path to file this asset under, for example /germanfunstuff/images/coburg.jpg. It is served " +
+            "at /assets plus that path, and sits in the bundle that path names.",
         },
       },
       ["filename", "content_base64", "content_type"],
@@ -299,27 +285,24 @@ export const TOOLS: ToolDefinition[] = [
         path: args.path === undefined ? undefined : String(args.path),
       });
       const url = `${ctx.siteUrl}${assetUrlFor(asset)}`;
-      if (!asset.path) return url;
-      const owner = ownerOf(asset.path, await pagePaths());
-      return `${url}\npath ${asset.path}  ${describeOwner(owner)}`;
+      return asset.path ? `${url}\npath ${asset.path}` : url;
     },
   },
   {
     name: "list_assets",
     title: "List assets",
     description:
-      "List uploaded images and files with their public URLs and the page that owns each one. An asset uploaded " +
-      "without a path has no bundle and reports as ungrouped. " +
+      "List uploaded images and files with their public URLs and, where they have one, their bundle path. " +
       BUNDLES,
     inputSchema: object({}),
     handler: async (_args, ctx) => {
-      const assets = await ownedAssets();
+      const assets = await assetEntries();
       if (assets.length === 0) return "No assets uploaded yet.";
       return assets
         .map(
           (a) =>
-            `${a.filename}  ${ctx.siteUrl}/assets/${a.path ? a.path.replace(/^\//, "") : a.key}  (${a.size} bytes)  ` +
-            `${describeOwner(a.owner)}`,
+            `${a.filename}  ${ctx.siteUrl}/assets/${a.path ? a.path.replace(/^\//, "") : a.key}  (${a.size} bytes)` +
+            `${a.path ? `  in ${a.path}` : "  stored under a content hash, in no bundle"}`,
         )
         .join("\n");
     },
@@ -353,71 +336,30 @@ export const TOOLS: ToolDefinition[] = [
 
       const pages: string[] = [];
       for (const entry of contents.pages)
-        pages.push(`page ${entry.path}  ${entry.title}  ${urlFor(ctx, entry.path)}  ${describeOwner(entry.owner)}`);
+        pages.push(`page ${entry.path}  ${entry.title}  ${urlFor(ctx, entry.path)}`);
 
       const resources: string[] = [];
       for (const c of contents.collections)
         resources.push(
-          `collection ${c.path}  ${c.count} items  rev ${c.rev}${refsOf(c.refs)}  ${dataUrl(ctx, c.path)}  ${describeOwner(c.owner)}`,
+          `collection ${c.path}  ${c.count} items  rev ${c.rev}${refsOf(c.refs)}  ${dataUrl(ctx, c.path)}`,
         );
       for (const a of contents.assets)
         resources.push(
-          `asset ${a.path}  ${a.size} bytes  ${ctx.siteUrl}/assets/${a.path!.replace(/^\//, "")}  ${describeOwner(a.owner)}`,
+          `asset ${a.path}  ${a.size} bytes  ${ctx.siteUrl}/assets/${a.path!.replace(/^\//, "")}`,
         );
 
       // A page that owns nothing and a path where nothing exists are different situations.
       if (!page && pages.length === 0 && resources.length === 0)
         throw new Error(
           `Nothing is published at ${path}: no page there, and no collection or asset under it. ` +
-            `Call list_pages or list_ungrouped to see what does exist.`,
+            `Call list_pages or list_collections to see what does exist.`,
         );
 
       const out: string[] = [];
       if (!page) out.push(`No page is published at ${path}. These are grouped under it by path alone.`);
 
       out.push(...pages, ...resources);
-      if (page && resources.length === 0)
-        out.push(`${path} owns no collections or assets yet.`);
-      return out.join("\n");
-    },
-  },
-  {
-    name: "list_ungrouped",
-    title: "List ungrouped resources",
-    description:
-      "List every collection and asset with no page above it, and the path each would be owned at if a page were " +
-      "published there. Read-only: it moves, renames and deletes nothing. Being ungrouped is not an error and needs " +
-      "no fixing; this is here for an owner who wants to tidy up. " +
-      BUNDLES,
-    inputSchema: object({}),
-    handler: async () => {
-      const { collections, assets } = await ungrouped();
-      const rooted = assets.filter((a) => a.path !== null);
-      const hashed = assets.filter((a) => a.path === null);
-      if (collections.length === 0 && rooted.length === 0 && hashed.length === 0)
-        return "Every collection and asset on this site is under a page.";
-
-      // Resources needing the same fix travel together: four /trip/* collections are one
-      // decision, not four.
-      const groups = new Map<string, string[]>();
-      // Nothing here may suggest publishing a page at /: no page can exist there.
-      const unownable: string[] = hashed.map(
-        (a) => `  asset ${a.filename}  key ${a.key}  stored under a content hash rather than a path`,
-      );
-      const add = (owner: string | null, line: string, why: string) => {
-        if (owner === null) return void unownable.push(`  ${line}  ${why}`);
-        groups.set(owner, [...(groups.get(owner) ?? []), `  ${line}`]);
-      };
-      for (const c of collections)
-        add(c.wouldBeOwner, `collection ${c.path}  ${c.count} items  rev ${c.rev}`, "sits at /, where no page can be published");
-      for (const a of rooted) add(a.wouldBeOwner, `asset ${a.path}  ${a.size} bytes`, "sits at /");
-
-      const out: string[] = [];
-      for (const [owner, entries] of [...groups].sort(([a], [b]) => a.localeCompare(b)))
-        out.push(`Publish a page at ${owner} to own these ${entries.length}:`, ...entries);
-
-      if (unownable.length > 0)
-        out.push(`No page can ever own these ${unownable.length}:`, ...unownable);
+      if (page && resources.length === 0) out.push(`Nothing else is in ${path} yet.`);
       return out.join("\n");
     },
   },
@@ -454,22 +396,21 @@ export const TOOLS: ToolDefinition[] = [
     name: "list_collections",
     title: "List data collections",
     description:
-      "List every JSON data collection on this site with its item count, public URL and the page that owns it. " +
+      "List every JSON data collection on this site with its item count and public URL. " +
       "A collection is an ordered array of items a page fetches and renders. " +
       BUNDLES +
       " " +
       SERVING,
     inputSchema: object({}),
     handler: async (_args, ctx) => {
-      const collections = await ownedCollections();
+      const collections = await collectionEntries();
       if (collections.length === 0) return "No data collections yet. Use put_item to create one.";
       return collections
         .map((c) => {
           const refs = Object.entries(c.refs);
           const declared = refs.length > 0 ? `  refs ${refs.map(([f, t]) => `${f}->${t}`).join(", ")}` : "";
           return (
-            `${c.path}  ${c.count} items  rev ${c.rev}${declared}  ${describeOwner(c.owner)}  ` +
-            `served at ${dataUrl(ctx, c.path)}`
+            `${c.path}  ${c.count} items  rev ${c.rev}${declared}  served at ${dataUrl(ctx, c.path)}`
           );
         })
         .join("\n");

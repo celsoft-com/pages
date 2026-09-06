@@ -1256,14 +1256,7 @@ describe("list_collections", () => {
     const response = await handleData(new Request("https://example.com/data/_collections.json"));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([
-      {
-        path: "/trip/items",
-        url: "/data/trip/items.json",
-        count: 195,
-        rev: 0,
-        owner: null,
-        updatedAt: expect.any(Number),
-      },
+      { path: "/trip/items", url: "/data/trip/items.json", count: 195, rev: 0, updatedAt: expect.any(Number) },
     ]);
   });
 });
