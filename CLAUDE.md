@@ -54,11 +54,11 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   The `startsWith` version passes most tests, so [bundles.test.ts](src/bundles.test.ts) pins the neighbour cases;
   in `delete_bundle` the same bug destroys a bundle nobody named. Resist reintroducing an owner or a "belongs to"
   field: the path already says it, and a second vocabulary for the same fact is what made this hard the first time.
-- **Nothing may hold the whole site.** `/` is not a bundle: `list_bundle` and `delete_bundle` refuse it, and
-  `savePage` and the admin editor refuse a page there. A resource may still sit at `/` — a collection there holds
-  nothing and keeps its `/data/index.json` address. The home page is an ordinary folder at `ROOT_BUNDLE`
-  ([path.ts](src/pages/path.ts)), served at `/`, with `/root` itself 301ing to `/` so a page has one URL. Nothing
-  stored at `/` before this rule is migrated.
+- **Nothing may hold the whole site.** `/` is not a bundle: `list_bundle` and `delete_bundle` refuse it. That is
+  the whole of the rule. A page, collection or asset may still sit at `/` like any other resource — it is simply
+  not reachable through a bundle, and a collection there keeps its `/data/index.json` address. What a browser gets
+  at `/` is the page in the `ROOT_BUNDLE` folder ([path.ts](src/pages/path.ts)), with `/root` itself 301ing to `/`
+  so that page has one URL. Nothing is migrated.
 - **Bundles are organization, never a boundary.** Nothing is rejected, moved or blocked by them.
   `set_collection_refs` may cross bundles and a page may fetch any collection.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.

@@ -134,8 +134,9 @@ describe("/ is not a bundle", () => {
     await expect(call("delete_bundle", { path: "/", confirm: true })).rejects.toThrow(/not a bundle/);
   });
 
-  it("refuses a page at /", async () => {
-    await expect(page("/")).rejects.toThrow(/not a page path/);
+  it("still lets a page sit at /, unserved like any other resource", async () => {
+    await page("/");
+    expect(await getPage("/")).not.toBeNull();
   });
 
   it("still lets a collection sit at /", async () => {
@@ -181,7 +182,6 @@ describe("the home page is a folder like any other", () => {
   it("is where setup puts the very first page", async () => {
     await completeSetup("a-long-enough-password");
     expect(await getPage(ROOT_BUNDLE)).not.toBeNull();
-    expect(await getPage("/")).toBeNull();
     expect(await (await visit("/")).text()).toContain("Welcome");
   });
 });

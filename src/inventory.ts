@@ -5,8 +5,8 @@ import { ROOT_BUNDLE } from "./pages/path";
 import { deletePage, listPages } from "./pages/service";
 
 export const ROOT_IS_NOT_A_BUNDLE =
-  "/ is not a bundle: it would hold every page, collection and asset on the site. Every other path is, " +
-  `including ${ROOT_BUNDLE}, where the home page lives and which is served at /. ` +
+  "/ is not a bundle: it would hold every page, collection and asset on the site. Every other path is. " +
+  `As a page path / means ${ROOT_BUNDLE}, the home page bundle, which is served at / and lists like any other. ` +
   "Call list_pages or list_collections to see what exists.";
 
 export interface PageEntry {

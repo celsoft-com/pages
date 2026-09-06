@@ -147,7 +147,7 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "list_pages",
     title: "List pages",
-    description: "List every page published on this site.",
+    description: "List every page published on this site. " + BUNDLES,
     inputSchema: object({}),
     handler: async (_args, ctx) => {
       const pages = await listPages();
@@ -158,7 +158,7 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "get_page",
     title: "Read a page",
-    description: "Return the stored source of one page so it can be edited.",
+    description: "Return the stored source of one page so it can be edited. " + BUNDLES,
     inputSchema: object({ path: { type: "string", description: "Page path, for example /about" } }, ["path"]),
     handler: async (args) => {
       const path = requirePath(args.path);
@@ -176,10 +176,14 @@ export const TOOLS: ToolDefinition[] = [
     title: "Publish a page",
     description:
       "Create a page at a path. Markdown is rendered into the site theme; HTML is served exactly as written. Fails if the path is taken unless overwrite is true. " +
-      "If the page lists repeating things, offer the owner a data collection first: keep the items in one with put_item and have the page fetch /data/<path>.json, so editing one of them later does not mean rewriting the page.",
+      "If the page lists repeating things, offer the owner a data collection first: keep the items in one with put_item and have the page fetch /data/<path>.json, so editing one of them later does not mean rewriting the page. " +
+      BUNDLES,
     inputSchema: object(
       {
-        path: { type: "string", description: `Page path, for example /about. The home page is ${ROOT_BUNDLE}, which is served at /.` },
+        path: {
+          type: "string",
+          description: `Page path, for example /about. The page at ${ROOT_BUNDLE} is what a browser gets at /.`,
+        },
         content: { type: "string", description: "Markdown or a full HTML document" },
         format: { type: "string", enum: ["markdown", "html"], description: "Defaults to auto-detect" },
         title: { type: "string", description: "Defaults to the first heading" },
@@ -207,7 +211,8 @@ export const TOOLS: ToolDefinition[] = [
     name: "update_page",
     title: "Update a page",
     description:
-      "Replace the content of an existing page. If you are rewriting the page only to change items in a list, move that list into a data collection instead and let the page fetch it.",
+      "Replace the content of an existing page. If you are rewriting the page only to change items in a list, move that list into a data collection instead and let the page fetch it. " +
+      BUNDLES,
     inputSchema: object({ path: { type: "string" }, content: { type: "string" }, title: { type: "string" } }, [
       "path",
       "content",
@@ -310,7 +315,8 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "delete_asset",
     title: "Delete an asset",
-    description: "Remove an uploaded file by its path or, for one stored under a content hash, by its key.",
+    description:
+      "Remove an uploaded file by its path or, for one stored under a content hash, by its key. " + BUNDLES,
     inputSchema: object({ key: { type: "string", description: "The asset path, or the hash key for an older upload" } }, ["key"]),
     handler: async (args) => {
       if (!(await deleteAsset(String(args.key)))) throw new Error(`No asset with key ${args.key}`);

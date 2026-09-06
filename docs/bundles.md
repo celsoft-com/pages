@@ -43,12 +43,12 @@ In `delete_bundle` this is the difference between a wrong listing and permanent 
 
 `/` would hold everything, so it is not a bundle.
 
-- **`list_bundle` and `delete_bundle` refuse `/`.**
-- **A page may not be published at `/`.** The home page is an ordinary folder at `/root`, served at `/`,
-  and `/root` itself redirects to `/` so a page has one URL.
-- **A resource may still sit at `/`.** A collection there holds nothing and keeps its `/data/index.json`
-  address. This rule is about bundles, not about individual resources.
-- **Nothing stored at `/` before this rule is migrated.** It keeps serving exactly as it did.
+- **`list_bundle` and `delete_bundle` refuse `/`.** That is the entire rule.
+- **A resource may still sit at `/`.** A page, collection or asset there is an ordinary resource; it is just
+  not reachable through a bundle. A collection at `/` keeps its `/data/index.json` address.
+- **What a browser gets at `/` is the page in the `/root` folder.** `/root` is an ordinary bundle, and `/root`
+  itself redirects to `/` so that page has one URL.
+- **Nothing is migrated.** A page already stored at `/` stays exactly where it is.
 
 ## Organization is not a boundary
 
@@ -76,7 +76,7 @@ Serving is unchanged. Collection `/a/b` is served at `/data/a/b.json` as a bare 
 
 - `/bavaria` does not hold `/bavaria-lessons/lessons`, in listing or in delete.
 - `list_bundle('/trip')` holds `/trip/day1/items`, and so does `list_bundle('/trip/day1')`.
-- `list_bundle` and `delete_bundle` refuse `/`; a page cannot be published at `/`.
+- `list_bundle` and `delete_bundle` refuse `/`, while a page or collection may still sit there.
 - A collection at `/` still writes and still serves at `/data/index.json`.
 - The home page at `/root` serves at `/`, and `/root` redirects there.
 - An asset at `/trip/images/coburg.jpg` serves at `/assets/trip/images/coburg.jpg`; one uploaded before
