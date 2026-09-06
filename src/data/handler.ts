@@ -1,3 +1,4 @@
+import { contentHeaders } from "../cache";
 import { getCollection, manifest, MANIFEST_PATH, normalizeCollectionPath } from "./service";
 
 export async function handleData(request: Request): Promise<Response> {
@@ -16,7 +17,7 @@ export async function handleData(request: Request): Promise<Response> {
   const etag = `W/"${collection.rev}"`;
   const headers = {
     "content-type": "application/json; charset=utf-8",
-    "cache-control": "public, max-age=60",
+    ...contentHeaders(),
     "access-control-allow-origin": "*",
     etag,
   };
@@ -31,7 +32,7 @@ async function serveManifest(request: Request): Promise<Response> {
   const etag = `W/"m${collections.reduce((sum, c) => sum + c.rev, collections.length)}"`;
   const headers = {
     "content-type": "application/json; charset=utf-8",
-    "cache-control": "public, max-age=60",
+    ...contentHeaders(),
     "access-control-allow-origin": "*",
     etag,
   };

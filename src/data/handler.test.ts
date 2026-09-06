@@ -62,9 +62,11 @@ describe("caching", () => {
     await saveCollection("/products", [{ id: "coat" }]);
   });
 
-  it("offers a short cache and an etag", async () => {
+  it("caches at the edge, never in a browser, and carries an etag", async () => {
     const response = await get("/data/products.json");
-    expect(response.headers.get("cache-control")).toBe("public, max-age=60");
+    expect(response.headers.get("cache-control")).toBe("no-cache");
+    expect(response.headers.get("netlify-cdn-cache-control")).toContain("durable");
+    expect(response.headers.get("netlify-cache-tag")).toBe("content");
     expect(response.headers.get("etag")).toBeTruthy();
   });
 

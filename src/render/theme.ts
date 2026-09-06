@@ -1,14 +1,7 @@
-export interface NavItem {
-  path: string;
-  title: string;
-}
-
 export interface LayoutOptions {
   title: string;
   siteTitle: string;
   siteDescription?: string;
-  nav: NavItem[];
-  currentPath: string;
   content: string;
 }
 
@@ -44,9 +37,6 @@ body {
 header.site { border-bottom: 1px solid var(--rule); padding-bottom: 1rem; margin-bottom: 2.5rem; }
 header.site a.brand { font-weight: 620; font-size: 1.05rem; color: var(--fg); text-decoration: none; }
 header.site p { margin: .35rem 0 0; color: var(--muted); font-size: .9rem; }
-nav.site { margin-top: .9rem; display: flex; flex-wrap: wrap; gap: .9rem; }
-nav.site a { color: var(--muted); text-decoration: none; font-size: .9rem; }
-nav.site a:hover, nav.site a[aria-current] { color: var(--accent); }
 main h1, main h2, main h3 { line-height: 1.25; margin: 2rem 0 .75rem; }
 main h1 { font-size: 1.9rem; margin-top: 0; }
 main h2 { font-size: 1.35rem; }
@@ -87,15 +77,6 @@ export function escapeHtml(value: string): string {
 }
 
 export function layout(options: LayoutOptions): string {
-  const nav = options.nav
-    .map(
-      (item) =>
-        `<a href="${escapeHtml(item.path)}"${
-          item.path === options.currentPath ? ' aria-current="page"' : ""
-        }>${escapeHtml(item.title)}</a>`,
-    )
-    .join("");
-
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -111,7 +92,6 @@ ${options.siteDescription ? `<meta name="description" content="${escapeHtml(opti
 <header class="site">
 <a class="brand" href="/">${escapeHtml(options.siteTitle)}</a>
 ${options.siteDescription ? `<p>${escapeHtml(options.siteDescription)}</p>` : ""}
-${nav ? `<nav class="site">${nav}</nav>` : ""}
 </header>
 <main>${options.content}</main>
 <footer class="site">Published with <a href="https://github.com/celsoft-com/pages">pages</a></footer>

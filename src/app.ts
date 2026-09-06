@@ -1,5 +1,6 @@
 import { handleAdmin } from "./admin/router";
 import { handleAsset } from "./assets/handler";
+import { changedContent, purgeContent } from "./cache";
 import { handleData } from "./data/handler";
 import { handleFavicon } from "./favicon";
 import { isSetupComplete } from "./auth/setup";
@@ -22,39 +23,14 @@ function unauthorized(origin: string): Response {
 
 export async function handle(request: Request): Promise<Response> {
   const url = new URL(request.url);
-  const origin = `${url.protocol}//${url.host}`;
   const path = url.pathname;
 
   try {
-    if (path === "/.well-known/oauth-authorization-server") return metadata(origin);
-    if (path === "/.well-known/oauth-protected-resource" || path === "/.well-known/oauth-protected-resource/mcp")
-      return protectedResourceMetadata(origin);
-    if (path === "/oauth/register") return register(request);
-    if (path === "/oauth/token") return token(request);
-
-    if (path === "/mcp") {
-      const ownerId = await authenticate(request);
-      if (!ownerId) return unauthorized(origin);
-      return handleMcp(request);
-    }
-
-    if (path.startsWith("/admin") || path === "/oauth/authorize") return handleAdmin(request, url);
-    if (path.startsWith("/assets/")) return handleAsset(request);
-    if (path.startsWith("/data/")) return handleData(request);
-
-    if (path === "/favicon.ico") return handleFavicon();
-
-    if (path === "/robots.txt")
-      return new Response("User-agent: *\nDisallow: /admin\nDisallow: /oauth\n", {
-        headers: { "content-type": "text/plain; charset=utf-8" },
-      });
-
-    if (!(await isSetupComplete())) {
-      if (path === "/") return welcomePage();
-      return new Response(null, { status: 303, headers: { location: "/" } });
-    }
-
-    return handlePage(request);
+    const response = await route(request, url);
+    // The only place anything is purged: a request that could have changed content clears the
+    // cache as it finishes, whichever code did the writing.
+    if (changedContent(request, path, response)) await purgeContent();
+    return response;
   } catch (error) {
     const message = error instanceof Error ? `${error.message}\n\n${error.stack ?? ""}` : String(error);
     return new Response(`This site hit an error.\n\n${message}`, {
@@ -62,4 +38,39 @@ export async function handle(request: Request): Promise<Response> {
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
+}
+
+async function route(request: Request, url: URL): Promise<Response> {
+  const origin = `${url.protocol}//${url.host}`;
+  const path = url.pathname;
+
+  if (path === "/.well-known/oauth-authorization-server") return metadata(origin);
+  if (path === "/.well-known/oauth-protected-resource" || path === "/.well-known/oauth-protected-resource/mcp")
+    return protectedResourceMetadata(origin);
+  if (path === "/oauth/register") return register(request);
+  if (path === "/oauth/token") return token(request);
+
+  if (path === "/mcp") {
+    const ownerId = await authenticate(request);
+    if (!ownerId) return unauthorized(origin);
+    return handleMcp(request);
+  }
+
+  if (path.startsWith("/admin") || path === "/oauth/authorize") return handleAdmin(request, url);
+  if (path.startsWith("/assets/")) return handleAsset(request);
+  if (path.startsWith("/data/")) return handleData(request);
+
+  if (path === "/favicon.ico") return handleFavicon();
+
+  if (path === "/robots.txt")
+    return new Response("User-agent: *\nDisallow: /admin\nDisallow: /oauth\n", {
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+
+  if (!(await isSetupComplete())) {
+    if (path === "/") return welcomePage();
+    return new Response(null, { status: 303, headers: { location: "/" } });
+  }
+
+  return handlePage(request);
 }

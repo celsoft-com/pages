@@ -1,48 +1,36 @@
+import { contentHeaders } from "../cache";
 import { renderMarkdown } from "../render/markdown";
-import { escapeHtml, layout, type NavItem } from "../render/theme";
+import { escapeHtml, layout } from "../render/theme";
 import { getSettings } from "../settings";
 import type { Page } from "../types";
 import { ROOT_BUNDLE, normalizePath } from "./path";
-import { getPage, listPages } from "./service";
-
-async function chrome(currentPath: string) {
-  const [settings, pages] = await Promise.all([getSettings(), listPages()]);
-  const nav: NavItem[] = pages
-    .filter((p) => p.path !== "/" && p.path !== ROOT_BUNDLE && p.path.split("/").length === 2)
-    .slice(0, 8)
-    .map((p) => ({ path: p.path, title: p.title }));
-  return { settings, pages, nav, currentPath };
-}
+import { getPage } from "./service";
 
 function html(body: string, status = 200, etag?: string): Response {
   const headers: Record<string, string> = {
     "content-type": "text/html; charset=utf-8",
-    "cache-control": "public, max-age=60",
+    ...contentHeaders(),
   };
   if (etag) headers.etag = `"${etag}"`;
   return new Response(body, { status, headers });
 }
 
 async function renderPage(page: Page): Promise<string> {
-  const site = await chrome(page.path);
+  const settings = await getSettings();
   return layout({
     title: page.title,
-    siteTitle: site.settings.title,
-    siteDescription: site.settings.description || undefined,
-    nav: site.nav,
-    currentPath: page.path,
+    siteTitle: settings.title,
+    siteDescription: settings.description || undefined,
     content: renderMarkdown(page.body),
   });
 }
 
 async function renderNotFound(path: string): Promise<string> {
-  const site = await chrome(path);
+  const settings = await getSettings();
   return layout({
     title: "Not found",
-    siteTitle: site.settings.title,
-    siteDescription: site.settings.description || undefined,
-    nav: site.nav,
-    currentPath: path,
+    siteTitle: settings.title,
+    siteDescription: settings.description || undefined,
     content: `<h1>Not found</h1><p>Nothing is published at <code>${escapeHtml(path)}</code>.</p>`,
   });
 }

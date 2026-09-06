@@ -92,6 +92,18 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   for this, and never wrap a page to inject an icon.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
+- **Caching is one module and one purge.** [cache.ts](src/cache.ts) owns every public cache header and the
+  clearing of them; a handler that writes a `cache-control` string by hand has started a second policy. A public
+  response is `no-cache` to browsers and durable at the edge, so a refresh always asks and always gets what a write
+  just made, while an asset URL that is a content hash is immutable instead because its bytes cannot change. The
+  purge fires once at the request boundary in [app.ts](src/app.ts), blind to what changed: writes reach storage two
+  ways, through `savePage`/`saveCollection` and through the transfer engine writing blobs itself to keep ids and
+  revs exact, and a rule that each write path must announce itself is one a write path will forget. The bounded
+  `s-maxage` is the backstop, so the worst case of a purge that never lands is five minutes, not forever.
+- **The themed layout reads settings and nothing else.** There is no site nav. A page that wants links to
+  other pages writes them, and a client that wants a nav builds one into its pages; the layout is the site title,
+  the description and the content. Drawing eight nav links cost a full read of every page blob, body included, on
+  every request, and it decided for the owner what their site looked like.
 - **Repeating content belongs in a collection.** A page that lists things fetches `/data/<path>.json`; it does not
   bake the list into its HTML. The MCP instructions in [handler.ts](src/mcp/handler.ts) tell clients to offer the
   owner that choice, and the page tools repeat it. Weaken that steering and Claude will paste data into pages again.

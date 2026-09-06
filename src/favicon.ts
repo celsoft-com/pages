@@ -1,4 +1,5 @@
 import { assetKeyFor, getAsset } from "./assets/service";
+import { contentHeaders } from "./cache";
 import { DEFAULT_FAVICON } from "./favicon-default";
 import { ROOT_BUNDLE } from "./pages/path";
 import type { Asset } from "./types";
@@ -29,7 +30,7 @@ export async function handleFavicon(): Promise<Response> {
   return new Response(found ? found.body : defaultBytes(), {
     headers: {
       "content-type": (found ? found.asset.contentType : DEFAULT_FAVICON.contentType) || "image/x-icon",
-      "cache-control": "public, max-age=600",
+      ...contentHeaders(),
     },
   });
 }
