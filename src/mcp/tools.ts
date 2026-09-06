@@ -77,11 +77,15 @@ const SERVING =
   "sorted by path, so a page can discover collections over plain HTTP with no access to these tools.";
 
 const BUNDLES =
-  "Organization: a path is a bundle, and it holds everything at or under it. The collection /trip/items and the " +
-  "asset /trip/images/coburg.jpg are both in the bundle /trip, and /trip/day1/items is in /trip/day1 and in /trip " +
-  "alike. Matching is on whole path segments, so /bavaria does not hold /bavaria-lessons/lessons. Give a new " +
-  "collection or asset a path under the page that uses it and it files itself. This is organization only: nothing " +
-  "is ever rejected, moved or blocked by it, any page may fetch any collection, and references may cross bundles.";
+  "Organization is a folder tree and nothing more. A path is a bundle and holds everything at or under it: /trip " +
+  "holds /trip/items, /trip/images/coburg.jpg and /trip/day1/items alike, and /trip/day1 holds that last one too. " +
+  "Pages, collections and assets are all just resources at paths. None of them owns or belongs to another, there " +
+  "is no owner and no owning page, and nothing is ever unfiled or ungrouped: a resource's own path already says " +
+  "which bundles hold it, so publishing a page at /trip changes nothing about what is under /trip. Matching is on " +
+  "whole path segments, so /bavaria does not hold /bavaria-lessons/lessons. One exception: / is not a bundle, " +
+  "because it would hold the entire site. A resource may still sit at /, and what a browser gets at / is the page " +
+  "in the /root bundle. This is organization only, never a boundary: nothing is rejected, moved or blocked by it, " +
+  "any page may fetch any collection, and references may cross bundles.";
 
 const ENVELOPE = "GET the url returns just the items array, without this envelope";
 
