@@ -1,8 +1,8 @@
-import { deleteAsset, listAssets } from "./assets/service";
+import { listAssets } from "./assets/service";
 import { contains } from "./bundle";
-import { deleteCollection, getCollection, listCollections, MANIFEST_PATH } from "./data/service";
+import { getCollection, listCollections, MANIFEST_PATH } from "./data/service";
 import { ROOT_BUNDLE } from "./pages/path";
-import { deletePage, listPages } from "./pages/service";
+import { listPages } from "./pages/service";
 
 export const ROOT_IS_NOT_A_BUNDLE =
   "/ is not a bundle: it would hold every page, collection and asset on the site. Every other path is. " +
@@ -85,23 +85,4 @@ export async function referencesInto(doomed: Set<string>): Promise<BrokenReferen
     }
   }
   return broken;
-}
-
-export interface BundlePlan extends BundleContents {
-  breaks: BrokenReference[];
-}
-
-export async function planBundleDelete(path: string): Promise<BundlePlan> {
-  if (path === "/") throw new Error(ROOT_IS_NOT_A_BUNDLE);
-  if (path === MANIFEST_PATH) throw new Error(`${MANIFEST_PATH} is the reserved collection index and cannot be deleted.`);
-
-  const contents = await bundleContents(path);
-  const breaks = await referencesInto(new Set(contents.collections.map((c) => c.path)));
-  return { ...contents, breaks };
-}
-
-export async function applyBundleDelete(plan: BundlePlan): Promise<void> {
-  for (const collection of plan.collections) await deleteCollection(collection.path);
-  for (const asset of plan.assets) await deleteAsset(asset.key);
-  for (const page of plan.pages) await deletePage(page.path);
 }

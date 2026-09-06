@@ -1,13 +1,5 @@
-import { assetUrlFor, deleteAsset, putAsset } from "../assets/service";
-import {
-  applyBundleDelete,
-  assetEntries,
-  bundleContents,
-  collectionEntries,
-  planBundleDelete,
-  ROOT_IS_NOT_A_BUNDLE,
-  type BundlePlan,
-} from "../inventory";
+import { assetUrlFor, putAsset } from "../assets/service";
+import { assetEntries, bundleContents, collectionEntries, ROOT_IS_NOT_A_BUNDLE } from "../inventory";
 import { similarity } from "../data/match";
 import { matchItem, parseQuery } from "../data/query";
 import {
@@ -21,7 +13,16 @@ import {
   revOf,
   setRefs,
 } from "../data/service";
-import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
+import { deriveTitle, getPage, listPages, savePage } from "../pages/service";
+import {
+  runTransfer,
+  staleReferences,
+  touchesHomePage,
+  type Kind,
+  type Scope,
+  type Transfer,
+  type Verb,
+} from "../transfer";
 import { ROOT_BUNDLE, isValidPath, normalizePath } from "../pages/path";
 import { getSettings, saveSettings } from "../settings";
 import type { Item } from "../types";
@@ -129,22 +130,132 @@ function refsOf(refs: Record<string, string>): string {
   return entries.length === 0 ? "" : `  refs ${entries.map(([f, t]) => `${f}->${t}`).join(", ")}`;
 }
 
-function describeBundle(plan: BundlePlan, verb: string): string {
-  const lines: string[] = [];
-  for (const page of plan.pages) lines.push(`page ${page.path}  ${page.title}`);
-  for (const c of plan.collections) lines.push(`collection ${c.path}  ${c.count} items  rev ${c.rev}`);
-  for (const a of plan.assets) lines.push(`asset ${a.path}  ${a.size} bytes`);
-  if (lines.length === 0) return `Nothing is at or under ${plan.path}.`;
+const TRANSFER =
+  "One shape at every level: page, collection, asset and bundle take the same arguments and return the same reply. " +
+  "It runs on the server, so ids, array order, nested values, revs and reference declarations survive exactly and no " +
+  "record passes through this conversation. Page content is never rewritten: the reply lists any page line still " +
+  "naming a path that has gone, and any record left pointing at nothing. A copy or move refuses an occupied target " +
+  "unless you pass overwrite, and changes nothing when it refuses.";
 
-  const body = `${verb} ${lines.length} thing${lines.length === 1 ? "" : "s"} at or under ${plan.path}:\n${lines.join("\n")}`;
-  if (plan.breaks.length === 0) return body;
+function resourceUrl(ctx: ToolContext, kind: Kind, path: string): string {
+  if (kind === "page") return urlFor(ctx, path === ROOT_BUNDLE ? "/" : path);
+  if (kind === "collection") return dataUrl(ctx, path);
+  return `${ctx.siteUrl}/assets${path}`;
+}
 
-  const total = plan.breaks.reduce((sum, b) => sum + b.count, 0);
-  const detail = plan.breaks.map((b) => `${b.count} in ${b.path} via ${b.field} -> ${b.references}`).join(", ");
-  return (
-    `${body}\n\nWARNING: ${total} record${total === 1 ? "" : "s"} outside this bundle reference collections ` +
-    `inside it and will be left pointing at nothing: ${detail}.`
+// A page verb takes the page and nothing else. The rest of its bundle stays exactly where it
+// is, and saying so is the difference between a visible effect and a silent one.
+async function restOfBundle(transfer: Transfer): Promise<{ kind: string; path: string }[]> {
+  if (transfer.scope !== "page") return [];
+  const contents = await bundleContents(transfer.from);
+  const taken = new Set(transfer.resources.map((r) => r.from));
+  return [
+    ...contents.pages.map((p) => ({ kind: "page", path: p.path })),
+    ...contents.collections.map((c) => ({ kind: "collection", path: c.path })),
+    ...contents.assets.map((a) => ({ kind: "asset", path: a.path! })),
+  ].filter((entry) => !taken.has(entry.path));
+}
+
+async function transferReply(ctx: ToolContext, transfer: Transfer): Promise<string> {
+  const [stale, rest] = await Promise.all([staleReferences(transfer), restOfBundle(transfer)]);
+  const notes: string[] = [];
+
+  if (!transfer.applied)
+    notes.push(`Nothing was changed. Call again with confirm: true to ${transfer.verb} all of this.`);
+  else if (transfer.verb === "copy")
+    notes.push(
+      "The source is untouched. A copied page keeps the URLs written into its body, so it still fetches the " +
+        "original's collections and assets until you edit it.",
+    );
+  else
+    notes.push(
+      stale.length === 0
+        ? "No page names a path this removed. No page content was changed either way."
+        : "No page content was changed. Every line listed in pages_to_update still names a path that has gone.",
+    );
+
+  if (rest.length > 0) notes.push("Everything in rest_of_bundle stayed exactly where it was.");
+  if (touchesHomePage(transfer))
+    notes.push(
+      `${ROOT_BUNDLE} is the page a browser gets at /, so the site root now has no home page until you publish one.`,
+    );
+
+  return JSON.stringify(
+    {
+      operation: transfer.verb,
+      scope: transfer.scope,
+      from: transfer.from,
+      ...(transfer.to === null ? {} : { to: transfer.to }),
+      applied: transfer.applied,
+      resources: transfer.resources.map((r) => ({
+        kind: r.kind,
+        from: r.from,
+        to: r.to,
+        ...(r.to === null ? {} : { url: resourceUrl(ctx, r.kind, r.to), replaced: r.replaced }),
+        ...(r.title === undefined ? {} : { title: r.title }),
+        ...(r.items === undefined ? {} : { items: r.items, rev: r.rev, refs: r.refs }),
+        ...(r.bytes === undefined ? {} : { bytes: r.bytes }),
+      })),
+      breaks: transfer.breaks,
+      pages_to_update: stale,
+      ...(rest.length === 0 ? {} : { rest_of_bundle: rest }),
+      notes,
+    },
+    null,
+    2,
   );
+}
+
+function transferArgs(args: Record<string, any>, scope: Scope, verb: Verb) {
+  return {
+    scope,
+    verb,
+    from: String(verb === "delete" ? args.path : args.from),
+    ...(verb === "delete" ? {} : { to: String(args.to) }),
+    overwrite: args.overwrite === true,
+    confirm: args.confirm === true,
+    ifRev: args.if_rev === undefined ? undefined : Number(args.if_rev),
+  };
+}
+
+function transferSchema(scope: Scope, verb: Verb, what: string) {
+  const paths =
+    verb === "delete"
+      ? { path: { type: "string", description: `The ${what} to delete` } }
+      : {
+          from: { type: "string", description: `The ${what} to ${verb}` },
+          to: { type: "string", description: `Path to ${verb} it to` },
+        };
+  return object(
+    {
+      ...paths,
+      ...(verb === "delete"
+        ? {}
+        : { overwrite: { type: "boolean", description: "Replace whatever already sits at the target. Default false." } }),
+      ...(scope === "bundle"
+        ? {
+            confirm: {
+              type: "boolean",
+              description: "Must be true to apply. Without it nothing changes and you get the inventory instead.",
+            },
+          }
+        : {}),
+      ...(scope === "collection"
+        ? { if_rev: { type: "number", description: "Refuse unless the collection is still at this rev." } }
+        : {}),
+    },
+    verb === "delete" ? ["path"] : ["from", "to"],
+  );
+}
+
+function transferTool(scope: Scope, verb: Verb, spec: { title: string; what: string; lead: string }): ToolDefinition {
+  return {
+    name: `${verb}_${scope}`,
+    title: spec.title,
+    description: `${spec.lead} ${TRANSFER}${scope === "bundle" ? ` ${BUNDLES}` : ""}`,
+    inputSchema: transferSchema(scope, verb, spec.what),
+    handler: async (args, ctx) => transferReply(ctx, await runTransfer(transferArgs(args, scope, verb))),
+  };
 }
 
 export const TOOLS: ToolDefinition[] = [
@@ -237,29 +348,30 @@ export const TOOLS: ToolDefinition[] = [
       return `Updated ${urlFor(ctx, page.path)}`;
     },
   },
-  {
-    name: "delete_page",
+  transferTool("page", "copy", {
+    title: "Copy a page",
+    what: "page",
+    lead:
+      "Duplicate a page at another path, body byte for byte. The copy keeps every URL written into its body, so it " +
+      "fetches the original's collections and assets until you edit it, and it owns whatever already sits under its " +
+      "new path.",
+  }),
+  transferTool("page", "move", {
+    title: "Move or rename a page",
+    what: "page",
+    lead:
+      "Rename a page. Collections and assets under its old path stay exactly where they are and only change owner; " +
+      "the reply names every one of them. The old URL stops resolving at once, so any link to it breaks. To take a " +
+      "page and its data together, use move_bundle.",
+  }),
+  transferTool("page", "delete", {
     title: "Delete a page",
-    description:
-      "Remove one page permanently. Everything else in its bundle is left exactly as it is, and the reply names " +
-      "all of it so the effect is visible. To delete a page together with everything under it, use delete_bundle. " +
-      BUNDLES,
-    inputSchema: object({ path: { type: "string" } }, ["path"]),
-    handler: async (args) => {
-      const path = requirePath(args.path);
-      const contents = await bundleContents(path);
-      if (!(await deletePage(path))) throw new Error(`No page exists at ${path}`);
-
-      const kept: string[] = [];
-      for (const page of contents.pages) if (page.path !== path) kept.push(`page ${page.path}`);
-      for (const collection of contents.collections)
-        kept.push(`collection ${collection.path}  ${collection.count} items`);
-      for (const asset of contents.assets) if (asset.path) kept.push(`asset ${asset.path}`);
-
-      if (kept.length === 0) return `Deleted ${path}. Nothing else was in that bundle.`;
-      return `Deleted ${path}. The rest of the bundle is untouched:\n${kept.join("\n")}`;
-    },
-  },
+    what: "page",
+    lead:
+      "Remove one page. Collections and assets under its path are left exactly as they are; only their owner " +
+      "changes, to whatever page remains above them or to none, and the reply names every one of them. To delete a " +
+      "page together with everything under it, use delete_bundle.",
+  }),
   {
     name: "upload_asset",
     title: "Upload an asset",
@@ -316,17 +428,26 @@ export const TOOLS: ToolDefinition[] = [
         .join("\n");
     },
   },
-  {
-    name: "delete_asset",
+  transferTool("asset", "copy", {
+    title: "Copy an asset",
+    what: "asset path",
+    lead:
+      "Duplicate a stored file at another path, bytes unchanged. An asset stored under a content hash has no path " +
+      "to copy from; upload it again with a path instead.",
+  }),
+  transferTool("asset", "move", {
+    title: "Move or rename an asset",
+    what: "asset path",
+    lead:
+      "Rename a stored file. Its old /assets URL stops resolving at once, so every page holding that URL breaks " +
+      "until you edit it; the reply gives the lines. An asset stored under a content hash has no path and cannot be " +
+      "moved to one.",
+  }),
+  transferTool("asset", "delete", {
     title: "Delete an asset",
-    description:
-      "Remove an uploaded file by its path or, for one stored under a content hash, by its key. " + BUNDLES,
-    inputSchema: object({ key: { type: "string", description: "The asset path, or the hash key for an older upload" } }, ["key"]),
-    handler: async (args) => {
-      if (!(await deleteAsset(String(args.key)))) throw new Error(`No asset with key ${args.key}`);
-      return `Deleted asset ${args.key}`;
-    },
-  },
+    what: "asset path, or hash key for an older upload",
+    lead: "Remove one stored file, by its path or, for one uploaded before paths existed, by its content hash key.",
+  }),
   {
     name: "list_bundle",
     title: "List a bundle",
@@ -373,35 +494,35 @@ export const TOOLS: ToolDefinition[] = [
       return out.join("\n");
     },
   },
-  {
-    name: "delete_bundle",
+  transferTool("bundle", "copy", {
+    title: "Copy a bundle",
+    what: "bundle path",
+    lead:
+      "Duplicate everything at and under one path in a single operation: the page there, every page beneath it, " +
+      "every collection and every asset. A reference from one copied collection to another is rewritten to the new " +
+      "path, so the copy is internally consistent; one pointing outside the bundle is left alone. Called without " +
+      "confirm: true it copies nothing and returns the full inventory it would write.",
+  }),
+  transferTool("bundle", "move", {
+    title: "Move or rename a bundle",
+    what: "bundle path",
+    lead:
+      "Move everything at and under one path in a single operation, keeping a page together with the collections " +
+      "and assets it renders. This is the whole-site rename: one call, nothing read into this conversation, every " +
+      "id, position, rev and reference preserved. References between collections in the bundle are rewritten to the " +
+      "new paths; references from outside it break, and the reply names them. Called without confirm: true it moves " +
+      "nothing and returns the full inventory it would move.",
+  }),
+  transferTool("bundle", "delete", {
     title: "Delete a bundle",
-    description:
-      "Delete everything at and under one path: the page there, every page beneath it, every collection beneath it " +
-      "and every asset beneath it. This is the only tool that deletes more than one thing, and it cannot be undone. " +
-      "Called without confirm: true it deletes nothing and returns the full inventory it would delete, including " +
-      "records in other bundles that reference ids it would remove; read that before confirming. To remove only the " +
-      "page and leave its data alone, use delete_page. " +
-      BUNDLES,
-    inputSchema: object(
-      {
-        path: { type: "string", description: "Bundle path, for example /germanfunstuff. It need not have a page." },
-        confirm: {
-          type: "boolean",
-          description: "Must be true to delete. Without it nothing is deleted and you get the inventory instead.",
-        },
-      },
-      ["path"],
-    ),
-    handler: async (args) => {
-      const path = requirePath(args.path);
-      const plan = await planBundleDelete(path);
-      if (args.confirm !== true)
-        return `${describeBundle(plan, "Would delete")}\n\nNothing was deleted. Call again with confirm: true.`;
-      await applyBundleDelete(plan);
-      return describeBundle(plan, "Deleted");
-    },
-  },
+    what: "bundle path",
+    lead:
+      "Delete everything at and under one path: the page there, every page beneath it, every collection and every " +
+      "asset. This is the only tool that deletes more than one thing, and it cannot be undone. Called without " +
+      "confirm: true it deletes nothing and returns the full inventory it would delete, including records in other " +
+      "bundles that reference ids it would remove; read that before confirming. To remove only the page and leave " +
+      "its data alone, use delete_page.",
+  }),
   {
     name: "list_collections",
     title: "List data collections",
@@ -877,17 +998,30 @@ export const TOOLS: ToolDefinition[] = [
       return JSON.stringify(await brokenRefs(path, field));
     },
   },
-  {
-    name: "delete_collection",
+  transferTool("collection", "copy", {
+    title: "Copy a collection",
+    what: "collection",
+    lead:
+      "Duplicate a collection at another path with every id, position and nested value intact. The copy is a new " +
+      "collection, so its items start at fresh revs and the source keeps its own. Reference declarations come with " +
+      "it, pointing where they pointed.",
+  }),
+  transferTool("collection", "move", {
+    title: "Move or rename a collection",
+    what: "collection",
+    lead:
+      "Rename a collection, keeping every id, position, nested value and item rev. Its /data URL stops serving the " +
+      "moment this returns, so every page fetching it breaks until you edit that page; the reply gives the lines. " +
+      "When you cannot take that gap, copy_collection instead, repoint the page, check it renders, then " +
+      "delete_collection. To move a collection together with the page that renders it, use move_bundle.",
+  }),
+  transferTool("collection", "delete", {
     title: "Delete a collection",
-    description: "Remove a whole data collection and every item in it.",
-    inputSchema: object({ path: { type: "string" } }, ["path"]),
-    handler: async (args) => {
-      const path = requirePath(args.path);
-      if (!(await deleteCollection(path))) throw new Error(`No collection exists at ${path}`);
-      return `Deleted collection ${path}`;
-    },
-  },
+    what: "collection",
+    lead:
+      "Remove a whole collection and every item in it. Records in other collections that reference its ids are " +
+      "listed in the reply, because they are about to point at nothing.",
+  }),
   {
     name: "get_site",
     title: "Get site info",

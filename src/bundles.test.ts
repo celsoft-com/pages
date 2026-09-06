@@ -21,6 +21,10 @@ function call(name: string, args: Record<string, unknown> = {}): Promise<string>
   return tool.handler(args, ctx);
 }
 
+async function json(name: string, args: Record<string, unknown> = {}): Promise<any> {
+  return JSON.parse(await call(name, args));
+}
+
 function page(path: string): Promise<string> {
   return call("publish_page", { path, content: `# ${path}`, overwrite: true });
 }
@@ -223,7 +227,7 @@ describe("assets", () => {
 
   it("deletes a rooted asset by its path", async () => {
     await upload("coburg.jpg", "/germanfunstuff/images/coburg.jpg");
-    expect(await call("delete_asset", { key: "/germanfunstuff/images/coburg.jpg" })).toContain("Deleted");
+    expect((await json("delete_asset", { path: "/germanfunstuff/images/coburg.jpg" })).applied).toBe(true);
     expect((await handleAsset(new Request("https://example.com/assets/germanfunstuff/images/coburg.jpg"))).status).toBe(
       404,
     );
@@ -236,17 +240,20 @@ describe("delete_page", () => {
     await saveCollection("/trip/items", [{ id: "one" }, { id: "two" }]);
     await upload("coburg.jpg", "/trip/images/coburg.jpg");
 
-    const reply = await call("delete_page", { path: "/trip" });
-    expect(reply).toContain("collection /trip/items  2 items");
-    expect(reply).toContain("asset /trip/images/coburg.jpg");
+    const reply = await json("delete_page", { path: "/trip" });
+    expect(reply.resources).toEqual([{ kind: "page", from: "/trip", to: null, title: "/trip" }]);
+    expect(reply.rest_of_bundle).toEqual([
+      { kind: "collection", path: "/trip/items" },
+      { kind: "asset", path: "/trip/images/coburg.jpg" },
+    ]);
     expect((await getCollection("/trip/items"))?.items).toHaveLength(2);
   });
 
   it("leaves a nested page alone", async () => {
     await page("/trip");
     await page("/trip/day1");
-    const reply = await call("delete_page", { path: "/trip" });
-    expect(reply).toContain("page /trip/day1");
+    const reply = await json("delete_page", { path: "/trip" });
+    expect(reply.rest_of_bundle).toEqual([{ kind: "page", path: "/trip/day1" }]);
     expect(await getPage("/trip/day1")).not.toBeNull();
   });
 });
@@ -261,12 +268,16 @@ describe("delete_bundle", () => {
   });
 
   it("deletes nothing without confirm and shows what it would take", async () => {
-    const reply = await call("delete_bundle", { path: "/trip" });
-    expect(reply).toContain("Would delete");
-    expect(reply).toContain("page /trip");
-    expect(reply).toContain("collection /trip/day1/items");
-    expect(reply).toContain("asset /trip/images/coburg.jpg");
-    expect(reply).toContain("Nothing was deleted");
+    const reply = await json("delete_bundle", { path: "/trip" });
+    expect(reply.applied).toBe(false);
+    expect(reply.resources.map((r: any) => `${r.kind} ${r.from}`)).toEqual([
+      "page /trip",
+      "page /trip/day1",
+      "collection /trip/day1/items",
+      "collection /trip/items",
+      "asset /trip/images/coburg.jpg",
+    ]);
+    expect(reply.notes.join(" ")).toContain("Nothing was changed");
     expect(await getPage("/trip")).not.toBeNull();
   });
 
@@ -289,9 +300,10 @@ describe("delete_bundle", () => {
     await saveCollection("/notes/entries", [{ id: "n1", day: "two" }]);
     await call("set_collection_refs", { path: "/notes/entries", refs: { day: "/trip/day1/items" } });
 
-    const reply = await call("delete_bundle", { path: "/trip" });
-    expect(reply).toContain("WARNING");
-    expect(reply).toContain("1 in /notes/entries via day -> /trip/day1/items");
+    const reply = await json("delete_bundle", { path: "/trip" });
+    expect(reply.breaks).toEqual([
+      { path: "/notes/entries", field: "day", references: "/trip/day1/items", count: 1 },
+    ]);
   });
 
   it("refuses the reserved collection index", async () => {

@@ -54,13 +54,35 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   The `startsWith` version passes most tests, so [bundles.test.ts](src/bundles.test.ts) pins the neighbour cases;
   in `delete_bundle` the same bug destroys a bundle nobody named. Resist reintroducing an owner or a "belongs to"
   field: the path already says it, and a second vocabulary for the same fact is what made this hard the first time.
-- **Nothing may hold the whole site.** `/` is not a bundle: `list_bundle` and `delete_bundle` refuse it. That is
+- **Nothing may hold the whole site.** `/` is not a bundle: `list_bundle`, `delete_bundle` and every bundle
+  transfer refuse it at either end. That is
   the whole of the rule. A page, collection or asset may still sit at `/` like any other resource — it is simply
   not reachable through a bundle, and a collection there keeps its `/data/index.json` address. What a browser gets
   at `/` is the page in the `ROOT_BUNDLE` folder ([path.ts](src/pages/path.ts)), with `/root` itself 301ing to `/`
   so that page has one URL. Nothing is migrated.
 - **Bundles are organization, never a boundary.** Nothing is rejected, moved or blocked by them.
   `set_collection_refs` may cross bundles and a page may fetch any collection.
+- **Copy, move and delete are one service at four levels.** [transfer.ts](src/transfer.ts) is the whole of it:
+  `planTransfer` gathers, validates and prices the operation, `applyTransfer` writes with an undo per write. A
+  delete is a transfer with no target, which is why all twelve tools take the same arguments and return the same
+  envelope. Adding a level or a verb means teaching that one engine, never a parallel path. Reorganizing must
+  never be reduced to reading records out through a client and writing them back: that loses a value to a
+  mistyped character, and does it silently.
+- **A transfer reads everything before it writes anything.** Sources are loaded and targets staged up front, each
+  write carries its own undo, and a failure unwinds in reverse, so a half-populated target is never observable.
+  Ids, array order, nested values and item revs survive exactly; a copy starts at fresh revs and a move carries
+  them, and replacing a target bumps the rev past what it held so no rev a client holds is reused for different
+  content.
+- **A transfer never edits a page.** Pages hardcode their URLs and there is no reliable way to tell which strings
+  in arbitrary HTML are one, so every move and delete reports the page lines still naming what it took away and
+  touches none of them. The scan matches a collection's `/data` URL and its parent prefix, which is what finds a
+  `const BASE = "/data/trip/"`, and a page path on segment boundaries so a link to `/trip` is not reported for
+  `/tripwire`. A URL a page assembles from pieces cannot be found at all, which is why the reply reports lines to
+  read rather than promising a clean result.
+- **References follow the operation, not the collection.** A ref pointing at a collection moving in the same call
+  is rewritten to its new path; one pointing outside it is left alone and then reported in `breaks`, because a
+  move takes the source path away just as surely as a delete does. Cross-bundle references are legitimate, so the
+  answer is to report the damage, never to refuse the move or to rewrite something the caller did not name.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
 - **Repeating content belongs in a collection.** A page that lists things fetches `/data/<path>.json`; it does not

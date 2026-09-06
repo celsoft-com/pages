@@ -61,3 +61,28 @@ export function deriveTitle(body: string, path: string): string {
   const last = path.split("/").filter(Boolean).pop() ?? "Untitled";
   return last.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+export interface PageMatch {
+  path: string;
+  lines: { line: number; text: string }[];
+  more: number;
+}
+
+const MATCH_CAP = 10;
+
+export async function findInPages(patterns: RegExp[]): Promise<PageMatch[]> {
+  if (patterns.length === 0) return [];
+  const found: PageMatch[] = [];
+  for (const summary of await listPages()) {
+    const page = await getPage(summary.path);
+    if (!page) continue;
+    const hits = page.body
+      .split("\n")
+      .map((text, index) => ({ line: index + 1, text }))
+      .filter((entry) => patterns.some((pattern) => pattern.test(entry.text)))
+      .map((entry) => ({ line: entry.line, text: entry.text.trim().slice(0, 200) }));
+    if (hits.length > 0)
+      found.push({ path: page.path, lines: hits.slice(0, MATCH_CAP), more: Math.max(0, hits.length - MATCH_CAP) });
+  }
+  return found;
+}
