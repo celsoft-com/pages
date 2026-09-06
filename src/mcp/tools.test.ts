@@ -945,7 +945,8 @@ describe("referential integrity", () => {
 
   it("deletes a referenced id when forced", async () => {
     await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
-    expect(await call("delete_item", { path: "/trip/filters", id: "outdoors", force: true })).toContain("Deleted");
+    const text = await call("delete_item", { path: "/trip/filters", id: "outdoors", force: true });
+    expect(JSON.parse(text)).toMatchObject({ deleted: "outdoors", path: "/trip/filters" });
   });
 
   it("leaves an unreferenced id deletable", async () => {
@@ -1127,5 +1128,89 @@ describe("check_refs description", () => {
 
   it("keeps the count_items trigger", () => {
     expect(description()).toMatch(/count_items shows an unexpected value/);
+  });
+});
+
+describe("delete_item reports what force broke", () => {
+  beforeEach(async () => {
+    await saveCollection("/trip/filters", [{ id: "odd" }, { id: "outdoors" }, { id: "spare" }]);
+    await saveCollection("/trip/items", [
+      { id: "bamberg-witch-trials", group: "odd" },
+      { id: "lochgefaengnisse", group: "odd" },
+      { id: "norisring", group: "odd" },
+      { id: "castle", group: "outdoors" },
+    ]);
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+  });
+
+  it("names the collection, field, count and ids it orphaned", async () => {
+    const text = await call("delete_item", { path: "/trip/filters", id: "odd", force: true });
+    expect(JSON.parse(text)).toEqual({
+      deleted: "odd",
+      path: "/trip/filters",
+      orphaned: [
+        {
+          path: "/trip/items",
+          field: "group",
+          count: 3,
+          ids: ["bamberg-witch-trials", "lochgefaengnisse", "norisring"],
+        },
+      ],
+    });
+  });
+
+  it("stays quiet when nothing was orphaned", async () => {
+    const text = await call("delete_item", { path: "/trip/filters", id: "spare" });
+    expect(text).toBe("Deleted spare from /trip/filters");
+    expect(text).not.toContain("orphaned");
+  });
+
+  it("still refuses without force, naming the count", async () => {
+    await expect(call("delete_item", { path: "/trip/filters", id: "odd" })).rejects.toThrow(
+      /would orphan 3 records/,
+    );
+    expect((await json("get_item", { path: "/trip/filters", id: "odd" })).id).toBe("odd");
+  });
+
+  it("caps the ids at twenty while counting them all", async () => {
+    await saveCollection(
+      "/trip/items",
+      Array.from({ length: 50 }, (_, n) => ({ id: `i${n}`, group: "odd" })),
+    );
+    const text = await call("delete_item", { path: "/trip/filters", id: "odd", force: true });
+    const [orphaned] = JSON.parse(text).orphaned;
+
+    expect(orphaned.count).toBe(50);
+    expect(orphaned.ids).toHaveLength(20);
+    expect(orphaned.ids[0]).toBe("i0");
+  });
+
+  it("agrees with check_refs run straight afterwards", async () => {
+    const deleted = JSON.parse(await call("delete_item", { path: "/trip/filters", id: "odd", force: true }));
+    const audit = await json("check_refs", { path: "/trip/items" });
+
+    expect(audit.broken.map((b: any) => b.id).sort()).toEqual([...deleted.orphaned[0].ids].sort());
+    expect(audit.broken.every((b: any) => b.value === "odd")).toBe(true);
+  });
+
+  it("groups orphans by each collection and field that referenced the id", async () => {
+    await saveCollection("/trip/notes", [
+      { id: "n1", tag: "odd" },
+      { id: "n2", tag: "odd" },
+    ]);
+    await call("set_collection_refs", { path: "/trip/notes", refs: { tag: "/trip/filters" } });
+
+    const { orphaned } = JSON.parse(await call("delete_item", { path: "/trip/filters", id: "odd", force: true }));
+    expect(orphaned).toHaveLength(2);
+    expect(orphaned.map((o: any) => [o.path, o.field, o.count]).sort()).toEqual([
+      ["/trip/items", "group", 3],
+      ["/trip/notes", "tag", 2],
+    ]);
+  });
+
+  it("promises the listing in its description", () => {
+    expect(TOOLS.find((t) => t.name === "delete_item")!.description).toMatch(
+      /the reply lists what it broke/,
+    );
   });
 });

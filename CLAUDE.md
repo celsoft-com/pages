@@ -70,6 +70,8 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   answer gets skimmed, believed, and acted on, and the caller stops looking. Any check added later owes the same
   distinction between verified-and-clean and not-verified, in the response *and* in the tool description: a
   description promising that an empty result means clean teaches the misreading before the response can correct it.
+  The same applies to damage a tool does on purpose: a forced delete reports the records it orphaned, because the
+  caller who reached for `force` is the one least likely to audit afterwards, and the information is already in hand.
 - **Revisions live outside the items.** `rev` and `revs` sit on the collection envelope, never in an item, because
   [handler.ts](src/data/handler.ts) serves `collection.items` verbatim. Updating an item needs a matching `if_rev`,
   so a client writing from a stale read is refused. [saveCollection](src/data/service.ts) assigns revs by comparing

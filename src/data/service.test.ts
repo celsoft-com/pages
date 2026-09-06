@@ -169,14 +169,14 @@ describe("deleteItem", () => {
     await putItem({ path: "/p", id: "a", fields: {}, merge: true });
     await putItem({ path: "/p", id: "b", fields: {}, merge: true });
 
-    expect(await deleteItem("/p", "a")).toBe(true);
+    expect(await deleteItem("/p", "a")).toEqual({ deleted: true, orphaned: [] });
     expect(await ids("/p")).toEqual(["b"]);
   });
 
   it("reports a miss rather than throwing", async () => {
     await putItem({ path: "/p", id: "a", fields: {}, merge: true });
-    expect(await deleteItem("/p", "nope")).toBe(false);
-    expect(await deleteItem("/missing", "a")).toBe(false);
+    expect(await deleteItem("/p", "nope")).toMatchObject({ deleted: false });
+    expect(await deleteItem("/missing", "a")).toMatchObject({ deleted: false });
   });
 
   it("leaves an empty collection behind", async () => {
@@ -338,7 +338,7 @@ describe("revisions", () => {
 
   it("deletes with a matching rev", async () => {
     const a = await putItem({ path: "/p", id: "a", fields: {}, merge: true });
-    expect(await deleteItem("/p", "a", a.rev)).toBe(true);
+    expect(await deleteItem("/p", "a", a.rev)).toMatchObject({ deleted: true });
   });
 
   it("checks the collection rev on reorder", async () => {

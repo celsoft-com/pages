@@ -472,7 +472,8 @@ export const TOOLS: ToolDefinition[] = [
     title: "Delete an item",
     description:
       "Remove one item from a collection by its id. The rest of the collection is untouched. Pass the rev you read as if_rev and the delete is refused if the item changed since. " +
-      "If other records reference this id through a declared collection reference, the delete is refused and names how many; repoint those records first, or pass force true to orphan them deliberately.",
+      "If other records reference this id through a declared collection reference, the delete is refused and names how many; repoint those records first, or pass force true to orphan them deliberately. " +
+      "When force orphans records, the reply lists what it broke, so they can be repointed without a separate check_refs.",
     inputSchema: object(
       {
         path: { type: "string" },
@@ -488,9 +489,11 @@ export const TOOLS: ToolDefinition[] = [
     handler: async (args) => {
       const path = requirePath(args.path);
       const ifRev = args.if_rev === undefined ? undefined : Number(args.if_rev);
-      if (!(await deleteItem(path, String(args.id), ifRev, args.force === true)))
-        throw new Error(`No item ${args.id} in ${path}`);
-      return `Deleted ${args.id} from ${path}`;
+      const id = String(args.id);
+      const { deleted, orphaned } = await deleteItem(path, id, ifRev, args.force === true);
+      if (!deleted) throw new Error(`No item ${id} in ${path}`);
+      if (orphaned.length === 0) return `Deleted ${id} from ${path}`;
+      return JSON.stringify({ deleted: id, path, orphaned });
     },
   },
   {

@@ -185,24 +185,13 @@ export async function deleteItem(
   id: string,
   ifRev?: number,
   force = false,
-): Promise<boolean> {
+): Promise<{ deleted: boolean; orphaned: Referrer[] }> {
   const normalized = normalizeCollectionPath(path);
   const collection = await getCollection(normalized);
-  if (!collection) return false;
+  if (!collection) return { deleted: false, orphaned: [] };
 
   const remaining = collection.items.filter((i) => i.id !== id);
-  if (remaining.length === collection.items.length) return false;
-
-  if (!force) {
-    const pointing = await referrers(normalized, id);
-    const total = pointing.reduce((sum, entry) => sum + entry.count, 0);
-    if (total > 0)
-      throw new Error(
-        `Deleting "${id}" from ${normalized} would orphan ${total} record${total === 1 ? "" : "s"} that reference it: ` +
-          `${pointing.map((e) => `${e.count} in ${e.path} via ${e.field}`).join(", ")}. ` +
-          `Repoint them first, or pass force: true to delete anyway.`,
-      );
-  }
+  if (remaining.length === collection.items.length) return { deleted: false, orphaned: [] };
 
   const current = revOf(collection, id);
   if (ifRev !== undefined && ifRev !== current)
@@ -211,8 +200,17 @@ export async function deleteItem(
         `rev ${current}. Read it again with get_item before deleting it.`,
     );
 
+  const orphaned = await referrers(normalized, id);
+  const total = orphaned.reduce((sum, entry) => sum + entry.count, 0);
+  if (total > 0 && !force)
+    throw new Error(
+      `Deleting "${id}" from ${normalized} would orphan ${total} record${total === 1 ? "" : "s"} that reference it: ` +
+        `${orphaned.map((e) => `${e.count} in ${e.path} via ${e.field}`).join(", ")}. ` +
+        `Repoint them first, or pass force: true to delete anyway.`,
+    );
+
   await saveCollection(normalized, remaining);
-  return true;
+  return { deleted: true, orphaned };
 }
 
 export async function reorderItems(path: string, ids: string[], ifRev?: number): Promise<Item[]> {
@@ -354,17 +352,32 @@ export async function brokenRefs(
   };
 }
 
-export async function referrers(target: string, id: string): Promise<{ path: string; field: string; count: number }[]> {
+const ORPHAN_ID_CAP = 20;
+
+export interface Referrer {
+  path: string;
+  field: string;
+  count: number;
+  ids: string[];
+}
+
+export async function referrers(target: string, id: string): Promise<Referrer[]> {
   const normalized = normalizeCollectionPath(target);
-  const found: { path: string; field: string; count: number }[] = [];
+  const found: Referrer[] = [];
 
   for (const summary of await listCollections()) {
     const collection = await getCollection(summary.path);
     if (!collection) continue;
     for (const [field, points] of Object.entries(collection.refs)) {
       if (points !== normalized) continue;
-      const count = collection.items.filter((item) => item[field] === id).length;
-      if (count > 0) found.push({ path: collection.path, field, count });
+      const pointing = collection.items.filter((item) => item[field] === id);
+      if (pointing.length > 0)
+        found.push({
+          path: collection.path,
+          field,
+          count: pointing.length,
+          ids: pointing.slice(0, ORPHAN_ID_CAP).map((item) => item.id),
+        });
     }
   }
 
