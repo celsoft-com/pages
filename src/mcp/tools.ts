@@ -445,6 +445,8 @@ export const TOOLS: ToolDefinition[] = [
       "Matching ignores case, diacritics, punctuation and word order, and tolerates trailing qualifiers and abbreviations that prefix the full word, " +
       "so \"Acme Corp.\" finds \"ACME Corporation\" and \"Cafe Rouge\" finds \"Café Rouge\". " +
       "It compares one short field, by default name, and does not read descriptions or other long text, which mention other entities and generate false matches. " +
+      "When a collection is partitioned by another field, pass filter to compare only within one partition, for example filter {\"section\": \"coburg\"} so Coburg candidates are never matched against Bamberg records. " +
+      "The same name legitimately recurs once per partition, and without a filter those come back as duplicates. " +
       "Returns a result for every candidate in the order given, each with its matches sorted best first and an empty list where nothing was close enough. " +
       "A match carries the id and rev, so a duplicate can be updated with put_item instead of created. " +
       "Nothing here understands meaning, translation or transliteration between scripts: it compares how names are written. " +
@@ -458,6 +460,12 @@ export const TOOLS: ToolDefinition[] = [
           description: "Candidate names to look for, at most 50 per call",
         },
         field: { type: "string", description: "Field to compare against. Defaults to name." },
+        filter: {
+          type: "object",
+          additionalProperties: true,
+          description:
+            "Compare only records where every named field equals the given value. Exact equality, combined with AND, and the values are not normalized the way the match field is, because these are identifiers rather than prose. Omit to compare against the whole collection.",
+        },
         threshold: { type: "number", description: "Lowest score worth returning, 0 to 1. Defaults to 0.6." },
         limit_per_name: { type: "number", description: "Most matches to return per candidate. Defaults to 3." },
       },
@@ -476,7 +484,12 @@ export const TOOLS: ToolDefinition[] = [
       const threshold = args.threshold === undefined ? 0.6 : Math.min(1, Math.max(0, Number(args.threshold)));
       const limit = Math.max(1, Number(args.limit_per_name) || 3);
 
-      const candidates = collection.items
+      if (args.filter !== undefined && (typeof args.filter !== "object" || args.filter === null || Array.isArray(args.filter)))
+        throw new Error("filter must be an object of field/value pairs");
+      const filter = Object.entries((args.filter ?? {}) as Record<string, unknown>);
+
+      const inScope = collection.items.filter((item) => filter.every(([key, value]) => item[key] === value));
+      const candidates = inScope
         .map((item) => ({ item, value: item[field] }))
         .filter((entry): entry is { item: Item; value: string } => typeof entry.value === "string");
 
@@ -499,9 +512,10 @@ export const TOOLS: ToolDefinition[] = [
         {
           path: collection.path,
           field,
+          ...(filter.length > 0 ? { filter: Object.fromEntries(filter) } : {}),
           threshold,
           compared: candidates.length,
-          skipped: collection.items.length - candidates.length,
+          skipped: inScope.length - candidates.length,
           results,
         },
         null,

@@ -51,7 +51,10 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   knowing any of them: no stopword lists, no article stripping, no per-language maps, and domain words like "brewery"
   are never treated as noise. The one lookup table, [expansions.ts](src/data/expansions.ts), is for characters that
   casefold to themselves, and it is data only. Tuning is biased against false positives: a missed match leaves a
-  visible duplicate, a wrong one silently suppresses a record nobody knows is missing.
+  visible duplicate, a wrong one silently suppresses a record nobody knows is missing. The scores in
+  [match.test.ts](src/data/match.test.ts) and the regression block in [tools.test.ts](src/mcp/tools.test.ts) are
+  pinned to exact values on purpose; touching the scorer is expected to break them, and each break needs a decision
+  rather than a re-baseline.
 - **Revisions live outside the items.** `rev` and `revs` sit on the collection envelope, never in an item, because
   [handler.ts](src/data/handler.ts) serves `collection.items` verbatim. Updating an item needs a matching `if_rev`,
   so a client writing from a stale read is refused. [saveCollection](src/data/service.ts) assigns revs by comparing

@@ -127,3 +127,10 @@ describe("instructions on deduplication", () => {
     expect(INSTRUCTIONS).toMatch(/[Jj]udge the matches/);
   });
 });
+
+describe("instructions on partitioned collections", () => {
+  it("tells the client to filter matching to one partition", () => {
+    expect(INSTRUCTIONS).toMatch(/partitioned by a field/);
+    expect(INSTRUCTIONS).toMatch(/filter/);
+  });
+});

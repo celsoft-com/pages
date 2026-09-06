@@ -561,3 +561,156 @@ describe("match_names", () => {
     expect(description).toMatch(/does not read descriptions/);
   });
 });
+
+describe("match_names scope filter", () => {
+  beforeEach(async () => {
+    await saveCollection("/trip/items", [
+      { id: "bamberg-old-town", name: "The old town", section: "bamberg" },
+      { id: "forchheim-old-town", name: "Old town and Saltorturm", section: "forchheim" },
+      { id: "coburg-castle", name: "Veste Coburg", section: "coburg" },
+      { id: "erlangen-market", name: "Wochenmarkt", section: "erlangen" },
+      { id: "nurnberg-market", name: "Wochenmarkt am Hauptmarkt", section: "nurnberg" },
+      { id: "furth-park", name: "Stadtpark", section: "furth" },
+    ]);
+  });
+
+  it("returns nothing for a candidate whose partition has no such place", async () => {
+    const result = await json("match_names", {
+      path: "/trip/items",
+      names: ["Old Town"],
+      filter: { section: "coburg" },
+    });
+    expect(result.results[0].matches).toEqual([]);
+  });
+
+  it("returns two for the same candidate unfiltered", async () => {
+    const result = await json("match_names", { path: "/trip/items", names: ["Old Town"] });
+    expect(result.results[0].matches.map((m: any) => m.id).sort()).toEqual([
+      "bamberg-old-town",
+      "forchheim-old-town",
+    ]);
+  });
+
+  it("returns exactly the record from the named partition", async () => {
+    const result = await json("match_names", {
+      path: "/trip/items",
+      names: ["Old Town"],
+      filter: { section: "bamberg" },
+    });
+    expect(result.results[0].matches.map((m: any) => m.id)).toEqual(["bamberg-old-town"]);
+  });
+
+  it("leaves unfiltered behaviour exactly as it was", async () => {
+    const names = ["Old Town", "Wochenmarkt", "Stadtpark"];
+    const before = await json("match_names", { path: "/trip/items", names });
+    const withEmpty = await json("match_names", { path: "/trip/items", names, filter: {} });
+    expect(withEmpty.results).toEqual(before.results);
+    expect(withEmpty.compared).toBe(before.compared);
+  });
+
+  it("reports compared 0 and no matches for a partition that does not exist", async () => {
+    const result = await json("match_names", {
+      path: "/trip/items",
+      names: ["Old Town", "Stadtpark"],
+      filter: { section: "atlantis" },
+    });
+    expect(result.compared).toBe(0);
+    for (const entry of result.results) expect(entry.matches).toEqual([]);
+  });
+
+  it("returns empty rather than erroring on a field no record has", async () => {
+    const result = await json("match_names", {
+      path: "/trip/items",
+      names: ["Old Town"],
+      filter: { nonexistent_field: "x" },
+    });
+    expect(result.compared).toBe(0);
+    expect(result.results[0].matches).toEqual([]);
+  });
+
+  it("combines several fields with and", async () => {
+    await saveCollection("/trip/items", [
+      { id: "a", name: "Stadtpark", section: "furth", day: 1 },
+      { id: "b", name: "Stadtpark", section: "furth", day: 2 },
+    ]);
+    const result = await json("match_names", {
+      path: "/trip/items",
+      names: ["Stadtpark"],
+      filter: { section: "furth", day: 2 },
+    });
+    expect(result.results[0].matches.map((m: any) => m.id)).toEqual(["b"]);
+  });
+
+  it("compares filter values exactly, without the folding used on names", async () => {
+    await saveCollection("/trip/items", [{ id: "a", name: "Stadtpark", section: "Fürth" }]);
+    const folded = await json("match_names", {
+      path: "/trip/items",
+      names: ["Stadtpark"],
+      filter: { section: "furth" },
+    });
+    const exact = await json("match_names", {
+      path: "/trip/items",
+      names: ["Stadtpark"],
+      filter: { section: "Fürth" },
+    });
+    expect(folded.compared).toBe(0);
+    expect(exact.results[0].matches.map((m: any) => m.id)).toEqual(["a"]);
+  });
+
+  it("counts only the partition in compared", async () => {
+    const result = await json("match_names", {
+      path: "/trip/items",
+      names: ["Old Town"],
+      filter: { section: "bamberg" },
+    });
+    expect(result.compared).toBe(1);
+    expect(result.filter).toEqual({ section: "bamberg" });
+  });
+
+  it("rejects a filter that is not an object", async () => {
+    await expect(
+      call("match_names", { path: "/trip/items", names: ["x"], filter: ["section", "bamberg"] }),
+    ).rejects.toThrow(/object of field\/value pairs/);
+  });
+});
+
+describe("match_names scoring regressions", () => {
+  beforeEach(async () => {
+    await saveCollection("/places", [
+      { id: "keesmann", name: "Brauerei Keesmann" },
+      { id: "fassla", name: "Fässla Keller" },
+      { id: "schlenkerla", name: "Schlenkerla" },
+      { id: "hirsch", name: "Hirsch" },
+      { id: "haus45", name: "Haus 45" },
+    ]);
+  });
+
+  async function best(name: string): Promise<{ id: string; score: number } | undefined> {
+    const result = await json("match_names", { path: "/places", names: [name] });
+    return result.results[0].matches[0];
+  }
+
+  it("ignores word order", async () => {
+    expect(await best("Keesmann Brauerei")).toMatchObject({ id: "keesmann", score: 1 });
+  });
+
+  it("folds diacritics", async () => {
+    expect(await best("Fassla Keller")).toMatchObject({ id: "fassla", score: 1 });
+  });
+
+  it("tolerates a trailing qualifier", async () => {
+    expect(await best("Schlenkerla, Rauchbierbrauerei")).toMatchObject({ id: "schlenkerla", score: 0.833 });
+  });
+
+  it("does not match on a shared frequent token alone", async () => {
+    expect(await best("Brauerei Spätzle")).toBeUndefined();
+  });
+
+  it("treats digits as significant", async () => {
+    expect(await best("Haus 44")).toBeUndefined();
+  });
+
+  it("keeps a single-token typo just above the default threshold", async () => {
+    expect(await best("Hirsh")).toMatchObject({ id: "hirsch", score: 0.625 });
+  });
+});
