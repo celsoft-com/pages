@@ -93,12 +93,15 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
 - **A summary is a cache, and the blob is the truth.** `writeCollectionBlob` in
-  [service.ts](src/data/service.ts) is the only place a collection blob is written, transfer.ts included, and it
-  writes the summary as blob metadata in the same call so `list_collections` need not read every item of every
-  collection to count them. The metadata carries a `SUMMARY_VERSION`; anything else is not trusted and not patched
-  up, the blob is read and the summary derived. That is the whole safety property: every miss ends at the blob, so
-  a summary can be absent or stale-shaped but never wrong. Adding a field to `CollectionSummary` means bumping that
-  number, and a test pins that nothing else calls `stores.data().setJSON`.
+  [service.ts](src/data/service.ts) and `writePageBlob` in [service.ts](src/pages/service.ts) are the only places a
+  collection or page blob is written, transfer.ts included, and each writes its summary as blob metadata in the
+  same call, so `list_collections` need not read every item of every collection and `list_pages` need not read
+  every page body. The metadata carries a `SUMMARY_VERSION`; anything else is not trusted and not patched up, the
+  blob is read and the summary derived. That is the whole safety property: every miss ends at the blob, so a
+  summary can be absent or old-shaped but never wrong. Netlify caps metadata at 2 KB and rejects the write past it,
+  so a summary too big to fit is skipped rather than failing a save: a title is whatever an `h1` says and `refs` is
+  caller supplied, and losing a page to write a summary of it would be the wrong trade. Adding a field to a summary
+  means bumping that number, and [store.test.ts](src/store.test.ts) pins that nothing else writes those blobs.
 - **Caching is one module and one purge.** [cache.ts](src/cache.ts) owns every public cache header and the
   clearing of them; a handler that writes a `cache-control` string by hand has started a second policy. A public
   response is `no-cache` to browsers and durable at the edge, so a refresh always asks and always gets what a write

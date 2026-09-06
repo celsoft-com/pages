@@ -437,4 +437,13 @@ describe("summaries after a transfer", () => {
 
     expect(found!.metadata).toMatchObject({ path: "/gf/items", count: 2 });
   });
+
+  it("carries a correct summary to the page's new home", async () => {
+    await savePage({ path: "/trip", contentType: "markdown", title: "Trip", body: "# Trip" });
+
+    await call("move_page", { from: "/trip", to: "/gf", confirm: true });
+    const found = await stores.pages().getMetadata(encodeKey("/gf"));
+
+    expect(found!.metadata).toMatchObject({ path: "/gf", title: "Trip" });
+  });
 });

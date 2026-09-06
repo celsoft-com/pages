@@ -7,18 +7,50 @@ export async function getPage(path: string): Promise<Page | null> {
   return (stored as Page | null) ?? null;
 }
 
+// Bumped whenever PageSummary gains a field. Metadata written under an older number is not trusted
+// or patched up: the blob is read and the summary derived, which is slower and always right.
+const SUMMARY_VERSION = 1;
+
+function summarize(page: Page): PageSummary & { v: number } {
+  return {
+    v: SUMMARY_VERSION,
+    path: page.path,
+    contentType: page.contentType,
+    title: page.title,
+    updatedAt: page.updatedAt,
+  };
+}
+
+// Netlify caps blob metadata at 2 KB and rejects the whole write past it, so a long title or a big
+// refs map must not be able to fail a save. Over the limit the summary is simply not written, and a
+// missing summary is a miss like any other: the blob is read.
+const METADATA_LIMIT = 1800;
+
+function metadataFor(summary: Record<string, unknown>): Record<string, unknown> | undefined {
+  return JSON.stringify(summary).length <= METADATA_LIMIT ? summary : undefined;
+}
+
+// The only way a page blob is written, transfer.ts included. The summary rides along as metadata so
+// listPages can answer without reading every page body, and it cannot drift from the blob because
+// nothing else writes one.
+export async function writePageBlob(key: string, page: Page): Promise<void> {
+  await stores.pages().setJSON(key, page, { metadata: metadataFor({ ...summarize(page) }) });
+}
+
 export async function listPages(): Promise<PageSummary[]> {
   const { blobs } = await stores.pages().list();
   const summaries = await Promise.all(
     blobs.map(async (blob) => {
+      const found = await stores.pages().getMetadata(blob.key);
+      const summary = found?.metadata as unknown as (PageSummary & { v?: number }) | undefined;
+      if (summary?.v === SUMMARY_VERSION) {
+        const { v: _version, ...rest } = summary;
+        return rest satisfies PageSummary;
+      }
       const page = (await stores.pages().get(blob.key, { type: "json" })) as Page | null;
       if (!page) return null;
-      return {
-        path: page.path,
-        contentType: page.contentType,
-        title: page.title,
-        updatedAt: page.updatedAt,
-      } satisfies PageSummary;
+      const { v: _v, ...rest } = summarize(page);
+      return rest satisfies PageSummary;
     }),
   );
   return summaries.filter((p): p is PageSummary => p !== null).sort((a, b) => a.path.localeCompare(b.path));
@@ -41,7 +73,7 @@ export async function savePage(input: {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-  await stores.pages().setJSON(encodeKey(path), page);
+  await writePageBlob(encodeKey(path), page);
   return page;
 }
 

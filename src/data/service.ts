@@ -69,11 +69,20 @@ function summarize(collection: Collection): CollectionSummary & { v: number } {
   };
 }
 
+// Netlify caps blob metadata at 2 KB and rejects the whole write past it, so a long title or a big
+// refs map must not be able to fail a save. Over the limit the summary is simply not written, and a
+// missing summary is a miss like any other: the blob is read.
+const METADATA_LIMIT = 1800;
+
+function metadataFor(summary: Record<string, unknown>): Record<string, unknown> | undefined {
+  return JSON.stringify(summary).length <= METADATA_LIMIT ? summary : undefined;
+}
+
 // The only way a collection blob is written, transfer.ts included. The summary rides along as
 // metadata so listCollections can answer without reading every item of every collection, and it
 // cannot drift from the blob because nothing else writes one.
 export async function writeCollectionBlob(key: string, collection: Collection): Promise<void> {
-  await stores.data().setJSON(key, collection, { metadata: { ...summarize(collection) } });
+  await stores.data().setJSON(key, collection, { metadata: metadataFor({ ...summarize(collection) }) });
 }
 
 export async function listCollections(): Promise<CollectionSummary[]> {

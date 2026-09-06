@@ -9,7 +9,7 @@ import {
 } from "./data/service";
 import { ROOT_IS_NOT_A_BUNDLE, referencesInto, type BrokenReference } from "./inventory";
 import { ROOT_BUNDLE, normalizeAssetPath, normalizePath } from "./pages/path";
-import { findInPages, getPage, listPages, type PageMatch } from "./pages/service";
+import { findInPages, getPage, listPages, writePageBlob, type PageMatch } from "./pages/service";
 import { encodeKey, stores } from "./store";
 import type { Asset, Collection, Page } from "./types";
 
@@ -253,8 +253,8 @@ export async function applyTransfer(plan: {
     };
     mark(transfer, "page", page.path, prior !== null);
     writes.push({
-      run: () => stores.pages().setJSON(key, next),
-      undo: () => (prior ? stores.pages().setJSON(key, prior) : stores.pages().delete(key)),
+      run: () => writePageBlob(key, next),
+      undo: () => (prior ? writePageBlob(key, prior) : stores.pages().delete(key)),
     });
   }
 
@@ -307,7 +307,7 @@ export async function applyTransfer(plan: {
   if (transfer.verb !== "copy") {
     for (const page of sources.pages) {
       const key = encodeKey(page.path);
-      writes.push({ run: () => stores.pages().delete(key), undo: () => stores.pages().setJSON(key, page) });
+      writes.push({ run: () => stores.pages().delete(key), undo: () => writePageBlob(key, page) });
     }
     for (const collection of sources.collections) {
       const key = encodeKey(collection.path);

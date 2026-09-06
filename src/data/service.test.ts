@@ -1,4 +1,3 @@
-import { readFileSync, readdirSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeKey, stores } from "../store";
 import { resetBlobs } from "../test/blobs";
@@ -464,6 +463,20 @@ describe("collection summaries", () => {
     ]);
   });
 
+  // refs is caller supplied, so it can outgrow the 2 KB metadata cap. Losing the summary costs a
+  // read; failing the write would lose the collection.
+  it("is skipped rather than failing the save when the refs will not fit", async () => {
+    await saveCollection("/trip/items", [{ id: "a" }]);
+    const refs = Object.fromEntries([...Array(200)].map((_, n) => [`field${n}`, "/trip/other"]));
+    await setRefs("/trip/items", refs);
+
+    const found = await stores.data().getMetadata(encodeKey("/trip/items"));
+    expect(found!.metadata).toEqual({});
+    expect(await listCollections()).toEqual([
+      { path: "/trip/items", count: 1, refs, rev: 1, updatedAt: expect.any(Number) },
+    ]);
+  });
+
   // list() names a key, then the blob is gone by the time it is read. Nothing to summarize, and
   // nothing to report either.
   it("drops a key whose blob is no longer there", async () => {
@@ -478,15 +491,5 @@ describe("collection summaries", () => {
 
     expect(await listCollections()).toEqual([]);
     spy.mockRestore();
-  });
-
-  // A blob written anywhere but writeCollectionBlob is one whose summary can be wrong.
-  it("is written in exactly one place", async () => {
-    const files = readdirSync("src", { recursive: true, encoding: "utf8" })
-      .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
-      .filter((name) => name !== "data/service.ts");
-    const offenders = files.filter((name) => readFileSync(`src/${name}`, "utf8").includes("stores.data().setJSON"));
-
-    expect(offenders).toEqual([]);
   });
 });
