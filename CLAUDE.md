@@ -57,6 +57,11 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   `set_collection_refs` may cross bundles, a page may fetch any collection, and nothing is moved, renamed or
   deleted as a side effect of anything. A site whose data is all ungrouped is working correctly, and the tool text
   has to say so or a client will start "fixing" it.
+- **An absence marker never sits where a value could.** `owner` is `null` in JSON, and in tool text `ungrouped`
+  stands alone rather than following `owner `. A site with a page at `/ungrouped` must never emit a line a client
+  can read either way, and [bundles.test.ts](src/bundles.test.ts) publishes exactly that page to pin it. Same
+  reason a page that owns nothing and a path where nothing exists are different replies from `list_bundle`: one
+  lists the page, the other throws.
 - **`delete_bundle` is the only tool that deletes more than one thing.** Without `confirm` it deletes nothing and
   returns the inventory, including records in other bundles left pointing at nothing. `delete_page` still deletes
   exactly one page and reports where everything beneath it landed. Keep those two apart: collapsing them turns a

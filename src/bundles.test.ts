@@ -21,6 +21,17 @@ function page(path: string): Promise<string> {
   return call("publish_page", { path, content: `# ${path}`, overwrite: true });
 }
 
+// The owner as the tools actually report it, read back out of list_collections' text so the
+// matrix below tests the shipped surface rather than the rule in isolation.
+async function ownerReported(collectionPath: string): Promise<string | null> {
+  const line = (await call("list_collections"))
+    .split("\n")
+    .find((row) => row.startsWith(`${collectionPath}  `));
+  if (line === undefined) throw new Error(`No collection listed at ${collectionPath}`);
+  const match = line.match(/ {2}owner (\/\S*)/);
+  return match ? match[1] : null;
+}
+
 function upload(filename: string, path?: string): Promise<string> {
   return call("upload_asset", {
     filename,
@@ -35,7 +46,7 @@ describe("ownership through the tools", () => {
     await page("/bavaria");
     await saveCollection("/bavaria-lessons/lessons", [{ id: "one" }]);
 
-    expect(await call("list_collections")).toContain("owner ungrouped");
+    expect(await call("list_collections")).toContain("  ungrouped");
   });
 
   it("credits the page that really is above it", async () => {
@@ -49,7 +60,7 @@ describe("ownership through the tools", () => {
   it("gives the root page nothing", async () => {
     await page("/");
     await saveCollection("/trip/items", [{ id: "one" }]);
-    expect(await call("list_collections")).toContain("owner ungrouped");
+    expect(await call("list_collections")).toContain("  ungrouped");
   });
 
   it("hands a resource to the deepest page above it", async () => {
@@ -94,14 +105,14 @@ describe("ungrouped listing", () => {
     await saveCollection("/bavaria/lessons", [{ id: "one" }]);
     const listed = await call("list_ungrouped");
     expect(listed).toContain("/bavaria/lessons");
-    expect(listed).toContain("would be owned by /bavaria");
+    expect(listed).toContain("Publish a page at /bavaria to own these 1:");
   });
 
   it("does not promise a page would rescue a hash-keyed asset", async () => {
     await upload("coburg.png");
     const listed = await call("list_ungrouped");
     expect(listed).toContain("stored under a content hash");
-    expect(listed).not.toContain("would be owned by");
+    expect(listed).not.toContain("Publish a page at");
   });
 
   it("says so plainly when everything is grouped", async () => {
@@ -140,7 +151,7 @@ describe("assets", () => {
     const key = url.split("/assets/")[1];
     expect(key).toMatch(/^[0-9a-f]{32}\.png$/);
     expect((await handleAsset(new Request(`https://example.com/assets/${key}`))).status).toBe(200);
-    expect(await call("list_assets")).toContain("owner ungrouped");
+    expect(await call("list_assets")).toContain("  ungrouped");
   });
 
   it("keeps an asset filename whole where the page normalizer would eat it", async () => {
@@ -166,8 +177,8 @@ describe("delete_page", () => {
     await upload("coburg.jpg", "/trip/images/coburg.jpg");
 
     const reply = await call("delete_page", { path: "/trip" });
-    expect(reply).toContain("collection /trip/items  2 items  now ungrouped");
-    expect(reply).toContain("asset /trip/images/coburg.jpg  now ungrouped");
+    expect(reply).toContain("collection /trip/items  2 items  ungrouped");
+    expect(reply).toContain("asset /trip/images/coburg.jpg  ungrouped");
     expect((await getCollection("/trip/items"))?.items).toHaveLength(2);
   });
 
@@ -177,7 +188,7 @@ describe("delete_page", () => {
     await saveCollection("/trip/day1/items", [{ id: "one" }]);
 
     expect(await call("delete_page", { path: "/trip/day1" })).toContain(
-      "collection /trip/day1/items  1 items  now /trip",
+      "collection /trip/day1/items  1 items  owner /trip",
     );
   });
 });
@@ -254,5 +265,146 @@ describe("grouping is never a boundary", () => {
     const response = await handleData(new Request("https://example.com/data/loose/items.json"));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([{ id: "one" }]);
+  });
+});
+
+// Mirrors section 8 of the refinements spec: the segment-boundary matrix, stated as tests
+// rather than as checks against a live site.
+describe("segment-boundary matrix", () => {
+  it("page /bavaria does not own /bavaria-lessons/lessons", async () => {
+    await page("/bavaria");
+    await saveCollection("/bavaria-lessons/lessons", [{ id: "one" }]);
+    expect(await ownerReported("/bavaria-lessons/lessons")).toBeNull();
+  });
+
+  it("page /bavaria owns /bavaria/lessons", async () => {
+    await page("/bavaria");
+    await saveCollection("/bavaria/lessons", [{ id: "one" }]);
+    expect(await ownerReported("/bavaria/lessons")).toBe("/bavaria");
+  });
+
+  it("with both pages present neither claims the other's collection", async () => {
+    await page("/bavaria");
+    await page("/bavaria-lessons");
+    await saveCollection("/bavaria/lessons", [{ id: "one" }]);
+    await saveCollection("/bavaria-lessons/lessons", [{ id: "two" }]);
+
+    expect(await ownerReported("/bavaria/lessons")).toBe("/bavaria");
+    expect(await ownerReported("/bavaria-lessons/lessons")).toBe("/bavaria-lessons");
+  });
+
+  it("page /trip does not own /tripwire/items", async () => {
+    await page("/trip");
+    await saveCollection("/tripwire/items", [{ id: "one" }]);
+    expect(await ownerReported("/tripwire/items")).toBeNull();
+  });
+
+  it("page / owns no collection", async () => {
+    await page("/");
+    await saveCollection("/anything/at/all", [{ id: "one" }]);
+    expect(await ownerReported("/anything/at/all")).toBeNull();
+  });
+
+  it("the deeper of two nested pages wins", async () => {
+    await page("/trip");
+    await page("/trip/day1");
+    await saveCollection("/trip/day1/items", [{ id: "one" }]);
+    expect(await ownerReported("/trip/day1/items")).toBe("/trip/day1");
+  });
+
+  it("a collection whose path equals a page path is owned by that page", async () => {
+    await page("/trip");
+    await saveCollection("/trip", [{ id: "one" }]);
+    expect(await ownerReported("/trip")).toBe("/trip");
+  });
+});
+
+describe("the absence marker never sits where a page path goes", () => {
+  it("keeps a page at /ungrouped distinct from having no owner", async () => {
+    await page("/ungrouped");
+    await saveCollection("/ungrouped/items", [{ id: "one" }]);
+    await saveCollection("/loose/items", [{ id: "two" }]);
+
+    const listed = await call("list_collections");
+    expect(listed).toContain("owner /ungrouped");
+    expect(listed).not.toContain("owner ungrouped");
+    expect(await ownerReported("/ungrouped/items")).toBe("/ungrouped");
+    expect(await ownerReported("/loose/items")).toBeNull();
+  });
+
+  it("reports null rather than a word on the served index", async () => {
+    await saveCollection("/loose/items", [{ id: "one" }]);
+    const body = await (await handleData(new Request("https://example.com/data/_collections.json"))).json();
+    expect(body).toEqual([expect.objectContaining({ owner: null })]);
+  });
+
+  it("says ungrouped nowhere in an owner position", async () => {
+    await page("/trip");
+    await saveCollection("/trip/items", [{ id: "one" }]);
+    await saveCollection("/loose/items", [{ id: "two" }]);
+    await upload("coburg.png");
+
+    for (const reply of [
+      await call("list_collections"),
+      await call("list_assets"),
+      await call("list_bundle", { path: "/trip" }),
+      await call("delete_page", { path: "/trip" }),
+    ])
+      expect(reply).not.toContain("owner ungrouped");
+  });
+});
+
+describe("list_bundle edges", () => {
+  it("errors where nothing is published at all", async () => {
+    await expect(call("list_bundle", { path: "/nope" })).rejects.toThrow(/Nothing is published at \/nope/);
+  });
+
+  it("succeeds for a page that owns nothing, and says so", async () => {
+    await page("/hello");
+    const reply = await call("list_bundle", { path: "/hello" });
+    expect(reply).toContain("page /hello");
+    expect(reply).toContain("/hello owns no collections or assets yet.");
+  });
+
+  it("lists a path that has resources but no page", async () => {
+    await saveCollection("/trip/items", [{ id: "one" }]);
+    const reply = await call("list_bundle", { path: "/trip" });
+    expect(reply).toContain("No page is published at /trip");
+    expect(reply).toContain("collection /trip/items");
+  });
+
+  it("shows declared refs on a collection", async () => {
+    await page("/trip");
+    await saveCollection("/trip/sections", [{ id: "day1" }]);
+    await saveCollection("/trip/items", [{ id: "one", section: "day1" }]);
+    await call("set_collection_refs", { path: "/trip/items", refs: { section: "/trip/sections" } });
+
+    expect(await call("list_bundle", { path: "/trip" })).toContain("refs section->/trip/sections");
+  });
+
+  it("says plainly that the root page owns nothing", async () => {
+    await page("/");
+    await saveCollection("/loose/items", [{ id: "one" }]);
+    expect(await call("list_bundle", { path: "/" })).toContain("A page at / owns nothing by rule");
+  });
+});
+
+describe("list_ungrouped groups by the fix", () => {
+  it("gathers everything one page would rescue", async () => {
+    await saveCollection("/trip/sections", [{ id: "a" }]);
+    await saveCollection("/trip/filters", [{ id: "b" }]);
+    await saveCollection("/trip/items", [{ id: "c" }]);
+    await saveCollection("/bavaria/lessons", [{ id: "d" }]);
+
+    const listed = await call("list_ungrouped");
+    expect(listed).toContain("Publish a page at /bavaria to own these 1:");
+    expect(listed).toContain("Publish a page at /trip to own these 3:");
+    expect(listed.indexOf("/bavaria")).toBeLessThan(listed.indexOf("Publish a page at /trip"));
+  });
+
+  it("gathers a rooted asset alongside the collections it belongs with", async () => {
+    await saveCollection("/trip/items", [{ id: "a" }]);
+    await upload("coburg.jpg", "/trip/images/coburg.jpg");
+    expect(await call("list_ungrouped")).toContain("Publish a page at /trip to own these 2:");
   });
 });

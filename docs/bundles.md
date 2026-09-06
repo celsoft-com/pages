@@ -142,14 +142,22 @@ ungrouped, and its owner has the full tool surface available to rearrange them w
 
 ## 8. Read operations
 
-- **`list_collections` and `list_assets` gain an `owner` field**: the page path that owns each entry, or
-  null. Nearest page, per section 4.
+- **`list_collections` and `list_assets` gain an `owner` field**: the full normalized page path that owns each
+  entry, or null. Nearest page, per section 4. A client must be able to pass the value straight to `get_page`.
+- **Absence is never a word in the value position.** `owner` is null in JSON. In tool text the marker `ungrouped`
+  stands alone rather than following `owner `, so a site with a page published at `/ungrouped` stays unambiguous.
 - **New operation, bundle listing**: given a path, return every page, collection and asset it contains,
-  with item counts, revs, sizes and public URLs. Includes resources owned by deeper pages, and those
-  deeper pages themselves. This is the operation the change exists to make possible.
-- **New operation, ungrouped listing**: every collection and asset with no page above it, and for each,
-  the path that would own it if a page were published there. Read-only. This is what an owner uses to
-  see what to move and to confirm they are done.
+  with item counts, revs, declared refs, sizes and public URLs. Includes resources owned by deeper pages, and
+  those deeper pages themselves. This is the operation the change exists to make possible.
+  - A page that owns nothing lists the page and says so. A path where nothing at all is published is an error.
+    Those are different situations and a client has to tell them apart.
+  - A path with resources but no page lists them and says no page is published there.
+  - `/` lists the whole site, because a bundle is containment and `/` contains everything. It says in the reply
+    that the root page owns nothing by rule, so nothing there reads as ownership.
+- **New operation, ungrouped listing**: every collection and asset with no page above it, grouped by the path
+  that would own it if a page were published there, because resources needing the same fix are one decision
+  rather than several. Assets stored under a content hash are listed apart, since no page can ever own them.
+  Read-only. This is what an owner uses to see what to move and to confirm they are done.
 - **`/data/_collections.json` gains the same `owner` field.** The served index already lets a page
   discover collections over plain HTTP with no tool access, so grouping belongs there too.
 
@@ -203,6 +211,10 @@ every collection beneath it, every asset beneath it. The path need not have a pa
 - An asset uploaded at `/germanfunstuff/images/coburg.jpg` is owned by `/germanfunstuff` and served at
   `/assets/germanfunstuff/images/coburg.jpg`.
 - An asset uploaded before this release keeps its exact URL and reports as ungrouped.
+- No tool reply or served endpoint puts the word `ungrouped` where a page path goes, with a page at `/ungrouped`
+  published to prove it.
+- `list_bundle` on a page that owns nothing succeeds; on a path where nothing is published it errors.
+- The full segment-boundary matrix is covered by automated tests, not by inspection of a live site.
 - An asset named `index.html` or `notes.md` keeps its filename.
 - Against the current site: the release changes zero bytes of stored data, `GET /data/trip/items.json`
   still returns all 195 items, `put_item` to `/trip/items` still succeeds, and the ungrouped listing

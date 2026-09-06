@@ -122,6 +122,17 @@ function project(item: Item, fields: unknown): Record<string, unknown> {
   return picked;
 }
 
+// "ungrouped" stands alone rather than sitting where a page path goes: a site with a page at
+// /ungrouped must never produce a line a client could read either way.
+function describeOwner(owner: string | null): string {
+  return owner === null ? "ungrouped" : `owner ${owner}`;
+}
+
+function refsOf(refs: Record<string, string>): string {
+  const entries = Object.entries(refs);
+  return entries.length === 0 ? "" : `  refs ${entries.map(([f, t]) => `${f}->${t}`).join(", ")}`;
+}
+
 function describeBundle(plan: BundlePlan, verb: string): string {
   const lines: string[] = [];
   for (const page of plan.pages) lines.push(`page ${page.path}  ${page.title}`);
@@ -244,12 +255,12 @@ export const TOOLS: ToolDefinition[] = [
       for (const page of contents.pages)
         if (page.path !== path) moved.push(`page ${page.path}  kept`);
       for (const collection of contents.collections)
-        moved.push(`collection ${collection.path}  ${collection.count} items  now ${ownerOf(collection.path, remaining) ?? "ungrouped"}`);
+        moved.push(`collection ${collection.path}  ${collection.count} items  ${describeOwner(ownerOf(collection.path, remaining))}`);
       for (const asset of contents.assets)
-        if (asset.path) moved.push(`asset ${asset.path}  now ${ownerOf(asset.path, remaining) ?? "ungrouped"}`);
+        if (asset.path) moved.push(`asset ${asset.path}  ${describeOwner(ownerOf(asset.path, remaining))}`);
 
       if (moved.length === 0) return `Deleted ${path}. Nothing else was under it.`;
-      return `Deleted ${path}. Everything below it is untouched:\n${moved.join("\n")}`;
+      return `Deleted ${path}. Everything below it is untouched, and now belongs as follows:\n${moved.join("\n")}`;
     },
   },
   {
@@ -289,7 +300,7 @@ export const TOOLS: ToolDefinition[] = [
       const url = `${ctx.siteUrl}${assetUrlFor(asset)}`;
       if (!asset.path) return url;
       const owner = ownerOf(asset.path, await pagePaths());
-      return `${url}\npath ${asset.path}  owner ${owner ?? "ungrouped"}`;
+      return `${url}\npath ${asset.path}  ${describeOwner(owner)}`;
     },
   },
   {
@@ -307,7 +318,7 @@ export const TOOLS: ToolDefinition[] = [
         .map(
           (a) =>
             `${a.filename}  ${ctx.siteUrl}/assets/${a.path ? a.path.replace(/^\//, "") : a.key}  (${a.size} bytes)  ` +
-            `owner ${a.owner ?? "ungrouped"}`,
+            `${describeOwner(a.owner)}`,
         )
         .join("\n");
     },
@@ -336,22 +347,42 @@ export const TOOLS: ToolDefinition[] = [
     ),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
-      const contents = await bundleContents(path);
+      const [contents, page] = await Promise.all([bundleContents(path), getPage(path)]);
 
-      const lines: string[] = [];
-      for (const page of contents.pages)
-        lines.push(`page ${page.path}  ${page.title}  ${urlFor(ctx, page.path)}  owner ${page.owner ?? "none above it"}`);
+      const pages: string[] = [];
+      for (const entry of contents.pages)
+        pages.push(`page ${entry.path}  ${entry.title}  ${urlFor(ctx, entry.path)}  ${describeOwner(entry.owner)}`);
+
+      const resources: string[] = [];
       for (const c of contents.collections)
-        lines.push(
-          `collection ${c.path}  ${c.count} items  rev ${c.rev}  ${dataUrl(ctx, c.path)}  owner ${c.owner ?? "ungrouped"}`,
+        resources.push(
+          `collection ${c.path}  ${c.count} items  rev ${c.rev}${refsOf(c.refs)}  ${dataUrl(ctx, c.path)}  ${describeOwner(c.owner)}`,
         );
       for (const a of contents.assets)
-        lines.push(
-          `asset ${a.path}  ${a.size} bytes  ${ctx.siteUrl}/assets/${a.path!.replace(/^\//, "")}  owner ${a.owner ?? "ungrouped"}`,
+        resources.push(
+          `asset ${a.path}  ${a.size} bytes  ${ctx.siteUrl}/assets/${a.path!.replace(/^\//, "")}  ${describeOwner(a.owner)}`,
         );
 
-      if (lines.length === 0) return `Nothing is at or under ${path}.`;
-      return lines.join("\n");
+      // A page that owns nothing and a path where nothing exists are different situations.
+      if (!page && pages.length === 0 && resources.length === 0)
+        throw new Error(
+          `Nothing is published at ${path}: no page there, and no collection or asset under it. ` +
+            `Call list_pages or list_ungrouped to see what does exist.`,
+        );
+
+      const out: string[] = [];
+      if (path === "/")
+        out.push(
+          "Everything on the site, listed by path. A page at / owns nothing by rule, so every owner named below " +
+            "is a deeper page or ungrouped.",
+        );
+      else if (!page)
+        out.push(`No page is published at ${path}. These are grouped under it by path alone.`);
+
+      out.push(...pages, ...resources);
+      if (page && resources.length === 0)
+        out.push(`${path} owns no collections or assets yet.`);
+      return out.join("\n");
     },
   },
   {
@@ -370,18 +401,26 @@ export const TOOLS: ToolDefinition[] = [
       if (collections.length === 0 && rooted.length === 0 && hashed.length === 0)
         return "Every collection and asset on this site is under a page.";
 
-      const lines: string[] = [];
-      for (const c of collections)
-        lines.push(
-          `collection ${c.path}  ${c.count} items  would be owned by ${c.wouldBeOwner ?? "nothing"} if a page were published there`,
+      // Resources needing the same fix travel together: four /trip/* collections are one
+      // decision, not four.
+      const groups = new Map<string, string[]>();
+      const add = (owner: string | null, line: string) => {
+        const key = owner ?? "/";
+        groups.set(key, [...(groups.get(key) ?? []), line]);
+      };
+      for (const c of collections) add(c.wouldBeOwner, `  collection ${c.path}  ${c.count} items  rev ${c.rev}`);
+      for (const a of rooted) add(a.wouldBeOwner, `  asset ${a.path}  ${a.size} bytes`);
+
+      const out: string[] = [];
+      for (const [owner, entries] of [...groups].sort(([a], [b]) => a.localeCompare(b)))
+        out.push(`Publish a page at ${owner} to own these ${entries.length}:`, ...entries);
+
+      if (hashed.length > 0)
+        out.push(
+          `No page can ever own these ${hashed.length}: they are stored under a content hash rather than a path.`,
+          ...hashed.map((a) => `  asset ${a.filename}  key ${a.key}  ${a.size} bytes`),
         );
-      for (const a of rooted)
-        lines.push(
-          `asset ${a.path}  would be owned by ${a.wouldBeOwner ?? "nothing"} if a page were published there`,
-        );
-      for (const a of hashed)
-        lines.push(`asset ${a.filename}  key ${a.key}  stored under a content hash, so it can be in no bundle`);
-      return lines.join("\n");
+      return out.join("\n");
     },
   },
   {
@@ -431,7 +470,7 @@ export const TOOLS: ToolDefinition[] = [
           const refs = Object.entries(c.refs);
           const declared = refs.length > 0 ? `  refs ${refs.map(([f, t]) => `${f}->${t}`).join(", ")}` : "";
           return (
-            `${c.path}  ${c.count} items  rev ${c.rev}${declared}  owner ${c.owner ?? "ungrouped"}  ` +
+            `${c.path}  ${c.count} items  rev ${c.rev}${declared}  ${describeOwner(c.owner)}  ` +
             `served at ${dataUrl(ctx, c.path)}`
           );
         })
