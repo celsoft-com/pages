@@ -197,9 +197,20 @@ describe("delete_item", () => {
 describe("reorder_items", () => {
   beforeEach(seed);
 
-  it("moves the named ids to the front and echoes the new order", async () => {
+  // Naming what moved and counting the rest: echoing every id would return the collection to answer
+  // a call that named one item.
+  it("moves the named ids to the front and reports what moved", async () => {
     expect(await call("reorder_items", { path: "/products", ids: ["boot"] })).toBe(
-      "Order in /products: boot, coat, hat",
+      "Order in /products: boot, then the other 2 items in their previous order.",
+    );
+
+    const listed = await json("list_items", { path: "/products", fields: [] });
+    expect(listed.items.map((i: { id: string }) => i.id)).toEqual(["boot", "coat", "hat"]);
+  });
+
+  it("counts no others when every id is named", async () => {
+    expect(await call("reorder_items", { path: "/products", ids: ["boot", "hat", "coat"] })).toBe(
+      "Order in /products: boot, hat, coat.",
     );
   });
 
@@ -373,7 +384,7 @@ describe("stale writes", () => {
   it("gives list_items a collection rev that reorder_items accepts", async () => {
     const listed = await json("list_items", { path: "/products" });
     expect(await call("reorder_items", { path: "/products", ids: ["boot"], if_rev: listed.rev })).toContain(
-      "boot, coat, hat",
+      "Order in /products: boot",
     );
   });
 

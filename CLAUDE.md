@@ -119,7 +119,10 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   owner that choice, and the page tools repeat it. Weaken that steering and Claude will paste data into pages again.
 - **Reads are shaped to fit a context window.** `list_items` projects and pages, `count_items` answers questions
   about shape without returning records at all, and their descriptions name each other so a client picks the cheap
-  one. A tool that returns a few hundred records of prose to answer a question about counts is a bug.
+  one. A tool that returns a few hundred records of prose to answer a question about counts is a bug. That applies
+  to the reply as much as the request: `reorder_items` names the ids that moved and counts the rest rather than
+  echoing the collection, and every JSON reply is written compact, because indenting one page of `list_items`
+  measured 30% more characters for nothing a reader of it needs.
 - **Items change one at a time.** Every data tool reads or writes a single item, so editing one costs one small call.
   Never add a tool that makes a client send a whole collection back to change one field.
 - **The served contract is public API.** Collection `/a/b` is served at `/data/a/b.json` as a bare array, each item

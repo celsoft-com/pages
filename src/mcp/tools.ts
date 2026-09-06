@@ -202,9 +202,7 @@ async function transferReply(ctx: ToolContext, transfer: Transfer): Promise<stri
       pages_to_update: stale,
       ...(rest.length === 0 ? {} : { rest_of_bundle: rest }),
       notes,
-    },
-    null,
-    2,
+    }
   );
 }
 
@@ -283,8 +281,6 @@ export const TOOLS: ToolDefinition[] = [
       if (!page) throw new Error(`No page exists at ${path}`);
       return JSON.stringify(
         { path: page.path, title: page.title, format: page.contentType, content: page.body },
-        null,
-        2,
       );
     },
   },
@@ -591,10 +587,7 @@ export const TOOLS: ToolDefinition[] = [
           total: collection.items.length,
           offset,
           items: page.map((item) => ({ id: item.id, rev: revOf(collection, item.id), item: project(item, args.fields) })),
-        },
-        null,
-        2,
-      );
+        });
     },
   },
   {
@@ -701,8 +694,6 @@ export const TOOLS: ToolDefinition[] = [
       if (!item) throw new Error(`No item ${args.id} in ${path}`);
       return JSON.stringify(
         { path, url: dataUrl(ctx, path), id: item.id, rev: revOf(collection!, item.id), item },
-        null,
-        2,
       );
     },
   },
@@ -802,8 +793,13 @@ export const TOOLS: ToolDefinition[] = [
       const path = requirePath(args.path);
       if (!Array.isArray(args.ids) || args.ids.length === 0) throw new Error("ids must be a non-empty array");
       const ifRev = args.if_rev === undefined ? undefined : Number(args.if_rev);
-      const items = await reorderItems(path, args.ids.map(String), ifRev);
-      return `Order in ${path}: ${items.map((i) => i.id).join(", ")}`;
+      const moved = args.ids.map(String);
+      const items = await reorderItems(path, moved, ifRev);
+      const rest = items.length - moved.length;
+      // Naming the ids that did not move would return the whole collection to answer a call that named one item.
+      return `Order in ${path}: ${moved.join(", ")}${
+        rest > 0 ? `, then the other ${rest} item${rest === 1 ? "" : "s"} in their previous order` : ""
+      }.`;
     },
   },
   {
@@ -849,7 +845,7 @@ export const TOOLS: ToolDefinition[] = [
       }
 
       if (matches.length === 0) return `No items match ${args.query}`;
-      return JSON.stringify({ total: matches.length, matches: matches.slice(0, limit) }, null, 2);
+      return JSON.stringify({ total: matches.length, matches: matches.slice(0, limit) });
     },
   },
   {
@@ -930,10 +926,7 @@ export const TOOLS: ToolDefinition[] = [
           compared: candidates.length,
           skipped: inScope.length - candidates.length,
           results,
-        },
-        null,
-        2,
-      );
+        });
     },
   },
   {
@@ -1035,8 +1028,6 @@ export const TOOLS: ToolDefinition[] = [
       const [settings, pages] = await Promise.all([getSettings(), listPages()]);
       return JSON.stringify(
         { title: settings.title, description: settings.description, url: ctx.siteUrl, pages: pages.length },
-        null,
-        2,
       );
     },
   },
