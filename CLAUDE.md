@@ -54,6 +54,9 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   The `startsWith` version passes most tests, so [bundles.test.ts](src/bundles.test.ts) pins the neighbour cases;
   in `delete_bundle` the same bug destroys a bundle nobody named. Resist reintroducing an owner or a "belongs to"
   field: the path already says it, and a second vocabulary for the same fact is what made this hard the first time.
+  That includes the words: four tool descriptions went on saying a page owned what sat under it long after the
+  field was gone, which is worse than a stale comment because the tool text is where a client learns the model.
+  [tools.test.ts](src/mcp/tools.test.ts) now fails on ownership vocabulary anywhere but the paragraph denying it.
 - **Nothing may hold the whole site.** `/` is not a bundle: `list_bundle`, `delete_bundle` and every bundle
   transfer refuse it at either end. That is
   the whole of the rule. A page, collection or asset may still sit at `/` like any other resource — it is simply

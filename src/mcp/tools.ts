@@ -77,7 +77,7 @@ const SERVING =
   "GET /data/_collections.json for the index of every collection: an array of {path, url, count, rev, updatedAt} " +
   "sorted by path, so a page can discover collections over plain HTTP with no access to these tools.";
 
-const BUNDLES =
+export const BUNDLES =
   "Organization is a folder tree and nothing more. A path is a bundle and holds everything at or under it: /trip " +
   "holds /trip/items, /trip/images/coburg.jpg and /trip/day1/items alike, and /trip/day1 holds that last one too. " +
   "Pages, collections and assets are all just resources at paths. None of them owns or belongs to another, there " +
@@ -413,24 +413,22 @@ export const TOOLS: ToolDefinition[] = [
     what: "page",
     lead:
       "Duplicate a page at another path, body byte for byte. The copy keeps every URL written into its body, so it " +
-      "fetches the original's collections and assets until you edit it, and it owns whatever already sits under its " +
-      "new path.",
+      "fetches the original's collections and assets until you edit it.",
   }),
   transferTool("page", "move", {
     title: "Move or rename a page",
     what: "page",
     lead:
-      "Rename a page. Collections and assets under its old path stay exactly where they are and only change owner; " +
-      "the reply names every one of them. The old URL stops resolving at once, so any link to it breaks. To take a " +
-      "page and its data together, use move_bundle.",
+      "Rename a page. Collections and assets under its old path are untouched and stay exactly where they are; the " +
+      "reply names every one of them, because the page no longer sits in the same bundle as them. The old URL stops " +
+      "resolving at once, so any link to it breaks. To take a page and its data together, use move_bundle.",
   }),
   transferTool("page", "delete", {
     title: "Delete a page",
     what: "page",
     lead:
-      "Remove one page. Collections and assets under its path are left exactly as they are; only their owner " +
-      "changes, to whatever page remains above them or to none, and the reply names every one of them. To delete a " +
-      "page together with everything under it, use delete_bundle.",
+      "Remove one page. Collections and assets under its path are untouched and stay exactly where they are, and " +
+      "the reply names every one of them. To delete a page together with everything under it, use delete_bundle.",
   }),
   {
     name: "upload_asset",
@@ -475,7 +473,8 @@ export const TOOLS: ToolDefinition[] = [
     name: "list_assets",
     title: "List assets",
     description:
-      "List uploaded images and files with their public URLs and, where they have one, their bundle path. " +
+      "List uploaded images and files with their public URLs and, where they have one, their path. An asset " +
+      "uploaded before paths existed is named by a hash of its bytes instead and sits in no bundle. " +
       BUNDLES,
     inputSchema: object({}),
     handler: async (_args, ctx) => {
@@ -514,9 +513,8 @@ export const TOOLS: ToolDefinition[] = [
     name: "list_bundle",
     title: "List a bundle",
     description:
-      "List every page, collection and asset at or under one path, each with the page that owns it. Includes " +
-      "resources owned by deeper pages, and those deeper pages themselves. Use it to see everything one page's " +
-      "content is made of. " +
+      "List every page, collection and asset at or under one path, including deeper pages and everything under " +
+      "them. Use it to see everything one page's content is made of. " +
       BUNDLES,
     inputSchema: object(
       { path: { type: "string", description: "Bundle path, for example /germanfunstuff. It need not have a page." } },
@@ -541,7 +539,7 @@ export const TOOLS: ToolDefinition[] = [
           `asset ${a.path}  ${a.size} bytes  ${ctx.siteUrl}/assets/${a.path!.replace(/^\//, "")}`,
         );
 
-      // A page that owns nothing and a path where nothing exists are different situations.
+      // A bundle holding a page and nothing else, and a path where nothing exists, are different situations.
       if (!page && pages.length === 0 && resources.length === 0)
         throw new Error(
           `Nothing is published at ${path}: no page there, and no collection or asset under it. ` +

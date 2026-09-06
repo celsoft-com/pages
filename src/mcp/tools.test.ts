@@ -4,7 +4,7 @@ import { saveCollection } from "../data/service";
 import { getPage, savePage } from "../pages/service";
 import { encodeKey, stores } from "../store";
 import { resetBlobs } from "../test/blobs";
-import { TOOLS, type ToolContext } from "./tools";
+import { BUNDLES, TOOLS, type ToolContext } from "./tools";
 
 const ctx: ToolContext = { siteUrl: "https://example.com" };
 
@@ -48,6 +48,16 @@ describe("tool definitions", () => {
 
   it("exposes every page tool", () => {
     for (const name of pageTools) expect(TOOLS.map((t) => t.name)).toContain(name);
+  });
+
+  // BUNDLES is the authoritative paragraph and says these words to deny them. Anywhere else they
+  // describe a relation this model does not have, and the tools are where the model is taught.
+  it("never says a page owns anything, outside the paragraph that denies it", () => {
+    const claims = ["owns it", "owned by", "owning page", "owns whatever", "change owner", "their owner"];
+    for (const tool of TOOLS) {
+      const text = tool.description.replace(BUNDLES, "");
+      for (const claim of claims) expect(text, `${tool.name}: ${claim}`).not.toContain(claim);
+    }
   });
 
   it("gives every tool a unique name", () => {
