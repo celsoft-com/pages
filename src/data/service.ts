@@ -54,20 +54,42 @@ function canonical(value: unknown): string {
   return `{${entries.map(([key, inner]) => `${JSON.stringify(key)}:${canonical(inner)}`).join(",")}}`;
 }
 
+// Bumped whenever CollectionSummary gains a field. Metadata written under an older number is not
+// trusted or patched up: the blob is read and the summary derived, which is slower and always right.
+const SUMMARY_VERSION = 1;
+
+function summarize(collection: Collection): CollectionSummary & { v: number } {
+  return {
+    v: SUMMARY_VERSION,
+    path: collection.path,
+    count: collection.items.length,
+    refs: collection.refs,
+    rev: collection.rev,
+    updatedAt: collection.updatedAt,
+  };
+}
+
+// The only way a collection blob is written, transfer.ts included. The summary rides along as
+// metadata so listCollections can answer without reading every item of every collection, and it
+// cannot drift from the blob because nothing else writes one.
+export async function writeCollectionBlob(key: string, collection: Collection): Promise<void> {
+  await stores.data().setJSON(key, collection, { metadata: { ...summarize(collection) } });
+}
+
 export async function listCollections(): Promise<CollectionSummary[]> {
   const { blobs } = await stores.data().list();
   const summaries = await Promise.all(
     blobs.map(async (blob) => {
+      const found = await stores.data().getMetadata(blob.key);
+      const summary = found?.metadata as unknown as (CollectionSummary & { v?: number }) | undefined;
+      if (summary?.v === SUMMARY_VERSION) {
+        const { v: _version, ...rest } = summary;
+        return rest satisfies CollectionSummary;
+      }
       const stored = (await stores.data().get(blob.key, { type: "json" })) as Collection | null;
       if (!stored) return null;
-      const collection = hydrate(stored);
-      return {
-        path: collection.path,
-        count: collection.items.length,
-        refs: collection.refs,
-        rev: collection.rev,
-        updatedAt: collection.updatedAt,
-      } satisfies CollectionSummary;
+      const { v: _v, ...rest } = summarize(hydrate(stored));
+      return rest satisfies CollectionSummary;
     }),
   );
   return summaries.filter((c): c is CollectionSummary => c !== null).sort((a, b) => a.path.localeCompare(b.path));
@@ -98,7 +120,7 @@ export async function saveCollection(path: string, items: Item[]): Promise<Colle
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-  await stores.data().setJSON(encodeKey(normalized), collection);
+  await writeCollectionBlob(encodeKey(normalized), collection);
   return collection;
 }
 
@@ -263,7 +285,7 @@ export async function setRefs(
     cleaned[field] = normalizeCollectionPath(target);
   }
 
-  await stores.data().setJSON(encodeKey(normalized), { ...collection, refs: cleaned, updatedAt: Date.now() });
+  await writeCollectionBlob(encodeKey(normalized), { ...collection, refs: cleaned, updatedAt: Date.now() });
 
   const missing: string[] = [];
   for (const target of new Set(Object.values(cleaned)))

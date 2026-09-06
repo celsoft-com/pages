@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeKey, stores } from "../store";
 import { resetBlobs } from "../test/blobs";
 import type { Item } from "../types";
@@ -422,5 +423,70 @@ describe("collections stored before a field existed", () => {
       /not an id/,
     );
     expect((await brokenRefs("/trip/items")).broken).toEqual([]);
+  });
+});
+
+describe("collection summaries", () => {
+  it("rides along with the blob, written in the same call", async () => {
+    await saveCollection("/trip/items", [{ id: "a" }, { id: "b" }]);
+    const found = await stores.data().getMetadata(encodeKey("/trip/items"));
+
+    expect(found!.metadata).toMatchObject({ path: "/trip/items", count: 2, rev: 1 });
+  });
+
+  it("answers listCollections without touching the items", async () => {
+    await saveCollection("/trip/items", [{ id: "a" }, { id: "b" }]);
+
+    const real = stores.data();
+    const spy = vi.spyOn(stores, "data").mockReturnValue({
+      ...real,
+      get: async () => {
+        throw new Error("the items were read to build a summary");
+      },
+    } as unknown as ReturnType<typeof stores.data>);
+
+    expect(await listCollections()).toEqual([
+      { path: "/trip/items", count: 2, refs: {}, rev: 1, updatedAt: expect.any(Number) },
+    ]);
+    spy.mockRestore();
+  });
+
+  // The summary is a cache in front of the blob, so every miss has to end at the blob.
+  it("ignores a summary written under an older shape and reads the items", async () => {
+    await stores.data().setJSON(
+      encodeKey("/trip/items"),
+      { path: "/trip/items", items: [{ id: "a" }, { id: "b" }, { id: "c" }], createdAt: 1, updatedAt: 1 },
+      { metadata: { v: 0, path: "/trip/items", count: 99, refs: {}, rev: 7, updatedAt: 1 } },
+    );
+
+    expect(await listCollections()).toEqual([
+      { path: "/trip/items", count: 3, refs: {}, rev: 0, updatedAt: 1 },
+    ]);
+  });
+
+  // list() names a key, then the blob is gone by the time it is read. Nothing to summarize, and
+  // nothing to report either.
+  it("drops a key whose blob is no longer there", async () => {
+    await saveCollection("/trip/items", [{ id: "a" }]);
+
+    const real = stores.data();
+    const spy = vi.spyOn(stores, "data").mockReturnValue({
+      ...real,
+      getMetadata: async () => null,
+      get: async () => null,
+    } as unknown as ReturnType<typeof stores.data>);
+
+    expect(await listCollections()).toEqual([]);
+    spy.mockRestore();
+  });
+
+  // A blob written anywhere but writeCollectionBlob is one whose summary can be wrong.
+  it("is written in exactly one place", async () => {
+    const files = readdirSync("src", { recursive: true, encoding: "utf8" })
+      .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+      .filter((name) => name !== "data/service.ts");
+    const offenders = files.filter((name) => readFileSync(`src/${name}`, "utf8").includes("stores.data().setJSON"));
+
+    expect(offenders).toEqual([]);
   });
 });

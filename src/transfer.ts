@@ -1,6 +1,12 @@
 import { assetKeyFor, getAsset, listAssets } from "./assets/service";
 import { contains, segmentsOf } from "./bundle";
-import { getCollection, listCollections, MANIFEST_PATH, normalizeCollectionPath } from "./data/service";
+import {
+  getCollection,
+  listCollections,
+  MANIFEST_PATH,
+  normalizeCollectionPath,
+  writeCollectionBlob,
+} from "./data/service";
 import { ROOT_IS_NOT_A_BUNDLE, referencesInto, type BrokenReference } from "./inventory";
 import { ROOT_BUNDLE, normalizeAssetPath, normalizePath } from "./pages/path";
 import { findInPages, getPage, listPages, type PageMatch } from "./pages/service";
@@ -270,8 +276,8 @@ export async function applyTransfer(plan: {
     };
     mark(transfer, "collection", collection.path, prior !== null);
     writes.push({
-      run: () => stores.data().setJSON(key, next),
-      undo: () => (prior ? stores.data().setJSON(key, prior) : stores.data().delete(key)),
+      run: () => writeCollectionBlob(key, next),
+      undo: () => (prior ? writeCollectionBlob(key, prior) : stores.data().delete(key)),
     });
   }
 
@@ -305,7 +311,7 @@ export async function applyTransfer(plan: {
     }
     for (const collection of sources.collections) {
       const key = encodeKey(collection.path);
-      writes.push({ run: () => stores.data().delete(key), undo: () => stores.data().setJSON(key, collection) });
+      writes.push({ run: () => stores.data().delete(key), undo: () => writeCollectionBlob(key, collection) });
     }
     for (const asset of sources.assets) {
       const held = await getAsset(asset.key);

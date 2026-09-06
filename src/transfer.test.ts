@@ -427,3 +427,14 @@ describe("a page stored at /", () => {
     expect(reply.rest_of_bundle).toEqual([{ kind: "collection", path: "/trip/items" }]);
   });
 });
+
+describe("summaries after a transfer", () => {
+  it("carries a correct summary to the collection's new home", async () => {
+    await saveCollection("/trip/items", [{ id: "a" }, { id: "b" }]);
+
+    await call("move_collection", { from: "/trip/items", to: "/gf/items", confirm: true });
+    const found = await stores.data().getMetadata(encodeKey("/gf/items"));
+
+    expect(found!.metadata).toMatchObject({ path: "/gf/items", count: 2 });
+  });
+});

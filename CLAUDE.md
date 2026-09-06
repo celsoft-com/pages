@@ -92,6 +92,13 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   for this, and never wrap a page to inject an icon.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
+- **A summary is a cache, and the blob is the truth.** `writeCollectionBlob` in
+  [service.ts](src/data/service.ts) is the only place a collection blob is written, transfer.ts included, and it
+  writes the summary as blob metadata in the same call so `list_collections` need not read every item of every
+  collection to count them. The metadata carries a `SUMMARY_VERSION`; anything else is not trusted and not patched
+  up, the blob is read and the summary derived. That is the whole safety property: every miss ends at the blob, so
+  a summary can be absent or stale-shaped but never wrong. Adding a field to `CollectionSummary` means bumping that
+  number, and a test pins that nothing else calls `stores.data().setJSON`.
 - **Caching is one module and one purge.** [cache.ts](src/cache.ts) owns every public cache header and the
   clearing of them; a handler that writes a `cache-control` string by hand has started a second policy. A public
   response is `no-cache` to browsers and durable at the edge, so a refresh always asks and always gets what a write
