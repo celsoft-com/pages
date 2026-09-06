@@ -1099,3 +1099,33 @@ describe("check_refs states its own scope", () => {
     expect((await call("check_refs", { path: "/trip/items" })).length).toBeLessThan(500);
   });
 });
+
+describe("check_refs description", () => {
+  const description = () => TOOLS.find((t) => t.name === "check_refs")!.description;
+
+  it("never claims an empty result means the collection is clean", () => {
+    expect(description()).not.toMatch(/clean collection returns almost nothing/);
+    expect(description()).not.toMatch(/a clean collection returns/i);
+    expect(description()).not.toMatch(/returns only the failures/i);
+  });
+
+  it("says only declared fields are checked", () => {
+    expect(description()).toMatch(/only checks fields declared with set_collection_refs/);
+    expect(description()).toMatch(/none declared, nothing is checked/);
+  });
+
+  it("points at refs_declared before an empty result is trusted", () => {
+    expect(description()).toMatch(/Check refs_declared/);
+    expect(description()).toMatch(/before trusting an empty result/);
+  });
+
+  it("does not offer declaring as an alternative to auditing", () => {
+    expect(description()).not.toMatch(/prevents it instead/);
+    expect(description()).not.toMatch(/\binstead,/);
+    expect(description()).toMatch(/audit is for records created before the constraint existed/);
+  });
+
+  it("keeps the count_items trigger", () => {
+    expect(description()).toMatch(/count_items shows an unexpected value/);
+  });
+});

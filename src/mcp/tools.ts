@@ -697,9 +697,10 @@ export const TOOLS: ToolDefinition[] = [
     title: "Find broken references",
     description:
       "Find records whose reference fields point at ids that do not exist. " +
-      "Run this after any bulk load, after deleting or renaming ids in a referenced collection, and whenever count_items shows an unexpected value in a grouping, since a group of one is usually a typo rather than a real category. " +
-      "Returns only the failures, so a clean collection returns almost nothing. " +
-      "This finds damage that has already happened; declaring the reference with set_collection_refs prevents it instead, and is the better fix where the collection is new enough to allow it.",
+      "This only checks fields declared with set_collection_refs; if a collection has none declared, nothing is checked and the reply says so rather than reporting a clean bill of health. " +
+      "Check refs_declared to see what was actually verified before trusting an empty result. " +
+      "Run it after any bulk load, after deleting or renaming ids in a referenced collection, and whenever count_items shows an unexpected value in a grouping, since a group of one is usually a typo rather than a real category. " +
+      "Declaring the reference is the stronger fix where the collection is new enough to allow it, because put_item then rejects the bad value at the moment it is written; this audit is for records created before the constraint existed.",
     inputSchema: object(
       {
         path: { type: "string", description: "Collection to audit" },
