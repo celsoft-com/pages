@@ -1,4 +1,5 @@
 import { deleteAsset, listAssets, putAsset } from "../assets/service";
+import { similarity } from "../data/match";
 import { matchItem, parseQuery } from "../data/query";
 import {
   deleteCollection,
@@ -434,6 +435,78 @@ export const TOOLS: ToolDefinition[] = [
 
       if (matches.length === 0) return `No items match ${args.query}`;
       return JSON.stringify({ total: matches.length, matches: matches.slice(0, limit) }, null, 2);
+    },
+  },
+  {
+    name: "match_names",
+    title: "Find existing items by name",
+    description:
+      "Check a batch of candidate names against a collection before creating anything, so the same entity is not added twice under a different spelling. " +
+      "Matching ignores case, diacritics, punctuation and word order, and tolerates trailing qualifiers and abbreviations that prefix the full word, " +
+      "so \"Acme Corp.\" finds \"ACME Corporation\" and \"Cafe Rouge\" finds \"Café Rouge\". " +
+      "It compares one short field, by default name, and does not read descriptions or other long text, which mention other entities and generate false matches. " +
+      "Returns a result for every candidate in the order given, each with its matches sorted best first and an empty list where nothing was close enough. " +
+      "A match carries the id and rev, so a duplicate can be updated with put_item instead of created. " +
+      "Nothing here understands meaning, translation or transliteration between scripts: it compares how names are written. " +
+      "Treat a result as a candidate to judge, not a verdict, and remember a missed match leaves a visible duplicate while a wrong one silently swallows a record that should have been created.",
+    inputSchema: object(
+      {
+        path: { type: "string", description: "Collection to match against, for example /venues" },
+        names: {
+          type: "array",
+          items: { type: "string" },
+          description: "Candidate names to look for, at most 50 per call",
+        },
+        field: { type: "string", description: "Field to compare against. Defaults to name." },
+        threshold: { type: "number", description: "Lowest score worth returning, 0 to 1. Defaults to 0.6." },
+        limit_per_name: { type: "number", description: "Most matches to return per candidate. Defaults to 3." },
+      },
+      ["path", "names"],
+    ),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      if (!Array.isArray(args.names) || args.names.length === 0)
+        throw new Error("names must be a non-empty array of strings");
+      if (args.names.length > 50) throw new Error(`names holds ${args.names.length} entries; 50 is the most per call`);
+
+      const collection = await getCollection(path);
+      if (!collection) throw new Error(`No collection exists at ${path}. Nothing to match against.`);
+
+      const field = typeof args.field === "string" && args.field ? args.field : "name";
+      const threshold = args.threshold === undefined ? 0.6 : Math.min(1, Math.max(0, Number(args.threshold)));
+      const limit = Math.max(1, Number(args.limit_per_name) || 3);
+
+      const candidates = collection.items
+        .map((item) => ({ item, value: item[field] }))
+        .filter((entry): entry is { item: Item; value: string } => typeof entry.value === "string");
+
+      const results = args.names.map((raw) => {
+        const name = String(raw);
+        const matches = candidates
+          .map(({ item, value }) => ({
+            id: item.id,
+            value,
+            rev: revOf(collection, item.id),
+            score: Math.round(similarity(name, value) * 1000) / 1000,
+          }))
+          .filter((match) => match.score >= threshold)
+          .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+          .slice(0, limit);
+        return { name, matches };
+      });
+
+      return JSON.stringify(
+        {
+          path: collection.path,
+          field,
+          threshold,
+          compared: candidates.length,
+          skipped: collection.items.length - candidates.length,
+          results,
+        },
+        null,
+        2,
+      );
     },
   },
   {

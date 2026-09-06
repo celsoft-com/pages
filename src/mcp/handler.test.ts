@@ -116,3 +116,14 @@ describe("instructions cover what a page author needs", () => {
     expect(INSTRUCTIONS).toMatch(/reserved and cannot be used as a collection path/);
   });
 });
+
+describe("instructions on deduplication", () => {
+  it("tells the client to match names before adding to a collection", () => {
+    expect(INSTRUCTIONS).toContain("match_names");
+    expect(INSTRUCTIONS).toMatch(/before adding items/i);
+  });
+
+  it("tells the client to judge the matches rather than trust them", () => {
+    expect(INSTRUCTIONS).toMatch(/[Jj]udge the matches/);
+  });
+});

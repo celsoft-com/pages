@@ -47,6 +47,11 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   carrying its `id`, in collection order, with nested values untouched. Pages are written against that with no MCP
   access, so it cannot drift: the tool text, the MCP instructions and the tests all state it. Changing any of it means
   changing every page anyone has published.
+- **Name matching stays language-agnostic.** [match.ts](src/data/match.ts) normalizes and compares scripts without
+  knowing any of them: no stopword lists, no article stripping, no per-language maps, and domain words like "brewery"
+  are never treated as noise. The one lookup table, [expansions.ts](src/data/expansions.ts), is for characters that
+  casefold to themselves, and it is data only. Tuning is biased against false positives: a missed match leaves a
+  visible duplicate, a wrong one silently suppresses a record nobody knows is missing.
 - **Revisions live outside the items.** `rev` and `revs` sit on the collection envelope, never in an item, because
   [handler.ts](src/data/handler.ts) serves `collection.items` verbatim. Updating an item needs a matching `if_rev`,
   so a client writing from a stale read is refused. [saveCollection](src/data/service.ts) assigns revs by comparing

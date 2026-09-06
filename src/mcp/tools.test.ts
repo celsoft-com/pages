@@ -442,3 +442,122 @@ describe("the contract a page has to write against", () => {
     await expect(call("put_item", { path: "/_collections", fields: { title: "x" } })).rejects.toThrow(/reserved/);
   });
 });
+
+describe("match_names", () => {
+  beforeEach(async () => {
+    await saveCollection("/venues", [
+      { id: "acme", name: "ACME Corporation", note: "Acme Corp. is not this one" },
+      { id: "rouge", name: "Café Rouge" },
+      { id: "brauhaus", name: "Grüner Brauhaus" },
+      { id: "tokyo", name: "Hotel Tokyo Station" },
+      { id: "istanbul", name: "Istanbul Modern" },
+      { id: "north", name: "North Clinic" },
+      { id: "bristol", name: "Hotel Bristol" },
+      { id: "stereo", name: "Club Stereo" },
+      { id: "unnamed", label: "No name field here" },
+    ]);
+  });
+
+  it("finds the entity behind a differently written name", async () => {
+    const result = await json("match_names", { path: "/venues", names: ["Acme Corp."] });
+    expect(result.results[0].matches[0].id).toBe("acme");
+    expect(result.results[0].matches[0].value).toBe("ACME Corporation");
+    expect(result.results[0].matches[0].score).toBeGreaterThanOrEqual(0.6);
+  });
+
+  it("answers every candidate in the order given", async () => {
+    const names = ["Cafe Rouge", "Nothing Like This", "Gruener Brauhaus"];
+    const result = await json("match_names", { path: "/venues", names });
+    expect(result.results.map((r: any) => r.name)).toEqual(names);
+    expect(result.results[0].matches[0].id).toBe("rouge");
+    expect(result.results[1].matches).toEqual([]);
+    expect(result.results[2].matches[0].id).toBe("brauhaus");
+  });
+
+  it("ignores word order and transliterated diacritics", async () => {
+    const result = await json("match_names", {
+      path: "/venues",
+      names: ["Tokyo Station Hotel", "İstanbul Modern"],
+    });
+    expect(result.results[0].matches[0].id).toBe("tokyo");
+    expect(result.results[1].matches[0].id).toBe("istanbul");
+  });
+
+  it("keeps genuinely different names apart", async () => {
+    const result = await json("match_names", {
+      path: "/venues",
+      names: ["South Clinic", "Hotel Brussels", "Live Club"],
+    });
+    for (const entry of result.results) expect(entry.matches, entry.name).toEqual([]);
+  });
+
+  it("sorts matches best first", async () => {
+    await saveCollection("/venues", [
+      { id: "exact", name: "Red Lion" },
+      { id: "qualified", name: "Red Lion Hotel and Spa" },
+    ]);
+    const result = await json("match_names", { path: "/venues", names: ["Red Lion"] });
+    const scores = result.results[0].matches.map((m: any) => m.score);
+    expect(result.results[0].matches[0].id).toBe("exact");
+    expect(scores).toEqual([...scores].sort((a: number, b: number) => b - a));
+  });
+
+  it("carries the rev so a duplicate can be updated rather than created", async () => {
+    const result = await json("match_names", { path: "/venues", names: ["Cafe Rouge"] });
+    const match = result.results[0].matches[0];
+    expect(
+      await call("put_item", { path: "/venues", id: match.id, fields: { seen: true }, if_rev: match.rev }),
+    ).toContain("Updated rouge");
+  });
+
+  it("compares only the named field, never long text", async () => {
+    const result = await json("match_names", { path: "/venues", names: ["Acme Corp."] });
+    expect(result.results[0].matches.map((m: any) => m.id)).toEqual(["acme"]);
+    expect(result.field).toBe("name");
+  });
+
+  it("can be pointed at another short field", async () => {
+    const result = await json("match_names", { path: "/venues", names: ["No Name Field Here"], field: "label" });
+    expect(result.results[0].matches[0].id).toBe("unnamed");
+  });
+
+  it("skips items with no value in that field and says how many", async () => {
+    const result = await json("match_names", { path: "/venues", names: ["Cafe Rouge"] });
+    expect(result.compared).toBe(8);
+    expect(result.skipped).toBe(1);
+  });
+
+  it("honours a raised threshold", async () => {
+    const loose = await json("match_names", { path: "/venues", names: ["Acme Corp."], threshold: 0.6 });
+    const strict = await json("match_names", { path: "/venues", names: ["Acme Corp."], threshold: 0.99 });
+    expect(loose.results[0].matches).toHaveLength(1);
+    expect(strict.results[0].matches).toEqual([]);
+  });
+
+  it("caps matches per candidate", async () => {
+    await saveCollection("/venues", [
+      { id: "a", name: "Red Lion" },
+      { id: "b", name: "Red Lion Hotel" },
+      { id: "c", name: "Red Lion Inn" },
+      { id: "d", name: "Red Lion Pub" },
+    ]);
+    const result = await json("match_names", { path: "/venues", names: ["Red Lion"], limit_per_name: 2 });
+    expect(result.results[0].matches).toHaveLength(2);
+  });
+
+  it("refuses more than fifty candidates in one call", async () => {
+    const names = Array.from({ length: 51 }, (_, n) => `name ${n}`);
+    await expect(call("match_names", { path: "/venues", names })).rejects.toThrow(/50 is the most/);
+  });
+
+  it("requires names and a collection that exists", async () => {
+    await expect(call("match_names", { path: "/venues", names: [] })).rejects.toThrow(/non-empty/);
+    await expect(call("match_names", { path: "/nope", names: ["x"] })).rejects.toThrow(/No collection exists/);
+  });
+
+  it("warns in its description that a wrong match is the costly one", () => {
+    const description = TOOLS.find((t) => t.name === "match_names")!.description;
+    expect(description).toMatch(/silently swallows/);
+    expect(description).toMatch(/does not read descriptions/);
+  });
+});
