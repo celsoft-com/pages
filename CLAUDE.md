@@ -83,6 +83,13 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   is rewritten to its new path; one pointing outside it is left alone and then reported in `breaks`, because a
   move takes the source path away just as surely as a delete does. Cross-bundle references are legitimate, so the
   answer is to report the damage, never to refuse the move or to rewrite something the caller did not name.
+- **The site icon is a path, not a setting.** An asset named `favicon.ico`, `.svg`, `.png`, `.webp` or `.jpg` in
+  the `ROOT_BUNDLE` folder is the site icon, first name in that order wins, and [favicon.ts](src/favicon.ts) serves
+  it at `/favicon.ico` with its own content type. Until one is uploaded the built-in default in
+  [favicon-default.ts](src/favicon-default.ts) is served, so a brand new site has an icon before setup. The
+  well-known URL is what carries it: a stored HTML page is verbatim and can be given no `link` tag, so the themed
+  layout and the admin chrome link `/favicon.ico` and everything else falls back to it. Never add a settings field
+  for this, and never wrap a page to inject an icon.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
 - **Repeating content belongs in a collection.** A page that lists things fetches `/data/<path>.json`; it does not

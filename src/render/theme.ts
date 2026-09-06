@@ -101,6 +101,7 @@ export function layout(options: LayoutOptions): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.ico">
 <title>${escapeHtml(options.title)}</title>
 ${options.siteDescription ? `<meta name="description" content="${escapeHtml(options.siteDescription)}">` : ""}
 <style>${STYLES}</style>

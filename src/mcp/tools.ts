@@ -380,6 +380,8 @@ export const TOOLS: ToolDefinition[] = [
     description:
       "Store an image or file and return its public URL for use on any page. Pass path to file it into a bundle; " +
       "without one it is stored under a content hash, which keeps working forever but sits in no bundle. " +
+      "An image uploaded to /root/favicon.ico, .svg, .png, .webp or .jpg becomes the site icon, served at " +
+      "/favicon.ico; until one is uploaded the site serves a built-in default. " +
       BUNDLES,
     inputSchema: object(
       {

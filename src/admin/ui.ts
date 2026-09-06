@@ -93,6 +93,7 @@ export function page(options: {
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.ico">
 <title>${escapeHtml(options.title)}</title>
 <style>${STYLES}</style>
 </head><body>
