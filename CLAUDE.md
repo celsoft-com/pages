@@ -58,6 +58,12 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   [match.test.ts](src/data/match.test.ts) and the regression block in [tools.test.ts](src/mcp/tools.test.ts) are
   pinned to exact values on purpose; touching the scorer is expected to break them, and each break needs a decision
   rather than a re-baseline.
+- **A reference constraint is the only defence against a silent typo.** `refs` on the collection envelope maps a
+  field to the collection its ids come from, and [validateRefs](src/data/service.ts) runs inside `putItem` before
+  anything is written. The failure it prevents breaks nothing visible: the write succeeds, the JSON validates, the
+  page renders, and the record silently drops out of whatever selects on that field. Never make the check advisory,
+  and never let `saveCollection` reorder around it: declaring a constraint on a collection that already violates it
+  has to succeed, or no existing collection can adopt one.
 - **Revisions live outside the items.** `rev` and `revs` sit on the collection envelope, never in an item, because
   [handler.ts](src/data/handler.ts) serves `collection.items` verbatim. Updating an item needs a matching `if_rev`,
   so a client writing from a stale read is refused. [saveCollection](src/data/service.ts) assigns revs by comparing

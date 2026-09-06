@@ -846,3 +846,155 @@ describe("count_items", () => {
     expect(description).toMatch(/before proposing additions/);
   });
 });
+
+describe("referential integrity", () => {
+  beforeEach(async () => {
+    await saveCollection("/trip/filters", [
+      { id: "outdoors", label: "Outdoors" },
+      { id: "odd", label: "Odd" },
+      { id: "drink", label: "Drink" },
+    ]);
+    await saveCollection("/trip/items", [{ id: "castle", name: "Veste Coburg", group: "outdoors" }]);
+  });
+
+  it("declares a constraint on a clean collection with no violations", async () => {
+    const text = await call("set_collection_refs", {
+      path: "/trip/items",
+      refs: { group: "/trip/filters" },
+    });
+    expect(text).toContain("group references ids in /trip/filters");
+    expect(text).toContain("No existing record violates that");
+  });
+
+  it("rejects a mistyped value, naming the field, value, collection and closest id", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+
+    const write = call("put_item", { path: "/trip/items", id: "market", fields: { group: "outdoor" } });
+    await expect(write).rejects.toThrow(/Field "group"/);
+    await expect(write).rejects.toThrow(/"outdoor" is not an id in \/trip\/filters/);
+    await expect(write).rejects.toThrow(/Closest ids: outdoors/);
+  });
+
+  it("accepts the corrected value", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    expect(await call("put_item", { path: "/trip/items", id: "market", fields: { group: "outdoors" } })).toContain(
+      "Created market",
+    );
+  });
+
+  it("leaves a merge that does not touch the field alone", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    const { rev } = await json("get_item", { path: "/trip/items", id: "castle" });
+    expect(
+      await call("put_item", { path: "/trip/items", id: "castle", fields: { note: "open late" }, if_rev: rev }),
+    ).toContain("Updated castle");
+  });
+
+  it("permits an explicit null", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    expect(await call("put_item", { path: "/trip/items", id: "tbd", fields: { group: null } })).toContain(
+      "Created tbd",
+    );
+  });
+
+  it("adopts a constraint on a collection that already violates it", async () => {
+    await saveCollection("/trip/items", [
+      { id: "castle", group: "outdoors" },
+      { id: "market", group: "outdoor" },
+    ]);
+    const text = await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    expect(text).toContain("1 existing record already violates it");
+  });
+
+  it("finds exactly the violating record", async () => {
+    await saveCollection("/trip/items", [
+      { id: "castle", group: "outdoors" },
+      { id: "market", group: "outdoor" },
+      { id: "tbd" },
+    ]);
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+
+    const result = await json("check_refs", { path: "/trip/items" });
+    expect(result.checked).toBe(3);
+    expect(result.broken).toEqual([
+      { id: "market", field: "group", value: "outdoor", references: "/trip/filters" },
+    ]);
+  });
+
+  it("reports a healthy collection as broken: []", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    expect((await json("check_refs", { path: "/trip/items" })).broken).toEqual([]);
+  });
+
+  it("errors on a field with no declared reference rather than reporting health", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    await expect(call("check_refs", { path: "/trip/items", field: "section" })).rejects.toThrow(
+      /does not reference another collection/,
+    );
+  });
+
+  it("refuses to delete a referenced id, naming the count", async () => {
+    const items = Array.from({ length: 30 }, (_, n) => ({ id: `i${n}`, group: "outdoors" }));
+    await saveCollection("/trip/items", items);
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+
+    await expect(call("delete_item", { path: "/trip/filters", id: "outdoors" })).rejects.toThrow(
+      /would orphan 30 records/,
+    );
+  });
+
+  it("deletes a referenced id when forced", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    expect(await call("delete_item", { path: "/trip/filters", id: "outdoors", force: true })).toContain("Deleted");
+  });
+
+  it("leaves an unreferenced id deletable", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    expect(await call("delete_item", { path: "/trip/filters", id: "drink" })).toContain("Deleted");
+  });
+
+  it("clears every constraint on an empty map", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    expect(await call("set_collection_refs", { path: "/trip/items", refs: {} })).toContain("Cleared");
+    expect(await call("put_item", { path: "/trip/items", id: "market", fields: { group: "anything" } })).toContain(
+      "Created",
+    );
+  });
+
+  it("warns when the referenced collection does not exist yet", async () => {
+    const text = await call("set_collection_refs", { path: "/trip/items", refs: { section: "/trip/sections" } });
+    expect(text).toMatch(/does not exist yet/);
+  });
+
+  it("advertises declared refs in the collection listing", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    expect(await call("list_collections")).toContain("refs group->/trip/filters");
+  });
+
+  it("survives an unrelated write without losing the constraint", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    await call("put_item", { path: "/trip/items", id: "new", fields: { group: "drink" } });
+
+    await expect(call("put_item", { path: "/trip/items", id: "bad", fields: { group: "nope" } })).rejects.toThrow(
+      /not an id/,
+    );
+  });
+
+  it("answers a healthy 195 item audit in under 500 bytes", async () => {
+    await saveCollection(
+      "/trip/items",
+      Array.from({ length: 195 }, (_, n) => ({ id: `i${n}`, name: `Place ${n}`, group: "outdoors" })),
+    );
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+
+    const text = await call("check_refs", { path: "/trip/items" });
+    expect(JSON.parse(text).checked).toBe(195);
+    expect(text.length).toBeLessThan(500);
+  });
+
+  it("says in its description why the failure is silent", () => {
+    const declare = TOOLS.find((t) => t.name === "set_collection_refs")!.description;
+    expect(declare).toMatch(/silent at every level/);
+    expect(TOOLS.find((t) => t.name === "check_refs")!.description).toMatch(/count_items/);
+  });
+});

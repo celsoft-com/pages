@@ -2,6 +2,7 @@ import { deleteAsset, listAssets, putAsset } from "../assets/service";
 import { similarity } from "../data/match";
 import { matchItem, parseQuery } from "../data/query";
 import {
+  brokenRefs,
   deleteCollection,
   deleteItem,
   getCollection,
@@ -9,6 +10,7 @@ import {
   putItem,
   reorderItems,
   revOf,
+  setRefs,
 } from "../data/service";
 import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
 import { isValidPath, normalizePath } from "../pages/path";
@@ -256,7 +258,11 @@ export const TOOLS: ToolDefinition[] = [
       const collections = await listCollections();
       if (collections.length === 0) return "No data collections yet. Use put_item to create one.";
       return collections
-        .map((c) => `${c.path}  ${c.count} items  rev ${c.rev}  served at ${dataUrl(ctx, c.path)}`)
+        .map((c) => {
+          const refs = Object.entries(c.refs);
+          const declared = refs.length > 0 ? `  refs ${refs.map(([f, t]) => `${f}->${t}`).join(", ")}` : "";
+          return `${c.path}  ${c.count} items  rev ${c.rev}${declared}  served at ${dataUrl(ctx, c.path)}`;
+        })
         .join("\n");
     },
   },
@@ -465,19 +471,25 @@ export const TOOLS: ToolDefinition[] = [
     name: "delete_item",
     title: "Delete an item",
     description:
-      "Remove one item from a collection by its id. The rest of the collection is untouched. Pass the rev you read as if_rev and the delete is refused if the item changed since.",
+      "Remove one item from a collection by its id. The rest of the collection is untouched. Pass the rev you read as if_rev and the delete is refused if the item changed since. " +
+      "If other records reference this id through a declared collection reference, the delete is refused and names how many; repoint those records first, or pass force true to orphan them deliberately.",
     inputSchema: object(
       {
         path: { type: "string" },
         id: { type: "string" },
         if_rev: { type: "number", description: "The rev you read for this item" },
+        force: {
+          type: "boolean",
+          description: "Delete even though other records reference this id, leaving them pointing at nothing",
+        },
       },
       ["path", "id"],
     ),
     handler: async (args) => {
       const path = requirePath(args.path);
       const ifRev = args.if_rev === undefined ? undefined : Number(args.if_rev);
-      if (!(await deleteItem(path, String(args.id), ifRev))) throw new Error(`No item ${args.id} in ${path}`);
+      if (!(await deleteItem(path, String(args.id), ifRev, args.force === true)))
+        throw new Error(`No item ${args.id} in ${path}`);
       return `Deleted ${args.id} from ${path}`;
     },
   },
@@ -634,6 +646,71 @@ export const TOOLS: ToolDefinition[] = [
         null,
         2,
       );
+    },
+  },
+  {
+    name: "set_collection_refs",
+    title: "Constrain a field to ids in another collection",
+    description:
+      "Declare that a field on this collection holds ids from another collection, so writes with a mistyped or stale value are rejected instead of stored. " +
+      "Use this whenever records carry a value that must line up with something else: a category, a section, a status, an owner. " +
+      "Without it, a typo in such a field is silent at every level. The record stores, the JSON stays valid, the page renders, and the record simply stops appearing wherever that value is used to select it. " +
+      "Nobody finds out until someone goes looking for something they know should be there. " +
+      "Declare the constraint when you create the collection, before the records exist, because the cost of adopting it later is auditing everything already written.",
+    inputSchema: object(
+      {
+        path: { type: "string", description: "Collection being constrained, for example /trip/items" },
+        refs: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description:
+            'Field name to referenced collection path, for example {"group": "/trip/filters"}. An empty object clears every constraint.',
+        },
+      },
+      ["path", "refs"],
+    ),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      if (typeof args.refs !== "object" || args.refs === null || Array.isArray(args.refs))
+        throw new Error("refs must be an object of field name to collection path");
+
+      const { refs, violations, missing } = await setRefs(path, args.refs as Record<string, string>);
+      const declared = Object.entries(refs);
+
+      if (declared.length === 0) return `Cleared every reference constraint on ${path}.`;
+
+      const lines = [
+        `${path}: ${declared.map(([field, target]) => `${field} references ids in ${target}`).join(", ")}.`,
+        violations === 0
+          ? "No existing record violates that."
+          : violations === 1
+            ? "1 existing record already violates it; run check_refs to see it."
+            : `${violations} existing records already violate it; run check_refs to see them.`,
+      ];
+      if (missing.length > 0)
+        lines.push(`Note that ${missing.join(" and ")} does not exist yet, so every value will be rejected until it does.`);
+      return lines.join(" ");
+    },
+  },
+  {
+    name: "check_refs",
+    title: "Find broken references",
+    description:
+      "Find records whose reference fields point at ids that do not exist. " +
+      "Run this after any bulk load, after deleting or renaming ids in a referenced collection, and whenever count_items shows an unexpected value in a grouping, since a group of one is usually a typo rather than a real category. " +
+      "Returns only the failures, so a clean collection returns almost nothing. " +
+      "This finds damage that has already happened; declaring the reference with set_collection_refs prevents it instead, and is the better fix where the collection is new enough to allow it.",
+    inputSchema: object(
+      {
+        path: { type: "string", description: "Collection to audit" },
+        field: { type: "string", description: "One reference field. Omit to check every declared reference." },
+      },
+      ["path"],
+    ),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      const field = args.field === undefined ? undefined : String(args.field);
+      return JSON.stringify(await brokenRefs(path, field));
     },
   },
   {

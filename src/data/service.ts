@@ -1,3 +1,4 @@
+import { similarity } from "./match";
 import { normalizePath } from "../pages/path";
 import { encodeKey, stores } from "../store";
 import type { Collection, CollectionSummary, Item } from "../types";
@@ -28,7 +29,7 @@ export async function getCollection(path: string): Promise<Collection | null> {
     | Collection
     | null;
   if (!stored) return null;
-  return { ...stored, rev: stored.rev ?? 0, revs: stored.revs ?? {} };
+  return { ...stored, rev: stored.rev ?? 0, revs: stored.revs ?? {}, refs: stored.refs ?? {} };
 }
 
 export function revOf(collection: Collection, id: string): number {
@@ -51,6 +52,7 @@ export async function listCollections(): Promise<CollectionSummary[]> {
       return {
         path: collection.path,
         count: collection.items.length,
+        refs: collection.refs,
         rev: collection.rev ?? 0,
         updatedAt: collection.updatedAt,
       } satisfies CollectionSummary;
@@ -78,6 +80,7 @@ export async function saveCollection(path: string, items: Item[]): Promise<Colle
   const collection: Collection = {
     path: normalized,
     items,
+    refs: existing?.refs ?? {},
     rev,
     revs,
     createdAt: existing?.createdAt ?? now,
@@ -136,6 +139,8 @@ export async function putItem(input: {
   if (!isValidId(id))
     throw new Error(`id "${id}" is not usable. Use letters, numbers, dashes, dots or underscores.`);
 
+  await validateRefs(path, input.fields);
+
   const at = items.findIndex((i) => i.id === id);
 
   if (at === -1 && input.ifRev !== undefined)
@@ -175,13 +180,29 @@ export async function putItem(input: {
   return { item, created: at === -1, rev: revOf(saved, id) };
 }
 
-export async function deleteItem(path: string, id: string, ifRev?: number): Promise<boolean> {
+export async function deleteItem(
+  path: string,
+  id: string,
+  ifRev?: number,
+  force = false,
+): Promise<boolean> {
   const normalized = normalizeCollectionPath(path);
   const collection = await getCollection(normalized);
   if (!collection) return false;
 
   const remaining = collection.items.filter((i) => i.id !== id);
   if (remaining.length === collection.items.length) return false;
+
+  if (!force) {
+    const pointing = await referrers(normalized, id);
+    const total = pointing.reduce((sum, entry) => sum + entry.count, 0);
+    if (total > 0)
+      throw new Error(
+        `Deleting "${id}" from ${normalized} would orphan ${total} record${total === 1 ? "" : "s"} that reference it: ` +
+          `${pointing.map((e) => `${e.count} in ${e.path} via ${e.field}`).join(", ")}. ` +
+          `Repoint them first, or pass force: true to delete anyway.`,
+      );
+  }
 
   const current = revOf(collection, id);
   if (ifRev !== undefined && ifRev !== current)
@@ -215,4 +236,117 @@ export async function reorderItems(path: string, ids: string[], ifRev?: number):
 
   await saveCollection(normalized, items);
   return items;
+}
+
+export async function setRefs(
+  path: string,
+  refs: Record<string, string>,
+): Promise<{ refs: Record<string, string>; violations: number; missing: string[] }> {
+  const normalized = normalizeCollectionPath(path);
+  const collection = await getCollection(normalized);
+  if (!collection) throw new Error(`No collection exists at ${normalized}. Create it before constraining it.`);
+
+  const cleaned: Record<string, string> = {};
+  for (const [field, target] of Object.entries(refs)) {
+    if (typeof target !== "string" || target.trim() === "")
+      throw new Error(`refs.${field} must be the path of the collection its ids come from, for example /filters`);
+    cleaned[field] = normalizeCollectionPath(target);
+  }
+
+  await stores.data().setJSON(encodeKey(normalized), { ...collection, refs: cleaned, updatedAt: Date.now() });
+
+  const missing: string[] = [];
+  for (const target of new Set(Object.values(cleaned)))
+    if (!(await getCollection(target))) missing.push(target);
+
+  const { broken } = await brokenRefs(normalized);
+  return { refs: cleaned, violations: broken.length, missing };
+}
+
+async function idsIn(path: string): Promise<Set<string>> {
+  return new Set(((await getCollection(path))?.items ?? []).map((item) => item.id));
+}
+
+function suggest(value: unknown, ids: Set<string>): string {
+  if (ids.size === 0) return "That collection has no items yet.";
+
+  const close = [...ids]
+    .map((id) => ({ id, score: similarity(String(value), id) }))
+    .filter((entry) => entry.score >= 0.3)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((entry) => entry.id);
+
+  if (close.length > 0) return `Closest ids: ${close.join(", ")}.`;
+  return `Ids there include: ${[...ids].slice(0, 5).join(", ")}.`;
+}
+
+export async function validateRefs(path: string, fields: Record<string, unknown>): Promise<void> {
+  const collection = await getCollection(normalizeCollectionPath(path));
+  for (const [field, target] of Object.entries(collection?.refs ?? {})) {
+    if (!(field in fields)) continue;
+
+    const value = fields[field];
+    if (value === null || value === undefined) continue;
+
+    const ids = await idsIn(target);
+    if (typeof value === "string" && ids.has(value)) continue;
+
+    throw new Error(
+      `Field "${field}" value ${JSON.stringify(value)} is not an id in ${target}. ${suggest(value, ids)}`,
+    );
+  }
+}
+
+export async function brokenRefs(
+  path: string,
+  field?: string,
+): Promise<{
+  path: string;
+  checked: number;
+  broken: { id: string; field: string; value: unknown; references: string }[];
+}> {
+  const normalized = normalizeCollectionPath(path);
+  const collection = await getCollection(normalized);
+  if (!collection) throw new Error(`No collection exists at ${normalized}`);
+
+  if (field !== undefined && !(field in collection.refs))
+    throw new Error(
+      `Field "${field}" on ${normalized} does not reference another collection. ` +
+        `Declared references: ${Object.keys(collection.refs).join(", ") || "none"}.`,
+    );
+
+  const fields = field === undefined ? Object.keys(collection.refs) : [field];
+  const known = new Map<string, Set<string>>();
+  for (const target of new Set(fields.map((name) => collection.refs[name])))
+    known.set(target, await idsIn(target));
+
+  const broken: { id: string; field: string; value: unknown; references: string }[] = [];
+  for (const item of collection.items)
+    for (const name of fields) {
+      const value = item[name];
+      if (value === null || value === undefined) continue;
+      const target = collection.refs[name];
+      if (typeof value === "string" && known.get(target)!.has(value)) continue;
+      broken.push({ id: item.id, field: name, value, references: target });
+    }
+
+  return { path: normalized, checked: collection.items.length, broken };
+}
+
+export async function referrers(target: string, id: string): Promise<{ path: string; field: string; count: number }[]> {
+  const normalized = normalizeCollectionPath(target);
+  const found: { path: string; field: string; count: number }[] = [];
+
+  for (const summary of await listCollections()) {
+    const collection = await getCollection(summary.path);
+    if (!collection) continue;
+    for (const [field, points] of Object.entries(collection.refs)) {
+      if (points !== normalized) continue;
+      const count = collection.items.filter((item) => item[field] === id).length;
+      if (count > 0) found.push({ path: collection.path, field, count });
+    }
+  }
+
+  return found;
 }

@@ -142,3 +142,14 @@ describe("instructions on counting", () => {
     expect(INSTRUCTIONS).toMatch(/[Cc]ount before proposing additions/);
   });
 });
+
+describe("instructions on references", () => {
+  it("tells the client to declare references up front", () => {
+    expect(INSTRUCTIONS).toContain("set_collection_refs");
+    expect(INSTRUCTIONS).toMatch(/silent on every axis/);
+  });
+
+  it("points at check_refs for records written earlier", () => {
+    expect(INSTRUCTIONS).toContain("check_refs");
+  });
+});

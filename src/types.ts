@@ -39,6 +39,7 @@ export type Item = { id: string } & Record<string, unknown>;
 export interface Collection {
   path: string;
   items: Item[];
+  refs: Record<string, string>;
   rev: number;
   revs: Record<string, number>;
   createdAt: number;
@@ -48,6 +49,7 @@ export interface Collection {
 export interface CollectionSummary {
   path: string;
   count: number;
+  refs: Record<string, string>;
   rev: number;
   updatedAt: number;
 }
