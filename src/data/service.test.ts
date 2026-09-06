@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { encodeKey, stores } from "../store";
 import { resetBlobs } from "../test/blobs";
+import type { Item } from "../types";
 import {
   deleteCollection,
   deleteItem,
@@ -8,9 +10,11 @@ import {
   listCollections,
   normalizeCollectionPath,
   putItem,
+  brokenRefs,
   reorderItems,
   revOf,
   saveCollection,
+  setRefs,
 } from "./service";
 
 beforeEach(resetBlobs);
@@ -369,5 +373,54 @@ describe("revisions", () => {
   it("keeps revs out of the items themselves", async () => {
     await putItem({ path: "/p", id: "a", fields: { x: 1 }, merge: true });
     expect((await getCollection("/p"))!.items[0]).toEqual({ id: "a", x: 1 });
+  });
+});
+
+describe("collections stored before a field existed", () => {
+  async function writeLegacyBlob(path: string, items: Item[]): Promise<void> {
+    // Exactly what saveCollection wrote before refs, rev and revs were added.
+    await stores.data().setJSON(encodeKey(path), {
+      path,
+      items,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  }
+
+  it("comes back from getCollection with every field filled in", async () => {
+    await writeLegacyBlob("/trip/items", [{ id: "a" }]);
+    const collection = (await getCollection("/trip/items"))!;
+
+    expect(collection.refs).toEqual({});
+    expect(collection.revs).toEqual({});
+    expect(collection.rev).toBe(0);
+  });
+
+  it("comes back from listCollections with every field filled in", async () => {
+    await writeLegacyBlob("/trip/items", [{ id: "a" }, { id: "b" }]);
+    const [summary] = await listCollections();
+
+    expect(summary).toMatchObject({ path: "/trip/items", count: 2, refs: {}, rev: 0 });
+  });
+
+  it("agrees between the two read paths", async () => {
+    await writeLegacyBlob("/trip/items", [{ id: "a" }]);
+    const listed = (await listCollections())[0];
+    const fetched = (await getCollection("/trip/items"))!;
+
+    expect(listed.refs).toEqual(fetched.refs);
+    expect(listed.rev).toBe(fetched.rev);
+    expect(listed.count).toBe(fetched.items.length);
+  });
+
+  it("takes a constraint and a write without being rewritten first", async () => {
+    await writeLegacyBlob("/trip/filters", [{ id: "outdoors" }]);
+    await writeLegacyBlob("/trip/items", [{ id: "a", group: "outdoors" }]);
+    await setRefs("/trip/items", { group: "/trip/filters" });
+
+    await expect(putItem({ path: "/trip/items", fields: { group: "nope" }, merge: true })).rejects.toThrow(
+      /not an id/,
+    );
+    expect((await brokenRefs("/trip/items")).broken).toEqual([]);
   });
 });

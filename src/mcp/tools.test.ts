@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { handleData } from "../data/handler";
 import { saveCollection } from "../data/service";
+import { encodeKey, stores } from "../store";
 import { resetBlobs } from "../test/blobs";
 import { TOOLS, type ToolContext } from "./tools";
 
@@ -1212,5 +1214,49 @@ describe("delete_item reports what force broke", () => {
     expect(TOOLS.find((t) => t.name === "delete_item")!.description).toMatch(
       /the reply lists what it broke/,
     );
+  });
+});
+
+describe("list_collections", () => {
+  async function writeLegacyBlob(path: string, count: number): Promise<void> {
+    await stores.data().setJSON(encodeKey(path), {
+      path,
+      items: Array.from({ length: count }, (_, n) => ({ id: `i${n}` })),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  }
+
+  it("lists collections written before refs and rev existed", async () => {
+    await writeLegacyBlob("/trip/items", 195);
+    await writeLegacyBlob("/trip/sections", 8);
+
+    const text = await call("list_collections");
+    expect(text).toContain("/trip/items  195 items  rev 0");
+    expect(text).toContain("/trip/sections  8 items  rev 0");
+    expect(text).toContain("served at https://example.com/data/items.json".replace("/items", "/trip/items"));
+  });
+
+  it("succeeds on a site with no collections at all", async () => {
+    expect(await call("list_collections")).toMatch(/No data collections/);
+  });
+
+  it("succeeds on a site with several collections", async () => {
+    await saveCollection("/a", [{ id: "x" }]);
+    await saveCollection("/b", [{ id: "y" }]);
+    await writeLegacyBlob("/c", 3);
+
+    const lines = (await call("list_collections")).split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines.map((line) => line.split("  ")[0])).toEqual(["/a", "/b", "/c"]);
+  });
+
+  it("serves the http index for a legacy collection too", async () => {
+    await writeLegacyBlob("/trip/items", 195);
+    const response = await handleData(new Request("https://example.com/data/_collections.json"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([
+      { path: "/trip/items", url: "/data/trip/items.json", count: 195, rev: 0, updatedAt: expect.any(Number) },
+    ]);
   });
 });

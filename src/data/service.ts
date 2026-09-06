@@ -24,12 +24,23 @@ function slugify(input: string): string {
     .slice(0, 64);
 }
 
+// Every read goes through this. A blob written before a field existed still has to
+// come back with that field, and there is more than one way into storage.
+function hydrate(stored: Collection): Collection {
+  return {
+    ...stored,
+    items: stored.items ?? [],
+    refs: stored.refs ?? {},
+    rev: stored.rev ?? 0,
+    revs: stored.revs ?? {},
+  };
+}
+
 export async function getCollection(path: string): Promise<Collection | null> {
   const stored = (await stores.data().get(encodeKey(normalizeCollectionPath(path)), { type: "json" })) as
     | Collection
     | null;
-  if (!stored) return null;
-  return { ...stored, rev: stored.rev ?? 0, revs: stored.revs ?? {}, refs: stored.refs ?? {} };
+  return stored ? hydrate(stored) : null;
 }
 
 export function revOf(collection: Collection, id: string): number {
@@ -47,13 +58,14 @@ export async function listCollections(): Promise<CollectionSummary[]> {
   const { blobs } = await stores.data().list();
   const summaries = await Promise.all(
     blobs.map(async (blob) => {
-      const collection = (await stores.data().get(blob.key, { type: "json" })) as Collection | null;
-      if (!collection) return null;
+      const stored = (await stores.data().get(blob.key, { type: "json" })) as Collection | null;
+      if (!stored) return null;
+      const collection = hydrate(stored);
       return {
         path: collection.path,
         count: collection.items.length,
         refs: collection.refs,
-        rev: collection.rev ?? 0,
+        rev: collection.rev,
         updatedAt: collection.updatedAt,
       } satisfies CollectionSummary;
     }),

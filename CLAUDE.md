@@ -36,6 +36,11 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 - **Custom domains are the user's job.** They add the domain in Netlify. The app does nothing and says nothing about it.
 - **No local tooling for users.** Deploy is the button. Never add a step needing a CLI or a checkout.
 - **One path normalizer.** [path.ts](src/pages/path.ts) is the only place a page path is normalized.
+- **Every stored read goes through `hydrate`.** A blob written before a field existed still has to come back
+  carrying it, and there is more than one way into storage: `listCollections` reads raw blobs, not `getCollection`.
+  Adding a field to `Collection` means defaulting it in [hydrate](src/data/service.ts) and nowhere else. Skipping
+  that shipped a `list_collections` that threw on every pre-existing collection while every test passed, because
+  the tests only ever read blobs this code had just written.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
 - **Repeating content belongs in a collection.** A page that lists things fetches `/data/<path>.json`; it does not
