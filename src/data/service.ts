@@ -304,7 +304,9 @@ export async function brokenRefs(
 ): Promise<{
   path: string;
   checked: number;
+  refs_declared: Record<string, string>;
   broken: { id: string; field: string; value: unknown; references: string }[];
+  warning?: string;
 }> {
   const normalized = normalizeCollectionPath(path);
   const collection = await getCollection(normalized);
@@ -317,6 +319,19 @@ export async function brokenRefs(
     );
 
   const fields = field === undefined ? Object.keys(collection.refs) : [field];
+
+  // An audit that verified nothing must not look like an audit that passed.
+  if (fields.length === 0)
+    return {
+      path: normalized,
+      checked: 0,
+      refs_declared: {},
+      broken: [],
+      warning:
+        `No references are declared on ${normalized}, so nothing was checked. ` +
+        `Declare them with set_collection_refs.`,
+    };
+
   const known = new Map<string, Set<string>>();
   for (const target of new Set(fields.map((name) => collection.refs[name])))
     known.set(target, await idsIn(target));
@@ -331,7 +346,12 @@ export async function brokenRefs(
       broken.push({ id: item.id, field: name, value, references: target });
     }
 
-  return { path: normalized, checked: collection.items.length, broken };
+  return {
+    path: normalized,
+    checked: collection.items.length,
+    refs_declared: collection.refs,
+    broken,
+  };
 }
 
 export async function referrers(target: string, id: string): Promise<{ path: string; field: string; count: number }[]> {

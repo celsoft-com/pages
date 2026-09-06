@@ -998,3 +998,104 @@ describe("referential integrity", () => {
     expect(TOOLS.find((t) => t.name === "check_refs")!.description).toMatch(/count_items/);
   });
 });
+
+describe("check_refs states its own scope", () => {
+  async function seed195(): Promise<void> {
+    await saveCollection("/trip/filters", [{ id: "outdoors" }, { id: "drink" }]);
+    await saveCollection("/trip/sections", [{ id: "coburg" }, { id: "bamberg" }]);
+    await saveCollection(
+      "/trip/items",
+      Array.from({ length: 195 }, (_, n) => ({
+        id: `i${n}`,
+        name: `Place ${n}`,
+        group: n % 2 ? "outdoors" : "drink",
+        section: n % 3 ? "coburg" : "bamberg",
+      })),
+    );
+  }
+
+  beforeEach(seed195);
+
+  it("reports checked 0 and a warning when nothing is declared", async () => {
+    const result = await json("check_refs", { path: "/trip/items" });
+    expect(result.checked).toBe(0);
+    expect(result.refs_declared).toEqual({});
+    expect(result.broken).toEqual([]);
+    expect(result.warning).toMatch(/nothing was checked/);
+    expect(result.warning).toMatch(/set_collection_refs/);
+  });
+
+  it("reports what it verified once references are declared", async () => {
+    await call("set_collection_refs", {
+      path: "/trip/items",
+      refs: { group: "/trip/filters", section: "/trip/sections" },
+    });
+
+    const result = await json("check_refs", { path: "/trip/items" });
+    expect(result.checked).toBe(195);
+    expect(result.refs_declared).toEqual({ group: "/trip/filters", section: "/trip/sections" });
+    expect(result.broken).toEqual([]);
+    expect(result.warning).toBeUndefined();
+  });
+
+  it("separates the two by the checked count alone, without reading prose", async () => {
+    const unconstrained = (await json("check_refs", { path: "/trip/items" })).checked;
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    const constrained = (await json("check_refs", { path: "/trip/items" })).checked;
+
+    expect(unconstrained).toBe(0);
+    expect(constrained).toBe(195);
+  });
+
+  it("still counts every record when one of them is broken", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    await saveCollection("/trip/filters", [{ id: "outdoors" }]);
+
+    const result = await json("check_refs", { path: "/trip/items" });
+    expect(result.checked).toBe(195);
+    expect(result.broken.every((b: any) => b.value === "drink")).toBe(true);
+    expect(result.broken).toHaveLength(98);
+  });
+
+  it("finds exactly the one bad record among 195", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    const collection = await json("list_items", { path: "/trip/items", limit: 1 });
+    await call("put_item", {
+      path: "/trip/items",
+      id: "i0",
+      fields: { group: "outdoors" },
+      if_rev: collection.items[0].rev,
+    });
+    await saveCollection("/trip/filters", [{ id: "outdoors" }, { id: "drink" }, { id: "spare" }]);
+    await call("put_item", { path: "/trip/items", id: "typo", fields: { group: "spare" } });
+    await saveCollection("/trip/filters", [{ id: "outdoors" }, { id: "drink" }]);
+
+    const result = await json("check_refs", { path: "/trip/items" });
+    expect(result.checked).toBe(196);
+    expect(result.broken).toEqual([{ id: "typo", field: "group", value: "spare", references: "/trip/filters" }]);
+  });
+
+  it("still errors on an undeclared field rather than reporting health", async () => {
+    await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
+    await expect(call("check_refs", { path: "/trip/items", field: "colour" })).rejects.toThrow(
+      /"colour" on \/trip\/items does not reference another collection/,
+    );
+    await expect(call("check_refs", { path: "/trip/items", field: "colour" })).rejects.toThrow(
+      /Declared references: group/,
+    );
+  });
+
+  it("errors on an undeclared field even when nothing at all is declared", async () => {
+    await expect(call("check_refs", { path: "/trip/items", field: "group" })).rejects.toThrow(
+      /Declared references: none/,
+    );
+  });
+
+  it("stays under 500 bytes for a healthy 195 item audit", async () => {
+    await call("set_collection_refs", {
+      path: "/trip/items",
+      refs: { group: "/trip/filters", section: "/trip/sections" },
+    });
+    expect((await call("check_refs", { path: "/trip/items" })).length).toBeLessThan(500);
+  });
+});

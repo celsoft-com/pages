@@ -64,6 +64,11 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   page renders, and the record silently drops out of whatever selects on that field. Never make the check advisory,
   and never let `saveCollection` reorder around it: declaring a constraint on a collection that already violates it
   has to succeed, or no existing collection can adopt one.
+- **An audit that checked nothing must not look like one that passed.** `check_refs` on a collection with no
+  declared references returns `checked: 0` and a warning, never `checked: <total>` with an empty `broken`. Every
+  response carries `refs_declared` so a clean result states its own scope. This is not cosmetic: a success-shaped
+  answer gets skimmed, believed, and acted on, and the caller stops looking. Any check added later owes the same
+  distinction between verified-and-clean and not-verified.
 - **Revisions live outside the items.** `rev` and `revs` sit on the collection envelope, never in an item, because
   [handler.ts](src/data/handler.ts) serves `collection.items` verbatim. Updating an item needs a matching `if_rev`,
   so a client writing from a stale read is refused. [saveCollection](src/data/service.ts) assigns revs by comparing
