@@ -164,8 +164,7 @@ describe("the home page is a folder like any other", () => {
 
   it("never serves a page stored at /, only the one in /root", async () => {
     await savePageDirect("/", "# Old home");
-    const body = await (await visit("/")).text();
-    expect(body).not.toContain("Old home");
+    expect((await visit("/")).status).toBe(404);
 
     await call("publish_page", { path: "/root", content: "# New home", overwrite: true });
     expect(await (await visit("/")).text()).toContain("New home");
@@ -321,10 +320,8 @@ describe("bundles are organization, never a boundary", () => {
 });
 
 describe("the site root with no home page", () => {
-  it("lists the pages and says where a home page would go", async () => {
+  it("is a plain 404, with no stand-in and no fallback", async () => {
     await call("publish_page", { path: "/hello", content: "# Hello", overwrite: true });
-    const body = await (await handlePage(new Request("https://example.com/"))).text();
-    expect(body).toContain("/hello");
-    expect(body).toContain("/root");
+    expect((await handlePage(new Request("https://example.com/"))).status).toBe(404);
   });
 });

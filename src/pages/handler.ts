@@ -35,35 +35,6 @@ async function renderPage(page: Page): Promise<string> {
   });
 }
 
-async function renderIndex(): Promise<string> {
-  const site = await chrome("/");
-  const items = site.pages.filter((p) => p.path !== "/" && p.path !== ROOT_BUNDLE);
-  const content = items.length
-    ? `<ul class="index">${items
-        .map(
-          (p) =>
-            `<li><a href="${escapeHtml(p.path)}">${escapeHtml(p.title)}</a><span>${escapeHtml(
-              p.path,
-            )}</span></li>`,
-        )
-        .join("")}</ul>`
-    : `<p>No pages published yet. Connect Claude to this site and ask it to publish one.</p>`;
-
-  // Reached only when the /root bundle has no page, so say what would replace this listing.
-  const hint = `<p class="muted">This listing stands in for a home page. Ask Claude to publish one at <code>${escapeHtml(
-    ROOT_BUNDLE,
-  )}</code> and it will be served here.</p>`;
-
-  return layout({
-    title: site.settings.title,
-    siteTitle: site.settings.title,
-    siteDescription: site.settings.description || undefined,
-    nav: site.nav,
-    currentPath: "/",
-    content: content + hint,
-  });
-}
-
 async function renderNotFound(path: string): Promise<string> {
   const site = await chrome(path);
   return layout({
@@ -87,7 +58,6 @@ export async function handlePage(request: Request): Promise<Response> {
   const page = await getPage(path === "/" ? ROOT_BUNDLE : path);
 
   if (!page) {
-    if (path === "/") return html(await renderIndex());
     return new Response(await renderNotFound(path), {
       status: 404,
       headers: { "content-type": "text/html; charset=utf-8" },
