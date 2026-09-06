@@ -69,18 +69,24 @@ Compare segment arrays, not strings. That removes the bug as a class rather than
 | `/trip` | `/tripwire/items` | **no** |
 | `/trip` | `/trip/day1/items` | yes |
 | `/trip/day1` | `/trip/day1/items` | yes, and owns it over `/trip` |
-| `/` | anything | **no**, see 4.2 |
+| `/` | anything | **not a bundle**, see 4.2 |
 
 **In `delete_bundle` this rule is the difference between a wrong listing and permanent data loss.**
 See section 9.
 
-### 4.2 The root page owns nothing
+### 4.2 `/` is not a bundle
 
-A page published at `/` is above every resource on the site. Exclude it from ownership entirely. A site
-with a home page should not thereby have every collection assigned to the home page.
+There is no root scope. Every top-level path is a peer scope, and nothing sits above everything else.
 
-`/` is still a valid bundle path in the sense that it contains everything, which is exactly why
-`delete_bundle` refuses it.
+- **`/` is not a page path.** `publish_page`, `update_page` and the admin editor refuse it.
+- **`/` is not a collection path.** `saveCollection` refuses it.
+- **`/` is not a listable or deletable bundle.** `list_bundle` and `delete_bundle` refuse it, rather than
+  returning the whole site, which would read as ownership of it.
+- **The home page is an ordinary bundle.** It lives at `/root` and is served at `/`. `/root` itself redirects
+  to `/`, so a page has one URL. Its collections sit at `/root/...` like any other bundle's.
+- **Nothing already stored at `/` is migrated.** A page or collection written there before this rule keeps
+  serving exactly as it did. Only new writes are refused, and ownership still skips `/` so such a page owns
+  nothing.
 
 ### 4.3 `/_collections` is reserved
 
@@ -152,8 +158,7 @@ ungrouped, and its owner has the full tool surface available to rearrange them w
   - A page that owns nothing lists the page and says so. A path where nothing at all is published is an error.
     Those are different situations and a client has to tell them apart.
   - A path with resources but no page lists them and says no page is published there.
-  - `/` lists the whole site, because a bundle is containment and `/` contains everything. It says in the reply
-    that the root page owns nothing by rule, so nothing there reads as ownership.
+  - `/` is refused, because it is not a bundle. See section 4.2.
 - **New operation, ungrouped listing**: every collection and asset with no page above it, grouped by the path
   that would own it if a page were published there, because resources needing the same fix are one decision
   rather than several. Assets stored under a content hash are listed apart, since no page can ever own them.
@@ -199,7 +204,7 @@ every collection beneath it, every asset beneath it. The path need not have a pa
 ## 11. Acceptance criteria
 
 - `/bavaria` does not contain `/bavaria-lessons/lessons`, in listing or in delete.
-- A page at `/` owns no resources.
+- A page cannot be published at `/` at all, and the home page at `/root` is served at `/`.
 - With pages `/trip` and `/trip/day1` both present, `/trip/day1/items` is owned by `/trip/day1` **and**
   appears in the bundle listing for `/trip`, alongside the page `/trip/day1`.
 - Bundle listing for `/germanfunstuff` returns its collections and assets, and nothing belonging to

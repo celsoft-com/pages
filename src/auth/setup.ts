@@ -2,6 +2,7 @@ import { randomBytes, recoveryCode, toBase64 } from "../crypto/random";
 import { stores } from "../store";
 import type { Owner } from "../types";
 import { hashSecret } from "./password";
+import { ROOT_BUNDLE } from "../pages/path";
 import { savePage } from "../pages/service";
 
 const KEY = "owner";
@@ -34,7 +35,7 @@ export async function completeSetup(password: string): Promise<{ owner: Owner; r
   if (!stored || stored.id !== owner.id) throw new Error("setup already complete");
 
   await savePage({
-    path: "/",
+    path: ROOT_BUNDLE,
     contentType: "markdown",
     title: "Welcome",
     body: `# Welcome

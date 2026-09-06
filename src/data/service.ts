@@ -79,6 +79,8 @@ export async function saveCollection(path: string, items: Item[]): Promise<Colle
   const normalized = normalizeCollectionPath(path);
   if (normalized === MANIFEST_PATH)
     throw new Error(`${MANIFEST_PATH} is reserved for the index of collections. Pick another path.`);
+  if (normalized === "/")
+    throw new Error("/ is not a collection path: it would sit above every bundle. Put it under a page, for example /home/items.");
 
   const existing = await getCollection(normalized);
   const now = Date.now();

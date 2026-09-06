@@ -1,6 +1,7 @@
 import { deleteAsset, listAssets } from "./assets/service";
 import { contains, ownerOf, wouldBeOwner } from "./bundle";
 import { deleteCollection, getCollection, listCollections, MANIFEST_PATH } from "./data/service";
+import { ROOT_BUNDLE } from "./pages/path";
 import { deletePage, listPages, pagePaths } from "./pages/service";
 
 export interface PageEntry {
@@ -38,6 +39,10 @@ export interface BrokenReference {
   references: string;
   count: number;
 }
+
+export const ROOT_IS_NOT_A_BUNDLE =
+  "/ is not a bundle. There is no root scope: every top-level path is its own scope, the home page included, " +
+  `which lives at ${ROOT_BUNDLE} and is served at /. Call list_pages or list_ungrouped to see what exists.`;
 
 function ownable(path: string): boolean {
   return path !== MANIFEST_PATH;
@@ -122,7 +127,7 @@ export interface BundlePlan extends BundleContents {
 }
 
 export async function planBundleDelete(path: string): Promise<BundlePlan> {
-  if (path === "/") throw new Error("Refusing to delete /: that is every page, collection and asset on the site.");
+  if (path === "/") throw new Error(ROOT_IS_NOT_A_BUNDLE);
   if (path === MANIFEST_PATH) throw new Error(`${MANIFEST_PATH} is the reserved collection index and cannot be deleted.`);
 
   const contents = await bundleContents(path);

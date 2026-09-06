@@ -1,6 +1,6 @@
 import { decodeKey, encodeKey, stores } from "../store";
 import type { ContentType, Page, PageSummary } from "../types";
-import { normalizePath } from "./path";
+import { ROOT_BUNDLE, normalizePath } from "./path";
 
 export async function getPage(path: string): Promise<Page | null> {
   const stored = await stores.pages().get(encodeKey(normalizePath(path)), { type: "json" });
@@ -38,6 +38,11 @@ export async function savePage(input: {
   body: string;
 }): Promise<Page> {
   const path = normalizePath(input.path);
+  if (path === "/")
+    throw new Error(
+      `/ is not a page path: it would sit above every bundle on the site. Publish the home page at ${ROOT_BUNDLE}, ` +
+        `which is served at /.`,
+    );
   const existing = await getPage(path);
   const now = Date.now();
   const page: Page = {

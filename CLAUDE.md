@@ -57,6 +57,12 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   `set_collection_refs` may cross bundles, a page may fetch any collection, and nothing is moved, renamed or
   deleted as a side effect of anything. A site whose data is all ungrouped is working correctly, and the tool text
   has to say so or a client will start "fixing" it.
+- **`/` is not a bundle and not a page path.** There is no root scope: every top-level path is a peer, the home
+  page included. It lives at `ROOT_BUNDLE` in [path.ts](src/pages/path.ts), is served at `/`, and `/root` itself
+  301s to `/` so a page has one URL. `savePage` and `saveCollection` refuse `/`; `list_bundle` and `delete_bundle`
+  refuse it too, because a bundle at `/` would contain the whole site and read as owning it. Anything already
+  stored at `/` keeps being served, since nothing is migrated. `ownerOf` still skips `/` as a guard for that
+  legacy data.
 - **An absence marker never sits where a value could.** `owner` is `null` in JSON, and in tool text `ungrouped`
   stands alone rather than following `owner `. A site with a page at `/ungrouped` must never emit a line a client
   can read either way, and [bundles.test.ts](src/bundles.test.ts) publishes exactly that page to pin it. Same

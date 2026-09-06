@@ -1,3 +1,7 @@
+// / is not a bundle. Every top-level path is a peer scope, the home page included: it lives in
+// this bundle and is served at /, so nothing sits above everything else.
+export const ROOT_BUNDLE = "/root";
+
 export function normalizePath(input: string): string {
   let path = input.trim();
   try {

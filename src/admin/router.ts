@@ -14,7 +14,7 @@ import { changePassword, completeSetup, getOwner, isSetupComplete } from "../aut
 import { completeAuthorize, parseAuthorize } from "../oauth/server";
 import { listGrants, revokeGrant } from "../oauth/store";
 import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
-import { isValidPath, normalizePath } from "../pages/path";
+import { isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
 import { getSettings, saveSettings } from "../settings";
 import type { Item, Owner } from "../types";
 import { escapeHtml, notice, page, redirect } from "./ui";
@@ -246,6 +246,11 @@ async function savePageForm(request: Request): Promise<Response> {
   const body = await form(request);
   const path = normalizePath(body.path ?? "");
   if (!isValidPath(path)) return back("/admin/pages/edit", { error: `Path "${body.path}" is not usable.` });
+  // Refuse before the rename below deletes the original: savePage would throw and take the page with it.
+  if (path === "/")
+    return back("/admin/pages/edit", {
+      error: `/ is not a page path. Publish the home page at ${ROOT_BUNDLE}, which is served at /.`,
+    });
 
   const original = body.original ? normalizePath(body.original) : null;
   if (original && original !== path) await deletePage(original);

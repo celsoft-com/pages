@@ -6,6 +6,7 @@ import {
   ownedAssets,
   ownedCollections,
   planBundleDelete,
+  ROOT_IS_NOT_A_BUNDLE,
   ungrouped,
   type BundlePlan,
 } from "../inventory";
@@ -23,7 +24,7 @@ import {
   setRefs,
 } from "../data/service";
 import { deletePage, deriveTitle, getPage, listPages, pagePaths, savePage } from "../pages/service";
-import { isValidPath, normalizePath } from "../pages/path";
+import { ROOT_BUNDLE, isValidPath, normalizePath } from "../pages/path";
 import { getSettings, saveSettings } from "../settings";
 import type { Item } from "../types";
 
@@ -59,7 +60,7 @@ function detectFormat(content: string, declared?: string): "markdown" | "html" {
 }
 
 function urlFor(ctx: ToolContext, path: string): string {
-  return `${ctx.siteUrl}${path === "/" ? "" : path}`;
+  return `${ctx.siteUrl}${path === "/" || path === ROOT_BUNDLE ? "" : path}`;
 }
 
 function dataUrl(ctx: ToolContext, path: string): string {
@@ -187,7 +188,7 @@ export const TOOLS: ToolDefinition[] = [
       "If the page lists repeating things, offer the owner a data collection first: keep the items in one with put_item and have the page fetch /data/<path>.json, so editing one of them later does not mean rewriting the page.",
     inputSchema: object(
       {
-        path: { type: "string", description: "Page path, for example /about or / for the home page" },
+        path: { type: "string", description: `Page path, for example /about. The home page is ${ROOT_BUNDLE}, which is served at /.` },
         content: { type: "string", description: "Markdown or a full HTML document" },
         format: { type: "string", enum: ["markdown", "html"], description: "Defaults to auto-detect" },
         title: { type: "string", description: "Defaults to the first heading" },
@@ -347,6 +348,7 @@ export const TOOLS: ToolDefinition[] = [
     ),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
+      if (path === "/") throw new Error(ROOT_IS_NOT_A_BUNDLE);
       const [contents, page] = await Promise.all([bundleContents(path), getPage(path)]);
 
       const pages: string[] = [];
@@ -371,13 +373,7 @@ export const TOOLS: ToolDefinition[] = [
         );
 
       const out: string[] = [];
-      if (path === "/")
-        out.push(
-          "Everything on the site, listed by path. A page at / owns nothing by rule, so every owner named below " +
-            "is a deeper page or ungrouped.",
-        );
-      else if (!page)
-        out.push(`No page is published at ${path}. These are grouped under it by path alone.`);
+      if (!page) out.push(`No page is published at ${path}. These are grouped under it by path alone.`);
 
       out.push(...pages, ...resources);
       if (page && resources.length === 0)

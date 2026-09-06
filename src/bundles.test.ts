@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleAsset } from "./assets/handler";
+import { completeSetup } from "./auth/setup";
 import { assetUrlFor, getAsset, listAssets } from "./assets/service";
 import { handleData } from "./data/handler";
 import { getCollection, saveCollection } from "./data/service";
 import { TOOLS, type ToolContext } from "./mcp/tools";
+import { handlePage } from "./pages/handler";
+import { ROOT_BUNDLE } from "./pages/path";
 import { getPage } from "./pages/service";
+import { encodeKey, stores } from "./store";
 import { resetBlobs } from "./test/blobs";
 
 const ctx: ToolContext = { siteUrl: "https://example.com" };
@@ -15,6 +19,18 @@ function call(name: string, args: Record<string, unknown> = {}): Promise<string>
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool) throw new Error(`No tool named ${name}`);
   return tool.handler(args, ctx);
+}
+
+// A page stored at / can no longer be written through savePage, so legacy state is seeded raw.
+async function savePageDirect(path: string, body: string): Promise<void> {
+  await stores.pages().setJSON(encodeKey(path), {
+    path,
+    contentType: "markdown",
+    title: body.replace(/^#\s*/, ""),
+    body,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
 }
 
 function page(path: string): Promise<string> {
@@ -57,10 +73,17 @@ describe("ownership through the tools", () => {
     expect(await call("list_collections")).toContain("owner /bavaria-lessons");
   });
 
-  it("gives the root page nothing", async () => {
-    await page("/");
-    await saveCollection("/trip/items", [{ id: "one" }]);
-    expect(await call("list_collections")).toContain("  ungrouped");
+  it("refuses a page at / rather than letting one sit above every bundle", async () => {
+    await expect(page("/")).rejects.toThrow(/not a page path/);
+  });
+
+  it("treats the home page as an ordinary peer bundle", async () => {
+    await page("/root");
+    await saveCollection("/root/items", [{ id: "one" }]);
+    await saveCollection("/trip/items", [{ id: "two" }]);
+
+    expect(await ownerReported("/root/items")).toBe("/root");
+    expect(await ownerReported("/trip/items")).toBeNull();
   });
 
   it("hands a resource to the deepest page above it", async () => {
@@ -237,8 +260,8 @@ describe("delete_bundle", () => {
     expect(reply).toContain("1 in /notes/entries via day -> /trip/day1/items");
   });
 
-  it("refuses the whole site", async () => {
-    await expect(call("delete_bundle", { path: "/", confirm: true })).rejects.toThrow(/Refusing to delete/);
+  it("refuses /, which is not a bundle", async () => {
+    await expect(call("delete_bundle", { path: "/", confirm: true })).rejects.toThrow(/not a bundle/);
   });
 
   it("refuses the reserved collection index", async () => {
@@ -299,8 +322,8 @@ describe("segment-boundary matrix", () => {
     expect(await ownerReported("/tripwire/items")).toBeNull();
   });
 
-  it("page / owns no collection", async () => {
-    await page("/");
+  it("no page can exist at / to own anything", async () => {
+    await expect(page("/")).rejects.toThrow(/not a page path/);
     await saveCollection("/anything/at/all", [{ id: "one" }]);
     expect(await ownerReported("/anything/at/all")).toBeNull();
   });
@@ -382,10 +405,9 @@ describe("list_bundle edges", () => {
     expect(await call("list_bundle", { path: "/trip" })).toContain("refs section->/trip/sections");
   });
 
-  it("says plainly that the root page owns nothing", async () => {
-    await page("/");
+  it("refuses / rather than listing the whole site", async () => {
     await saveCollection("/loose/items", [{ id: "one" }]);
-    expect(await call("list_bundle", { path: "/" })).toContain("A page at / owns nothing by rule");
+    await expect(call("list_bundle", { path: "/" })).rejects.toThrow(/not a bundle/);
   });
 });
 
@@ -406,5 +428,58 @@ describe("list_ungrouped groups by the fix", () => {
     await saveCollection("/trip/items", [{ id: "a" }]);
     await upload("coburg.jpg", "/trip/images/coburg.jpg");
     expect(await call("list_ungrouped")).toContain("Publish a page at /trip to own these 2:");
+  });
+});
+
+describe("the home page is a bundle, not a root", () => {
+  const visit = (path: string) => handlePage(new Request(`https://example.com${path}`));
+
+  it("serves the /root page at the site root", async () => {
+    await call("publish_page", { path: "/root", content: "# Welcome home", overwrite: true });
+    const response = await visit("/");
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Welcome home");
+  });
+
+  it("gives the home page one URL, not two", async () => {
+    await call("publish_page", { path: "/root", content: "# Welcome home", overwrite: true });
+    const response = await visit("/root");
+    expect(response.status).toBe(301);
+    expect(response.headers.get("location")).toBe("/");
+  });
+
+  it("keeps serving a page stored at / before / stopped being a path", async () => {
+    await savePageDirect("/", "# Old home");
+    const response = await visit("/");
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Old home");
+  });
+
+  it("prefers the home bundle over a page left at /", async () => {
+    await savePageDirect("/", "# Old home");
+    await call("publish_page", { path: "/root", content: "# New home", overwrite: true });
+    expect(await (await visit("/")).text()).toContain("New home");
+  });
+
+  it("does not list the home page as one more page in the index", async () => {
+    await call("publish_page", { path: "/root", content: "# Home", overwrite: true });
+    await call("publish_page", { path: "/hello", content: "# Hello", overwrite: true });
+    await savePageDirect("/", "# placeholder");
+
+    const body = await (await visit("/")).text();
+    expect(body).not.toContain(">/root<");
+  });
+
+  it("owns its own collections like any other bundle", async () => {
+    await call("publish_page", { path: "/root", content: "# Home", overwrite: true });
+    await saveCollection("/root/links", [{ id: "a" }]);
+    expect(await call("list_bundle", { path: "/root" })).toContain("collection /root/links");
+  });
+
+  it("is where setup puts the very first page", async () => {
+    await completeSetup("a-long-enough-password");
+    expect(await getPage(ROOT_BUNDLE)).not.toBeNull();
+    expect(await getPage("/")).toBeNull();
+    expect(await (await visit("/")).text()).toContain("Welcome");
   });
 });

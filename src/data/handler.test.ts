@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { encodeKey, stores } from "../store";
 import { resetBlobs } from "../test/blobs";
 import { handleData } from "./handler";
 import { putItem, reorderItems, saveCollection } from "./service";
@@ -116,11 +117,20 @@ describe("the address the tools advertise", () => {
     }
   });
 
-  it("round-trips a collection at the root through /data/index.json", async () => {
-    await saveCollection("/", [{ id: "a" }]);
+  it("keeps serving a collection stored at the root before / stopped being a path", async () => {
+    await stores.data().setJSON(encodeKey("/"), {
+      path: "/",
+      items: [{ id: "a" }],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
     const response = await get("/data/index.json");
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([{ id: "a" }]);
+  });
+
+  it("refuses to write a new collection at the root", async () => {
+    await expect(saveCollection("/", [{ id: "a" }])).rejects.toThrow(/not a collection path/);
   });
 
   it("serves the bare array, not the envelope the tools return", async () => {

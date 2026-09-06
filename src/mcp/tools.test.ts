@@ -286,9 +286,8 @@ describe("how collections are served", () => {
     }
   });
 
-  it("addresses a collection at the root as index.json", async () => {
-    const text = await call("put_item", { path: "/", id: "a", fields: {} });
-    expect(text).toContain("https://example.com/data/index.json");
+  it("refuses a collection at the root, which is no bundle", async () => {
+    await expect(call("put_item", { path: "/", id: "a", fields: {} })).rejects.toThrow(/not a collection path/);
   });
 
   it("addresses a nested collection under the same rule", async () => {
