@@ -28,6 +28,8 @@ export interface PageSummary {
 
 export interface Asset {
   key: string;
+  // Set only on rooted assets. Hash-keyed assets predate paths and are in no bundle.
+  path?: string;
   filename: string;
   contentType: string;
   size: number;

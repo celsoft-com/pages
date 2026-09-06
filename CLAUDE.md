@@ -17,7 +17,9 @@ One function serves everything, routed in [app.ts](src/app.ts):
 
 - **Public pages** — anything not claimed by another prefix.
 - **Admin UI** — `/admin/*`, server-rendered HTML, no client framework.
-- **Assets** — `/assets/*`, uploaded files served from blobs.
+- **Assets** — `/assets/*`, uploaded files served from blobs. Two key schemes: a rooted path
+  (`/germanfunstuff/images/coburg.jpg`, encoded like any other path) and, for anything uploaded before bundles,
+  a content hash. Hash URLs keep resolving forever and belong to no bundle.
 - **Data** — `/data/<path>.json`, a collection served whole as JSON for a page to fetch and render.
   `/data/_collections.json` is the reserved index of every collection.
 - **MCP** — `/mcp`, JSON-RPC over Streamable HTTP.
@@ -35,12 +37,30 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 - **No API tokens, ever.** The site never asks for, stores, or uses a provider API token in any form.
 - **Custom domains are the user's job.** They add the domain in Netlify. The app does nothing and says nothing about it.
 - **No local tooling for users.** Deploy is the button. Never add a step needing a CLI or a checkout.
-- **One path normalizer.** [path.ts](src/pages/path.ts) is the only place a page path is normalized.
+- **One path normalizer, two kinds of path.** [path.ts](src/pages/path.ts) is the only place any path is
+  normalized. `normalizePath` is for pages and collections; `normalizeAssetPath` is for assets and exists because
+  the page rules would eat a filename: they strip `.html`/`.md` and pop a trailing `index`, so an asset at
+  `/docs/index.html` would become `/docs` and `/notes.md` would become `/notes`. Never point an asset at
+  `normalizePath`.
 - **Every stored read goes through `hydrate`.** A blob written before a field existed still has to come back
   carrying it, and there is more than one way into storage: `listCollections` reads raw blobs, not `getCollection`.
   Adding a field to `Collection` means defaulting it in [hydrate](src/data/service.ts) and nowhere else. Skipping
   that shipped a `list_collections` that threw on every pre-existing collection while every test passed, because
   the tests only ever read blobs this code had just written.
+- **Grouping is by path and nothing else.** A bundle is a path plus everything at or under it;
+  [bundle.ts](src/bundle.ts) is the whole rule and it stores nothing. A resource's owner is the nearest page above
+  it, `/` owns nothing, and matching is on segment arrays, never string prefixes: `/bavaria` does not own
+  `/bavaria-lessons/lessons`, and that pair exists on the live site. The `startsWith` version of this bug passes
+  most tests, so [bundles.test.ts](src/bundles.test.ts) pins the neighbour cases deliberately. In `delete_bundle`
+  the same bug destroys a bundle nobody named.
+- **Ungrouped is a description, not a defect.** Grouping never gates a read, a write or a reference.
+  `set_collection_refs` may cross bundles, a page may fetch any collection, and nothing is moved, renamed or
+  deleted as a side effect of anything. A site whose data is all ungrouped is working correctly, and the tool text
+  has to say so or a client will start "fixing" it.
+- **`delete_bundle` is the only tool that deletes more than one thing.** Without `confirm` it deletes nothing and
+  returns the inventory, including records in other bundles left pointing at nothing. `delete_page` still deletes
+  exactly one page and reports where everything beneath it landed. Keep those two apart: collapsing them turns a
+  routine edit into data loss.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
 - **Repeating content belongs in a collection.** A page that lists things fetches `/data/<path>.json`; it does not

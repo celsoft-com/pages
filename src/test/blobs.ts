@@ -23,8 +23,14 @@ function fakeStore(name: string) {
     async setJSON(key: string, value: unknown) {
       bucket(name).set(key, { value: JSON.stringify(value), metadata: {} });
     },
-    async set(key: string, value: string, options?: { metadata?: Record<string, unknown> }) {
-      bucket(name).set(key, { value, metadata: options?.metadata ?? {} });
+    async set(key: string, value: unknown, options?: { metadata?: Record<string, unknown> }) {
+      bucket(name).set(key, { value: value as string, metadata: options?.metadata ?? {} });
+    },
+    async getWithMetadata(key: string, options?: { type?: string }) {
+      const entry = bucket(name).get(key);
+      if (!entry) return null;
+      const data = options?.type === "json" ? JSON.parse(entry.value) : entry.value;
+      return { data, metadata: entry.metadata };
     },
     async getMetadata(key: string) {
       const entry = bucket(name).get(key);

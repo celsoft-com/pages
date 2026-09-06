@@ -1,4 +1,5 @@
-import { stores } from "../store";
+import { normalizeAssetPath } from "../pages/path";
+import { encodeKey, stores } from "../store";
 import type { Asset } from "../types";
 
 function extensionFor(filename: string, contentType: string): string {
@@ -24,15 +25,30 @@ async function hashKey(bytes: ArrayBuffer): Promise<string> {
     .join("");
 }
 
+export function assetKeyFor(path: string): string {
+  return encodeKey(normalizeAssetPath(path));
+}
+
+export function assetUrlFor(asset: Asset): string {
+  return `/assets/${asset.path ? asset.path.replace(/^\//, "") : asset.key}`;
+}
+
 export async function putAsset(input: {
   filename: string;
   contentType: string;
   bytes: ArrayBuffer;
+  path?: string;
 }): Promise<Asset> {
-  const hash = await hashKey(input.bytes);
-  const key = `${hash}${extensionFor(input.filename, input.contentType)}`;
+  const rooted = input.path === undefined ? null : normalizeAssetPath(input.path);
+  if (rooted === "/") throw new Error("path must name a file, for example /germanfunstuff/images/coburg.jpg");
+
+  const key = rooted
+    ? assetKeyFor(rooted)
+    : `${await hashKey(input.bytes)}${extensionFor(input.filename, input.contentType)}`;
+
   const asset: Asset = {
     key,
+    ...(rooted ? { path: rooted } : {}),
     filename: input.filename,
     contentType: input.contentType,
     size: input.bytes.byteLength,
@@ -48,6 +64,12 @@ export async function getAsset(key: string): Promise<{ body: ArrayBuffer; asset:
   return { body: result.data, asset: result.metadata as unknown as Asset };
 }
 
+// A URL under /assets/ is either a legacy hash key, stored verbatim, or a rooted path.
+// Verbatim wins so that every URL handed out before paths existed keeps resolving.
+export async function findAsset(raw: string): Promise<{ body: ArrayBuffer; asset: Asset } | null> {
+  return (await getAsset(raw)) ?? (await getAsset(assetKeyFor(raw)));
+}
+
 export async function listAssets(): Promise<Asset[]> {
   const { blobs } = await stores.assets().list();
   const assets = await Promise.all(
@@ -61,9 +83,12 @@ export async function listAssets(): Promise<Asset[]> {
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export async function deleteAsset(key: string): Promise<boolean> {
-  const existing = await stores.assets().getMetadata(key);
-  if (!existing) return false;
-  await stores.assets().delete(key);
-  return true;
+export async function deleteAsset(raw: string): Promise<boolean> {
+  for (const key of [raw, assetKeyFor(raw)]) {
+    if (await stores.assets().getMetadata(key)) {
+      await stores.assets().delete(key);
+      return true;
+    }
+  }
+  return false;
 }

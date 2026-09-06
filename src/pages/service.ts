@@ -1,4 +1,4 @@
-import { encodeKey, stores } from "../store";
+import { decodeKey, encodeKey, stores } from "../store";
 import type { ContentType, Page, PageSummary } from "../types";
 import { normalizePath } from "./path";
 
@@ -22,6 +22,13 @@ export async function listPages(): Promise<PageSummary[]> {
     }),
   );
   return summaries.filter((p): p is PageSummary => p !== null).sort((a, b) => a.path.localeCompare(b.path));
+}
+
+// Ownership needs page paths, not pages. Blob keys already encode the path, so this is one
+// list() rather than the one GET per page that listPages costs.
+export async function pagePaths(): Promise<string[]> {
+  const { blobs } = await stores.pages().list();
+  return blobs.map((blob) => decodeKey(blob.key));
 }
 
 export async function savePage(input: {

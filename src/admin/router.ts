@@ -1,4 +1,4 @@
-import { deleteAsset, listAssets, putAsset } from "../assets/service";
+import { assetUrlFor, deleteAsset, listAssets, putAsset } from "../assets/service";
 import {
   deleteCollection,
   getCollection,
@@ -268,10 +268,10 @@ async function assetsScreen(url: URL): Promise<Response> {
     ? assets
         .map(
           (a) => `<tr>
-<td>${escapeHtml(a.filename)}<div class="small muted mono">/assets/${escapeHtml(a.key)}</div></td>
+<td>${escapeHtml(a.filename)}<div class="small muted mono">${escapeHtml(assetUrlFor(a))}</div></td>
 <td class="small muted">${(a.size / 1024).toFixed(1)} KB</td>
 <td class="actions">
-<a class="button secondary" href="/assets/${escapeHtml(a.key)}" target="_blank" rel="noopener">Open</a>
+<a class="button secondary" href="${escapeHtml(assetUrlFor(a))}" target="_blank" rel="noopener">Open</a>
 <form method="post" action="/admin/assets/delete" style="display:inline">
 <input type="hidden" name="key" value="${escapeHtml(a.key)}">
 <button class="danger" type="submit">Delete</button></form>
@@ -305,7 +305,7 @@ async function uploadAsset(request: Request): Promise<Response> {
     contentType: file.type || "application/octet-stream",
     bytes: await file.arrayBuffer(),
   });
-  return back("/admin/assets", { ok: `Uploaded /assets/${asset.key}` });
+  return back("/admin/assets", { ok: `Uploaded ${assetUrlFor(asset)}` });
 }
 
 // ---------- connections ----------
