@@ -147,8 +147,10 @@ function resourceUrl(ctx: ToolContext, kind: Kind, path: string): string {
 // is, and saying so is the difference between a visible effect and a silent one.
 async function restOfBundle(transfer: Transfer): Promise<{ kind: string; path: string }[]> {
   if (transfer.scope !== "page") return [];
+  // / is not a bundle, so a page stored there has no rest of a bundle: it would be the site.
+  if (transfer.from === "/") return [];
   const contents = await bundleContents(transfer.from);
-  const taken = new Set(transfer.resources.map((r) => r.from));
+  const taken = new Set(transfer.resources.flatMap((r) => (r.to === null ? [r.from] : [r.from, r.to])));
   return [
     ...contents.pages.map((p) => ({ kind: "page", path: p.path })),
     ...contents.collections.map((c) => ({ kind: "collection", path: c.path })),

@@ -1,5 +1,5 @@
 import { assetKeyFor, getAsset, listAssets } from "./assets/service";
-import { contains } from "./bundle";
+import { contains, segmentsOf } from "./bundle";
 import { getCollection, listCollections, MANIFEST_PATH, normalizeCollectionPath } from "./data/service";
 import { ROOT_IS_NOT_A_BUNDLE, referencesInto, type BrokenReference } from "./inventory";
 import { ROOT_BUNDLE, normalizeAssetPath, normalizePath } from "./pages/path";
@@ -379,6 +379,9 @@ export function stalePatterns(transfer: Transfer): RegExp[] {
 
   for (const resource of transfer.resources) {
     if (resource.to === resource.from) continue;
+    // / names no resource. As a pattern it is a bare slash, which matches a CSS comment, a
+    // regex literal and a division, so a page stored there is reported as breaking everything.
+    if (segmentsOf(resource.from).length === 0) continue;
     if (resource.kind === "collection") prefixed("/data", resource.from);
     if (resource.kind === "asset") prefixed("/assets", resource.from);
     if (resource.kind === "page")

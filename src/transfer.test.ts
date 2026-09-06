@@ -389,3 +389,41 @@ describe("the home page bundle", () => {
     expect(reply.resources[0].url).toBe("https://example.com");
   });
 });
+
+describe("a page stored at /", () => {
+  beforeEach(async () => {
+    await savePage({ path: "/", contentType: "markdown", title: "Welcome", body: "# Welcome" });
+    await savePage({
+      path: "/styles",
+      contentType: "html",
+      title: "Styles",
+      body: "/* ---------- HEADER ---------- */\nvar span = (h - 5) / 16;\nconst esc = /[&<>\"]/g;\n",
+    });
+    await saveCollection("/germanfunstuff/items", [{ id: "one" }]);
+  });
+
+  it("reports no stale lines, because / names no resource", async () => {
+    const reply = await json("move_page", { from: "/", to: "/root" });
+    expect(reply.pages_to_update).toEqual([]);
+    expect(reply.notes.join(" ")).not.toContain("still names a path that has gone");
+  });
+
+  it("reports no rest of bundle, because / is not a bundle", async () => {
+    const reply = await json("move_page", { from: "/", to: "/root" });
+    expect(reply.rest_of_bundle).toBeUndefined();
+  });
+
+  it("still moves the page and serves it at the site root", async () => {
+    await json("move_page", { from: "/", to: "/root" });
+    expect(await getPage("/")).toBeNull();
+    expect((await getPage("/root"))!.title).toBe("Welcome");
+  });
+
+  it("never lists the resource it just created as something that stayed put", async () => {
+    await savePage({ path: "/trip", contentType: "markdown", title: "Trip", body: "# Trip" });
+    await saveCollection("/trip/items", [{ id: "one" }]);
+
+    const reply = await json("copy_page", { from: "/trip", to: "/trip/copy" });
+    expect(reply.rest_of_bundle).toEqual([{ kind: "collection", path: "/trip/items" }]);
+  });
+});
