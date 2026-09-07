@@ -56,7 +56,9 @@ async function route(request: Request, url: URL): Promise<Response> {
     return handleMcp(request);
   }
 
-  if (path.startsWith("/admin") || path === "/oauth/authorize") return handleAdmin(request, url);
+  // Segment boundary, not a string prefix: a page may be published at /admin-notes.
+  if (path === "/admin" || path.startsWith("/admin/") || path === "/oauth/authorize")
+    return handleAdmin(request, url);
   if (path.startsWith("/assets/")) return handleAsset(request);
   if (path.startsWith("/data/")) return handleData(request);
 
