@@ -71,7 +71,6 @@ const NAV = [
   { href: "/admin", label: "Pages" },
   { href: "/admin/assets", label: "Assets" },
   { href: "/admin/data", label: "Data" },
-  { href: "/admin/sharing", label: "Sharing" },
   { href: "/admin/connections", label: "Connections" },
   { href: "/admin/settings", label: "Settings" },
 ];

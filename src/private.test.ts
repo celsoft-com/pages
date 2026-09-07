@@ -312,7 +312,7 @@ describe("a hash-keyed asset is in no scope", () => {
   });
 });
 
-describe("the dashboard", () => {
+describe("the dashboard, on the Pages screen", () => {
   async function session(): Promise<string> {
     return (await createSessionCookie((await getOwner())!)).split(";")[0];
   }
@@ -328,24 +328,26 @@ describe("the dashboard", () => {
   }
 
   it("needs a login", async () => {
-    const response = await get("/admin/sharing");
+    const response = await get("/admin");
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toContain("/admin/login");
   });
 
   it("closes a path and lists it", async () => {
     const cookie = await session();
-    await post("/admin/sharing/private", { path: "/trip" }, cookie);
+    await post("/admin/pages/private", { path: "/trip" }, cookie);
 
     expect((await get("/trip")).status).toBe(404);
-    expect(await (await get("/admin/sharing", cookie)).text()).toContain("/trip");
+    const screen = await (await get("/admin", cookie)).text();
+    expect(screen).toContain("Make public");
+    expect(screen).toContain("No links yet, so nobody can reach this.");
   });
 
   // The one place a share token could still reach a log is a redirect that carries it in a query
   // string, so minting renders the link in its own response instead of redirecting.
   it("shows a new link in the response body, never in a redirect URL", async () => {
     const cookie = await session();
-    const response = await post("/admin/sharing/share", { path: "/trip", label: "dana" }, cookie);
+    const response = await post("/admin/pages/share", { path: "/trip", label: "dana" }, cookie);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
@@ -359,17 +361,18 @@ describe("the dashboard", () => {
   it("revokes one link", async () => {
     const cookie = await session();
     const grant = await redeem(await share("/trip", "dana"));
-    await post("/admin/sharing/revoke", { path: "/trip", label: "dana" }, cookie);
+    await post("/admin/pages/revoke", { path: "/trip", label: "dana" }, cookie);
 
     expect((await get("/trip", grant)).status).toBe(404);
   });
 
   it("refuses to close the whole site", async () => {
     const cookie = await session();
-    const response = await post("/admin/sharing/private", { path: "/" }, cookie);
+    const response = await post("/admin/pages/private", { path: "/" }, cookie);
 
     expect(response.headers.get("location")).toContain("error=");
     expect((await get("/tripwire")).status).toBe(200);
+    expect((await get("/trip")).status).toBe(200);
   });
 });
 
@@ -402,5 +405,39 @@ describe("moving across a privacy boundary", () => {
     const moved = await json("move_page", { from: "/trip/day1", to: "/trip/day2", confirm: true });
 
     expect(moved.privacy_changes).toBeUndefined();
+  });
+});
+
+describe("the Pages screen shows what is private", () => {
+  async function screen(): Promise<string> {
+    const cookie = (await createSessionCookie((await getOwner())!)).split(";")[0];
+    return (await get("/admin", cookie)).text();
+  }
+
+  it("marks a page private and its descendants as covered by it", async () => {
+    await call("set_privacy", { path: "/trip", private: true });
+    const body = await screen();
+
+    expect(body).toContain("Access");
+    expect(body).toContain('href="#page-/trip"');
+    expect(body).toContain("Private");
+    expect(body).toContain("Public");
+  });
+
+  it("offers no separate control on a page inside a private path", async () => {
+    await call("set_privacy", { path: "/trip", private: true });
+    const body = await screen();
+    const day1 = body.slice(body.indexOf('id="page-/trip/day1"'));
+
+    expect(day1.slice(0, day1.indexOf("</tr>"))).not.toContain("/admin/pages/private");
+  });
+
+  it("lists a private path that has no page of its own", async () => {
+    await call("set_privacy", { path: "/quotes", private: true });
+    expect(await screen()).toContain("Private paths with no page");
+  });
+
+  it("has no sharing tab", async () => {
+    expect(await screen()).not.toContain("/admin/sharing");
   });
 });
