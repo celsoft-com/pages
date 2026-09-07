@@ -16,6 +16,8 @@ const STYLES = `
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.confirm { display: inline; }
 body { margin: 0; background: var(--bg); color: var(--fg);
   font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 .wrap { max-width: 54rem; margin: 0 auto; padding: 1.5rem 1.25rem 5rem; }
@@ -83,6 +85,20 @@ footer.build { margin-top: 2.5rem; padding-top: .85rem; border-top: 1px solid va
   color: var(--muted); font-size: .78rem; }
 `;
 
+// The one press-to-arm swap for every screen: hide the control, show the question it stands in
+// front of, and put the caret on it so a second press or a keyboard Enter commits. A screen that
+// arrived already armed through the query has no control to swap back to, so its cancel link is
+// left to navigate.
+const CONFIRM_SCRIPT = `<script>document.addEventListener("click",function(e){
+var arm=e.target.closest("a[data-arm]");
+if(arm){e.preventDefault();var box=arm.closest(".confirm");arm.hidden=true;
+var form=box.querySelector("form");form.hidden=false;form.querySelector("button").focus();return}
+var cancel=e.target.closest("a[data-cancel]");
+if(!cancel)return;
+var back=cancel.closest(".confirm").querySelector("a[data-arm]");
+if(!back)return;
+e.preventDefault();cancel.closest("form").hidden=true;back.hidden=false});</script>`;
+
 const NAV = [
   { href: "/admin", label: "Pages" },
   { href: "/admin/assets", label: "Assets" },
@@ -116,15 +132,18 @@ export function page(options: {
 <div class="${options.narrow ? "narrow" : "wrap"}">${nav}${options.body}${
     options.chrome === false ? "" : `<footer class="build">${escapeHtml(describeBuild())}</footer>`
   }</div>
+${CONFIRM_SCRIPT}
 </body></html>`;
 
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
-// A question the app asks itself. The control is a link that arms it, and the armed rendering is
-// the same control in the same place saying what the press will do, so the question is asked where
-// the answer is given and nothing is drawn over the row being acted on. The armed state rides in
-// the query, which is why this needs no script and a test can read both states.
+// A question the app asks itself. Both states are rendered here, in the same place in the row: the
+// control, and the armed control saying what the press will do. Pressing swaps them in place, so
+// the question is asked where the answer is given, nothing is drawn over the row being acted on,
+// and nothing is reloaded to ask it. The swap is one delegated listener in `page`; the armed state
+// also rides in the query as `?confirm=<token>` so the arm link works with no script at all, which
+// is what keeps a delete from going through unasked, and lets a test read either state.
 export function confirmAction(input: {
   here: string;
   token: string;
@@ -138,20 +157,23 @@ export function confirmAction(input: {
 }): string {
   const { here, token, armed, action, fields, label, confirm } = input;
 
-  if (armed !== token)
-    return `<a class="button ${input.className ?? "danger"}" href="${escapeHtml(
-      withConfirm(here, token),
-    )}">${escapeHtml(label)}</a>`;
-
   const hidden = Object.entries(fields)
     .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`)
     .join("");
 
-  return `<form method="post" action="${action}" style="display:inline">${hidden}
+  const arm = `<a class="button ${input.className ?? "danger"}" href="${escapeHtml(
+    withConfirm(here, token),
+  )}" data-arm>${escapeHtml(label)}</a>`;
+
+  const question = `<form method="post" action="${action}" style="display:inline"${
+    armed === token ? "" : " hidden"
+  }>${hidden}
 <button class="danger armed" type="submit">${escapeHtml(confirm)}</button>
-<a class="link" href="${escapeHtml(withConfirm(here, null))}" style="margin-left:.6rem">${escapeHtml(
+<a class="link" href="${escapeHtml(withConfirm(here, null))}" style="margin-left:.6rem" data-cancel>${escapeHtml(
     input.cancel ?? "Cancel",
   )}</a></form>`;
+
+  return `<span class="confirm">${armed === token ? "" : arm}${question}</span>`;
 }
 
 // Merged into whatever query the screen already carries, and its fragment kept, so an armed

@@ -128,10 +128,12 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   given and nothing covers the row being acted on. A destructive action that has to explain itself puts the
   explanation in the panel, not in a popup, and the wording says what will happen rather than asking whether the
   user is sure: `Delete /trip/items and its 3 items`, never `Are you sure?`. `confirmAction` in
-  [ui.ts](src/admin/ui.ts) is the single rendering of that, and the armed state rides in the query as
-  `?confirm=<token>`, so an unarmed screen carries no form that could post the destructive thing, one row is armed
-  at a time, cancelling is a link that drops the parameter, and both states are HTML a test can read.
-  [confirm.test.ts](src/admin/confirm.test.ts) pins that and that no admin screen ships a dialog at all.
+  [ui.ts](src/admin/ui.ts) is the single rendering of that, and it ships both states in the row, the question
+  hidden, so one delegated listener swaps them where they stand and nothing is fetched or reloaded to ask a
+  question the server already sent. The link that arms also carries `?confirm=<token>`, which is the state with no
+  script running: a delete must never be one unasked press, so the fallback is a screen that comes back armed
+  rather than a screen that just deletes. Both states are HTML, which is why
+  [confirm.test.ts](src/admin/confirm.test.ts) can pin the wording, the arming and the absence of any dialog.
 - **A grant is checked against the stored list on every request.** The cookie is HMAC-signed with the scope path
   inside the payload, so it cannot be replayed against another scope, and the share id is looked up in the blob
   every time, so revoking a link stops it on the holder's next request rather than whenever a cookie would have

@@ -41,6 +41,11 @@ function screen(path: string): Promise<string> {
   return get(path).then((response) => response.text());
 }
 
+function row(body: string, path: string): string {
+  const from = body.slice(body.indexOf(`>${path}<`));
+  return from.slice(0, from.indexOf("</tr>"));
+}
+
 const SCREENS = [
   "/admin",
   "/admin/assets",
@@ -62,51 +67,54 @@ describe("the admin asks its own questions", () => {
     }
   });
 
-  // The question is asked in the control that answers it, so an unarmed screen carries no way to
-  // submit the destructive thing at all: the first press only arms it.
-  it("keeps a delete out of reach until the button is armed", async () => {
-    const listing = await screen("/admin");
+  // Both states ship in the row, so a press swaps them where they stand and nothing is fetched to
+  // ask the question.
+  it("ships the question next to the control it stands in front of", async () => {
+    const cell = row(await screen("/admin"), "/trip");
 
-    expect(listing).not.toContain('action="/admin/pages/delete"');
-    expect(listing).toContain("confirm=delete%3A%2Ftrip");
-
-    const armed = await screen("/admin?confirm=delete%3A%2Ftrip");
-
-    expect(armed).toContain('action="/admin/pages/delete"');
-    expect(armed).toContain("Delete /trip for good");
-    expect(armed).toContain("Keep it");
+    expect(cell).toContain("data-arm");
+    expect(cell).toContain('action="/admin/pages/delete"');
+    expect(cell).toContain("Delete /trip for good");
+    expect(cell).toContain("Keep it");
+    // Hidden until the press, and `[hidden]` beats the button's own display rule.
+    expect(cell).toMatch(/<form[^>]* hidden>/);
+    expect(await screen("/admin")).toContain("[hidden] { display: none !important; }");
   });
 
-  it("arms one row and leaves the rest alone", async () => {
-    const armed = await screen("/admin?confirm=delete%3A%2Ftrip");
-    const notes = armed.slice(armed.indexOf("/notes"));
+  it("swaps in place with one listener, on every screen", async () => {
+    for (const path of SCREENS) {
+      const body = await screen(path);
+      expect(body.match(/a\[data-arm\]/g)!.length).toBeGreaterThan(0);
+      expect(body).toContain("e.preventDefault()");
+    }
+  });
 
-    expect(notes).not.toContain("Delete /notes for good");
-    expect(notes).toContain("confirm=delete%3A%2Fnotes");
+  // Without a script the arm link is still a link, so a delete is never one unasked press.
+  it("arms through the query when nothing runs the swap", async () => {
+    const armed = row(await screen("/admin?confirm=delete%3A%2Ftrip"), "/trip");
+
+    expect(armed).not.toMatch(/<form[^>]* hidden>/);
+    expect(armed).not.toContain("data-arm");
+    expect(armed).toContain("Delete /trip for good");
+
+    const other = row(await screen("/admin?confirm=delete%3A%2Ftrip"), "/notes");
+    expect(other).toMatch(/<form[^>]* hidden>/);
   });
 
   it("cancels back to the screen it armed on", async () => {
-    const armed = await screen("/admin?confirm=delete%3A%2Ftrip");
-    const cancel = armed.slice(armed.indexOf("Delete /trip for good"));
+    const armed = row(await screen("/admin?confirm=delete%3A%2Ftrip"), "/trip");
 
-    expect(cancel).toContain('href="/admin"');
+    expect(armed).toContain('href="/admin"');
   });
 
   // A press has to say what it does, and what a delete costs is the items in it.
   it("prices a collection in the button", async () => {
-    expect(await screen("/admin/data?confirm=delete%3A%2Ftrip%2Fitems")).toContain(
-      "Delete /trip/items and its 3 items",
-    );
+    expect(await screen("/admin/data")).toContain("Delete /trip/items and its 3 items");
   });
 
   it("names the file and the client it would take away", async () => {
-    const assets = await screen("/admin/assets");
-    const key = /confirm=delete%3A([^"]+)/.exec(assets)![1];
-
-    expect(await screen(`/admin/assets?confirm=delete%3A${key}`)).toContain("Delete coburg.jpg for good");
-    expect(await screen("/admin/connections?confirm=revoke%3Ag1")).toContain(
-      "Revoke Claude, it has to connect again",
-    );
+    expect(await screen("/admin/assets")).toContain("Delete coburg.jpg for good");
+    expect(await screen("/admin/connections")).toContain("Revoke Claude, it has to connect again");
   });
 
   // Access is armed inside the panel it lives in, so answering lands back on the question rather
@@ -118,27 +126,13 @@ describe("the admin asks its own questions", () => {
 
     expect(editor).toContain("confirm=public#access");
     expect(editor).toContain("confirm=revoke%3Adana#access");
-    expect(editor).not.toContain('action="/admin/pages/public"');
-
-    const armed = await screen("/admin/pages/edit?path=%2Ftrip&confirm=public");
-
-    expect(armed).toContain('action="/admin/pages/public"');
-    expect(armed).toContain("Open /trip to everyone and break 1 link");
-    expect(armed).toContain("Leave it private");
-  });
-
-  it("says what a revoke stops", async () => {
-    await setPrivate("/trip");
-    await mintShare("/trip", "dana");
-
-    expect(await screen("/admin/pages/edit?path=%2Ftrip&confirm=revoke%3Adana")).toContain(
-      "Revoke dana, that link stops opening it",
-    );
+    expect(editor).toContain("Open /trip to everyone and break 1 link");
+    expect(editor).toContain("Leave it private");
+    expect(editor).toContain("Revoke dana, that link stops opening it");
   });
 
   it("commits on the armed press", async () => {
-    const armed = await screen("/admin?confirm=delete%3A%2Ftrip");
-    expect(armed).toContain('name="path" value="/trip"');
+    expect(await screen("/admin")).toContain('name="path" value="/trip"');
 
     const response = await handle(
       new Request("https://example.com/admin/pages/delete", {
