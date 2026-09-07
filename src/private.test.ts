@@ -542,6 +542,49 @@ describe("the page editor holds every access control", () => {
     expect(body.indexOf("<h2>Content</h2>")).toBeLessThan(body.indexOf('name="content"'));
   });
 
+  it("comes back to the editor after every access change", async () => {
+    const cookie = (await createSessionCookie((await getOwner())!)).split(";")[0];
+    const send = (action: string, fields: Record<string, string>) =>
+      handle(
+        new Request(`https://example.com/admin/pages/${action}`, {
+          method: "POST",
+          headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams(fields).toString(),
+        }),
+      );
+
+    const home = "/admin/pages/edit?path=%2Ftrip#access";
+    for (const [action, fields] of [
+      ["private", { path: "/trip", return: home }],
+      ["revoke", { path: "/trip", label: "nobody", return: home }],
+      ["public", { path: "/trip", return: home }],
+    ] as [string, Record<string, string>][]) {
+      const response = await send(action, fields);
+      const location = response.headers.get("location")!;
+      expect(location).toContain("/admin/pages/edit");
+      expect(location).toContain("path=%2Ftrip");
+      expect(location).toContain("#access");
+      // One query string, not a second ? glued onto the first.
+      expect(location.split("?")).toHaveLength(2);
+    }
+  });
+
+  // A redirect target read out of a request body is an open redirect if it is trusted.
+  it("ignores a return path that leaves the dashboard", async () => {
+    const cookie = (await createSessionCookie((await getOwner())!)).split(";")[0];
+    for (const evil of ["https://evil.test/x", "//evil.test/x", "/admin//evil.test", "/data/x.json"]) {
+      const response = await handle(
+        new Request("https://example.com/admin/pages/private", {
+          method: "POST",
+          headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ path: "/trip", return: evil }).toString(),
+        }),
+      );
+      expect(response.headers.get("location")).toMatch(/^\/admin\?/);
+      await call("set_privacy", { path: "/trip", private: false });
+    }
+  });
+
   it("offers Make private on a public page", async () => {
     const body = await editor("/trip");
 

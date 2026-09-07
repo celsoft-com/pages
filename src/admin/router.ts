@@ -28,9 +28,19 @@ function flash(url: URL): string {
   return "";
 }
 
+// Merged into whatever query the path already carries, and any fragment kept: a caller passing
+// /admin/pages/edit?path=%2Ftrip#access otherwise gets a second ? and a broken URL.
 function back(path: string, params: Record<string, string>): Response {
-  const query = new URLSearchParams(params).toString();
-  return redirect(query ? `${path}?${query}` : path);
+  const url = new URL(path, "https://admin.invalid");
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return redirect(`${url.pathname}${url.search}${url.hash}`);
+}
+
+// Where a form says to go when it is done. Anything not an admin path is ignored rather than
+// followed: a redirect target taken from a request body is an open redirect if it is trusted.
+function returnTo(raw: string | undefined): string {
+  if (!raw || !raw.startsWith("/admin") || raw.startsWith("/admin//")) return "/admin";
+  return raw;
 }
 
 async function form(request: Request): Promise<Record<string, string>> {
@@ -192,6 +202,7 @@ function accessCell(
   if (!own)
     return `<form method="post" action="/admin/pages/private" class="row" style="gap:.5rem">
 <input type="hidden" name="path" value="${escapeHtml(path)}">
+<input type="hidden" name="return" value="/admin">
 <span class="pill">Public</span>
 <button class="link" type="submit">Make private</button></form>`;
 
@@ -298,6 +309,7 @@ function accessPanel(input: {
 <span>Anyone with the URL can read this.</span></div>
 <form method="post" action="/admin/pages/private" style="margin-top:.7rem">
 <input type="hidden" name="path" value="${escapeHtml(path)}">
+<input type="hidden" name="return" value="${escapeHtml(`${here}#access`)}">
 <button class="secondary" type="submit">Make private</button></form>
 <div class="small muted" style="margin-top:.5rem">Closes this path and everything under it: the pages, the data served under <code>/data</code> and the assets. Only a link you send will open it.</div></div>`;
 
@@ -311,6 +323,7 @@ function accessPanel(input: {
 <td class="actions"><form method="post" action="/admin/pages/revoke">
 <input type="hidden" name="path" value="${escapeHtml(own.path)}">
 <input type="hidden" name="label" value="${escapeHtml(share.label)}">
+<input type="hidden" name="return" value="${escapeHtml(`${here}#access`)}">
 <button class="danger" type="submit">Revoke</button></form></td></tr>`,
         )
         .join("")
@@ -345,6 +358,7 @@ ${
 <form method="post" action="/admin/pages/public" style="margin-top:.8rem"
   onsubmit="return confirm('Make ${escapeHtml(own.path)} public? Every link on it stops working.')">
 <input type="hidden" name="path" value="${escapeHtml(own.path)}">
+<input type="hidden" name="return" value="${escapeHtml(`${here}#access`)}">
 <button class="secondary" type="submit">Make public</button>
 <span class="small muted" style="margin-left:.5rem">Reopens everything under it and kills every link above.</span></form>
 </div>
@@ -741,22 +755,25 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
         await deleteCollection(body.path ?? "");
         return back("/admin/data", { ok: `Deleted ${body.path}` });
       }
+      // These three come back to the screen the form was on, so changing a page's access from its
+      // editor leaves you in the editor.
       case "/admin/pages/private": {
         const body = await form(request);
         const path = normalizePath(body.path ?? "");
-        if (path === "/") return back("/admin", { error: "/ cannot be private: it would close the whole site." });
-        if (!isValidPath(path)) return back("/admin", { error: `${body.path} is not a usable path.` });
+        const to = returnTo(body.return);
+        if (path === "/") return back(to, { error: "/ cannot be private: it would close the whole site." });
+        if (!isValidPath(path)) return back(to, { error: `${body.path} is not a usable path.` });
         try {
           await setPrivate(path);
         } catch (error) {
-          return back("/admin", { error: error instanceof Error ? error.message : String(error) });
+          return back(to, { error: error instanceof Error ? error.message : String(error) });
         }
-        return back("/admin", { ok: `${path} is private. Nobody can reach it until you make a link.` });
+        return back(to, { ok: `${path} is private. Nobody can reach it until you make a link.` });
       }
       case "/admin/pages/public": {
         const body = await form(request);
         const scope = await setPublic(normalizePath(body.path ?? ""));
-        return back("/admin", {
+        return back(returnTo(body.return), {
           ok: scope ? `${scope.path} is public again, and ${scope.shares.length} link(s) stopped working.` : "Nothing to do.",
         });
       }
@@ -768,7 +785,7 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
         // the access screen for a private path that has none.
         const editing = Boolean(await getPage(path));
         const home = new URL(manageHref(path, editing), url);
-        const flashTo = `${home.pathname}${home.search}`;
+        const flashTo = `${home.pathname}${home.search}${home.hash}`;
 
         if (!label) return back(flashTo, { error: "Give the link a name." });
         try {
@@ -784,7 +801,7 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
       case "/admin/pages/revoke": {
         const body = await form(request);
         const gone = await revokeShares(normalizePath(body.path ?? ""), (body.label ?? "").trim());
-        return back("/admin", {
+        return back(returnTo(body.return), {
           ok: gone.length ? `Revoked ${gone.map((share) => share.label).join(", ")}.` : "Nothing to revoke.",
         });
       }
