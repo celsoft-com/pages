@@ -15,6 +15,16 @@ import { completeAuthorize, parseAuthorize } from "../oauth/server";
 import { listGrants, revokeGrant } from "../oauth/store";
 import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
 import { isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
+import { bundleContents } from "../inventory";
+import {
+  privacyChanges,
+  restOfBundle,
+  runTransfer,
+  staleReferences,
+  touchesHomePage,
+  type Scope,
+  type Transfer,
+} from "../transfer";
 import { getPrivacy, mintShare, privateScope, revokeShares, setPrivate, setPublic } from "../private/service";
 import { getSettings, saveSettings } from "../settings";
 import type { Item, Owner, PrivateScope } from "../types";
@@ -414,11 +424,20 @@ async function pageEditor(url: URL, minted?: { label: string; link: string }): P
 ${access}
 ${existing ? "<h2>Content</h2>" : ""}
 <form method="post" action="/admin/pages/save" class="panel">
-<input type="hidden" name="original" value="${escapeHtml(existing?.path ?? "")}">
+${
+      existing
+        ? `<input type="hidden" name="path" value="${escapeHtml(existing.path)}">
 <div class="field">
+  <label>Path<span class="hint">A path is moved, not retyped: its collections and files live under it.</span></label>
+  <div class="row" style="justify-content:space-between">
+  <span class="mono">${escapeHtml(existing.path)}</span>
+  <a class="link" href="/admin/pages/move?path=${encodeURIComponent(existing.path)}">Move or rename</a></div>
+</div>`
+        : `<div class="field">
   <label for="path">Path<span class="hint">Lowercase, for example /about. Use / for the home page.</span></label>
-  <input id="path" name="path" type="text" required value="${escapeHtml(existing?.path ?? "")}" placeholder="/about">
-</div>
+  <input id="path" name="path" type="text" required value="" placeholder="/about">
+</div>`
+    }
 <div class="field">
   <label for="title">Title<span class="hint">Leave blank to use the first heading.</span></label>
   <input id="title" name="title" type="text" value="${escapeHtml(existing?.title ?? "")}">
@@ -440,18 +459,18 @@ ${existing ? "<h2>Content</h2>" : ""}
   });
 }
 
+// A save writes the page at the path it is already at. It never renames: retyping the path used
+// to write a new page and delete the old one, which stranded the collections and assets under the
+// old path, lost the page's own createdAt, and reported none of it. Renaming is a move, and a move
+// goes through the transfer engine like every other one.
 async function savePageForm(request: Request): Promise<Response> {
   const body = await form(request);
   const path = normalizePath(body.path ?? "");
   if (!isValidPath(path)) return back("/admin/pages/edit", { error: `Path "${body.path}" is not usable.` });
-  // Refuse before the rename below deletes the original: savePage would throw and take the page with it.
   if (path === "/")
     return back("/admin/pages/edit", {
       error: `/ is not a page path. Publish the home page at ${ROOT_BUNDLE}, which is served at /.`,
     });
-
-  const original = body.original ? normalizePath(body.original) : null;
-  if (original && original !== path) await deletePage(original);
 
   await savePage({
     path,
@@ -461,6 +480,231 @@ async function savePageForm(request: Request): Promise<Response> {
   });
 
   return back("/admin", { ok: `Saved ${path}` });
+}
+
+// ---------- moving a page ----------
+
+// Changing a path is a move, and what moves with it is the whole question: a page's collections
+// are served under /data<path> and its files under /assets<path>, so moving the page alone leaves
+// them answering at the old URLs while the page that names them has gone. The bundle is therefore
+// the default, and the other choice says out loud what it leaves behind. Both run the same
+// transfer engine the MCP tools use, so ids, revs and reference declarations survive exactly.
+function inventoryTable(entries: { kind: string; path: string }[]): string {
+  return `<table><tbody>${entries
+    .map(
+      (entry) =>
+        `<tr><td style="width:6rem"><span class="pill">${escapeHtml(entry.kind)}</span></td>
+<td class="mono">${escapeHtml(entry.path)}</td></tr>`,
+    )
+    .join("")}</tbody></table>`;
+}
+
+function countPhrase(entries: { kind: string; path: string }[]): string {
+  const counts = [
+    { kind: "other page", n: entries.filter((entry) => entry.kind === "page").length },
+    { kind: "collection", n: entries.filter((entry) => entry.kind === "collection").length },
+    { kind: "asset", n: entries.filter((entry) => entry.kind === "asset").length },
+  ]
+    .filter((entry) => entry.n > 0)
+    .map(({ kind, n }) => `${n} ${kind}${n === 1 ? "" : "s"}`);
+  if (counts.length === 0) return "nothing else";
+  if (counts.length === 1) return counts[0];
+  return `${counts.slice(0, -1).join(", ")} and ${counts[counts.length - 1]}`;
+}
+
+async function movePageScreen(url: URL): Promise<Response> {
+  const path = normalizePath(url.searchParams.get("path") ?? "");
+  const existing = await getPage(path);
+  if (!existing) return back("/admin", { error: `No page exists at ${path}, so there is nothing to move.` });
+
+  // / is not a bundle: it would hold the whole site. A page stored there can only move alone.
+  const bundled = path !== "/";
+  const contents = bundled ? await bundleContents(path) : null;
+  const alsoHere = contents
+    ? [
+        ...contents.pages.filter((p) => p.path !== path).map((p) => ({ kind: "page", path: p.path })),
+        ...contents.collections.map((c) => ({ kind: "collection", path: c.path })),
+        ...contents.assets.map((a) => ({ kind: "asset", path: a.path! })),
+      ]
+    : [];
+
+  const choices = bundled
+    ? `<div class="field">
+<label style="font-weight:400"><input type="radio" name="scope" value="bundle" checked>
+<strong>Move everything at this path</strong>
+<span class="hint">The page, plus ${escapeHtml(countPhrase(alsoHere))} at or under
+<span class="mono">${escapeHtml(path)}</span>. Every URL changes together, so the page goes on finding what it
+fetches.</span></label>
+<label style="font-weight:400;margin-top:.7rem"><input type="radio" name="scope" value="page">
+<strong>Move only the page</strong>
+<span class="hint">${
+        alsoHere.length === 0
+          ? "Nothing else is at this path, so this is the same move."
+          : `Everything else at this path stays behind at its old URL: ${escapeHtml(countPhrase(alsoHere))}, listed
+below. The page goes on fetching them there.`
+      }</span></label>
+</div>`
+    : `<input type="hidden" name="scope" value="page">
+<div class="notice warn">This page sits at <span class="mono">/</span>, which is not a bundle: it would hold every
+page, collection and file on the site. Only the page can move.</div>`;
+
+  return page({
+    title: `Move ${path}`,
+    current: "/admin",
+    body: `${flash(url)}
+<h1>Move page</h1>
+<p class="lede">At <span class="mono">${escapeHtml(path)}</span>. Nothing is copied and no page content is rewritten:
+a page hardcodes the URLs it fetches, so whatever still names the old path is listed for you to edit afterwards.</p>
+${
+      path === ROOT_BUNDLE
+        ? `<div class="notice warn">${escapeHtml(ROOT_BUNDLE)} is the page a browser gets at <span class="mono">/</span>.
+Move it and the site root has no home page until you publish one here again.</div>`
+        : ""
+    }
+<form method="post" action="/admin/pages/move" class="panel">
+<input type="hidden" name="from" value="${escapeHtml(path)}">
+<div class="field">
+  <label for="to">New path<span class="hint">Lowercase, for example /travel/trip.</span></label>
+  <input id="to" name="to" type="text" required value="${escapeHtml(path)}" placeholder="/travel/trip">
+</div>
+${choices}
+<div class="field"><label style="font-weight:400"><input type="checkbox" name="overwrite" value="1">
+Replace whatever is already at the new path
+<span class="hint">Left off, an occupied path refuses the move and nothing changes.</span></label></div>
+<div class="row"><button type="submit">Move</button>
+<a class="button secondary" href="/admin/pages/edit?path=${encodeURIComponent(path)}">Cancel</a></div>
+</form>
+${
+      alsoHere.length > 0
+        ? `<h2>Also at this path</h2>
+<div class="panel">${inventoryTable(alsoHere)}</div>`
+        : ""
+    }`,
+  });
+}
+
+// A move never edits a page, so the one thing the owner has to be told is which lines still name
+// the path that has gone. That does not survive a redirect, so the POST renders its own result and
+// rewrites its history entry to the editor at the new path: a POST left in history means a refresh
+// offers to submit it again.
+async function moveResult(transfer: Transfer): Promise<Response> {
+  const [stale, rest, privacy] = await Promise.all([
+    staleReferences(transfer),
+    restOfBundle(transfer),
+    privacyChanges(transfer),
+  ]);
+  const moved = transfer.resources.find((r) => r.kind === "page" && r.from === transfer.from);
+  const here = `/admin/pages/edit?path=${encodeURIComponent(moved?.to ?? transfer.from)}`;
+
+  const rows = transfer.resources
+    .map(
+      (resource) => `<tr><td style="width:6rem"><span class="pill">${escapeHtml(resource.kind)}</span></td>
+<td class="mono">${escapeHtml(resource.from)}</td>
+<td class="mono">${escapeHtml(resource.to ?? "")}${
+        resource.replaced ? '<div class="small muted">replaced what was there</div>' : ""
+      }</td></tr>`,
+    )
+    .join("");
+
+  return page({
+    title: `Moved ${transfer.from}`,
+    current: "/admin",
+    body: `${notice("ok", `Moved ${transfer.from} to ${transfer.to}.`)}
+<h1>Moved</h1>
+<div class="panel"><table>
+<thead><tr><th></th><th>Was</th><th>Now</th></tr></thead><tbody>${rows}</tbody></table></div>
+${
+      stale.length === 0
+        ? '<div class="notice">No page names a path this took away.</div>'
+        : `<h2>Pages still naming the old path</h2>
+<div class="notice warn">No page content was changed. Every line below still names a path that has gone, and a URL a
+page assembles from pieces cannot be found at all, so read these rather than trust the list.</div>
+<div class="panel"><table>
+<thead><tr><th>Page</th><th>Line</th></tr></thead><tbody>${stale
+            .map((match) =>
+              match.lines
+                .map(
+                  (line) => `<tr><td class="mono">${escapeHtml(match.path)}</td>
+<td><span class="muted small">${line.line}</span> <span class="mono">${escapeHtml(line.text)}</span></td></tr>`,
+                )
+                .join(""),
+            )
+            .join("")}</tbody></table>${
+            stale.some((match) => match.more > 0)
+              ? '<div class="small muted">Some pages have more lines than are shown.</div>'
+              : ""
+          }</div>`
+    }
+${
+      transfer.breaks.length === 0
+        ? ""
+        : `<h2>Records left pointing at nothing</h2>
+<div class="panel"><table>
+<thead><tr><th>Collection</th><th>Field</th><th>Pointed at</th><th>Records</th></tr></thead>
+<tbody>${transfer.breaks
+            .map(
+              (broken) => `<tr><td class="mono">${escapeHtml(broken.path)}</td>
+<td class="mono">${escapeHtml(broken.field)}</td>
+<td class="mono">${escapeHtml(broken.references)}</td><td>${broken.count}</td></tr>`,
+            )
+            .join("")}</tbody></table></div>`
+    }
+${
+      privacy.length === 0
+        ? ""
+        : `<h2>Access changed</h2>
+<div class="notice ${privacy.some((change) => change.now === "public") ? "warn" : ""}">${privacy
+            .map(
+              (change) =>
+                `<div><span class="mono">${escapeHtml(change.path)}</span> was ${escapeHtml(
+                  change.was,
+                )} and is now ${escapeHtml(change.now)}.</div>`,
+            )
+            .join("")}</div>`
+    }
+${
+      rest.length === 0
+        ? ""
+        : `<h2>Left where it was</h2>
+<div class="panel">${inventoryTable(rest)}</div>`
+    }
+${
+      touchesHomePage(transfer)
+        ? `<div class="notice warn">${escapeHtml(ROOT_BUNDLE)} is the page a browser gets at
+<span class="mono">/</span>, so the site root has no home page until you publish one there again.</div>`
+        : ""
+    }
+<div class="row"><a class="button" href="${here}">Open the page</a>
+<a class="button secondary" href="/admin">Back to pages</a></div>
+<script>history.replaceState(null,"",${JSON.stringify(here)});</script>`,
+  });
+}
+
+async function movePageForm(request: Request): Promise<Response> {
+  const body = await form(request);
+  const from = normalizePath(body.from ?? "");
+  const to = normalizePath(body.to ?? "");
+  const scope: Scope = body.scope === "page" ? "page" : "bundle";
+  const home = `/admin/pages/move?path=${encodeURIComponent(from)}`;
+
+  if (!isValidPath(to)) return back(home, { error: `Path "${body.to}" is not usable.` });
+  if (to === "/")
+    return back(home, { error: `/ is not a page path. The home page is ${ROOT_BUNDLE}, which is served at /.` });
+
+  try {
+    return moveResult(
+      await runTransfer({
+        scope,
+        verb: "move",
+        from,
+        to,
+        overwrite: body.overwrite === "1",
+        confirm: true,
+      }),
+    );
+  } catch (error) {
+    return back(home, { error: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 // ---------- assets ----------
@@ -736,6 +980,8 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
         return redirect("/admin/login", { "set-cookie": clearSessionCookie() });
       case "/admin/pages/save":
         return savePageForm(request);
+      case "/admin/pages/move":
+        return movePageForm(request);
       case "/admin/pages/delete": {
         const body = await form(request);
         await deletePage(body.path ?? "");
@@ -836,6 +1082,8 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
       return pathAccessScreen(url);
     case "/admin/pages/edit":
       return pageEditor(url);
+    case "/admin/pages/move":
+      return movePageScreen(url);
     case "/admin/assets":
       return assetsScreen(url);
     case "/admin/data":

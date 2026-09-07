@@ -15,6 +15,8 @@ import {
 } from "../data/service";
 import { deriveTitle, editPage, getPage, listPages, savePage, slicePage } from "../pages/service";
 import {
+  privacyChanges,
+  restOfBundle,
   runTransfer,
   staleReferences,
   touchesHomePage,
@@ -160,44 +162,6 @@ function resourceUrl(ctx: ToolContext, kind: Kind, path: string): string {
   if (kind === "page") return urlFor(ctx, path === ROOT_BUNDLE ? "/" : path);
   if (kind === "collection") return dataUrl(ctx, path);
   return `${ctx.siteUrl}/assets${path}`;
-}
-
-// A page verb takes the page and nothing else. The rest of its bundle stays exactly where it
-// is, and saying so is the difference between a visible effect and a silent one.
-async function restOfBundle(transfer: Transfer): Promise<{ kind: string; path: string }[]> {
-  if (transfer.scope !== "page") return [];
-  // / is not a bundle, so a page stored there has no rest of a bundle: it would be the site.
-  if (transfer.from === "/") return [];
-  const contents = await bundleContents(transfer.from);
-  const taken = new Set(transfer.resources.flatMap((r) => (r.to === null ? [r.from] : [r.from, r.to])));
-  return [
-    ...contents.pages.map((p) => ({ kind: "page", path: p.path })),
-    ...contents.collections.map((c) => ({ kind: "collection", path: c.path })),
-    ...contents.assets.map((a) => ({ kind: "asset", path: a.path! })),
-  ].filter((entry) => !taken.has(entry.path));
-}
-
-// A transfer is not blocked by privacy any more than by a bundle, but a path is exactly what makes
-// something private, so moving a resource out of a private path publishes it and moving one in
-// closes it. Neither is visible in the resource list, and the dangerous direction is silent, so it
-// is reported the same way a broken reference is: named, not refused.
-async function privacyChanges(
-  transfer: Transfer,
-): Promise<{ kind: string; path: string; was: string; now: string }[]> {
-  const privacy = await getPrivacy();
-  const changes = [];
-  for (const resource of transfer.resources) {
-    const before = privateScope(privacy, resource.from);
-    const after = resource.to === null ? null : privateScope(privacy, resource.to);
-    if (before?.path === after?.path) continue;
-    changes.push({
-      kind: resource.kind,
-      path: resource.to ?? resource.from,
-      was: before ? `private, under ${before.path}` : "public",
-      now: after ? `private, under ${after.path}` : "public",
-    });
-  }
-  return changes;
 }
 
 async function transferReply(ctx: ToolContext, transfer: Transfer): Promise<string> {

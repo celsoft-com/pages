@@ -70,7 +70,14 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   delete is a transfer with no target, which is why all twelve tools take the same arguments and return the same
   envelope. Adding a level or a verb means teaching that one engine, never a parallel path. Reorganizing must
   never be reduced to reading records out through a client and writing them back: that loses a value to a
-  mistyped character, and does it silently.
+  mistyped character, and does it silently. That includes the admin: the page editor shows a path and links to a
+  move, it never offers it as a text field. Retyping it wrote a new page and deleted the old one, which stranded
+  every collection under `/data<path>` and every asset under `/assets<path>`, lost the page's `createdAt`, and
+  reported none of it. `/admin/pages/move` offers the whole bundle first and the page alone second, because moving
+  the page alone is the choice that leaves URLs behind, and it has to say what it leaves. Both run `runTransfer`,
+  so the screen and a client report the same facts: what moved, what still names the path that has gone, what
+  points at nothing, and what changed hands between public and private. `restOfBundle` and `privacyChanges` live
+  in [transfer.ts](src/transfer.ts) for that reason, not in the MCP layer that first needed them.
 - **A transfer reads everything before it writes anything.** Sources are loaded and targets staged up front, each
   write carries its own undo, and a failure unwinds in reverse, so a half-populated target is never observable.
   Ids, array order, nested values and item revs survive exactly; a copy starts at fresh revs and a move carries
