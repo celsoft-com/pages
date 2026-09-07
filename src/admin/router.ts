@@ -161,57 +161,47 @@ function checklist(steps: { done: boolean; title: string; body: string }[]): str
 }
 
 function when(at: number | undefined): string {
-  return at ? `${new Date(at).toISOString().slice(0, 16).replace("T", " ")} UTC` : "never";
+  return at ? new Date(at).toISOString().slice(0, 10) : "never";
 }
 
-// Privacy is a property of the page's own path, so it belongs in the page's row. A scope covers
+// Privacy is a property of the page's own path, so it lives in the page's row. A scope covers
 // everything at or under its path, so a page inside another page's private path says so and offers
 // no control of its own: privacy does not nest, and two switches for one state is how an owner
 // ends up believing something is closed when it is not.
 function accessCell(path: string, own: PrivateScope | undefined, covering: PrivateScope | null): string {
-  if (own)
-    return `<span class="pill warn">Private</span>
-<form method="post" action="/admin/pages/public" style="display:inline"
-  onsubmit="return confirm('Make ${escapeHtml(path)} public? Every link on it stops working.')">
-<input type="hidden" name="path" value="${escapeHtml(path)}">
-<button class="secondary" type="submit">Make public</button></form>`;
-
   if (covering)
     return `<span class="pill warn">Private</span>
-<div class="small muted">via <a href="#page-${escapeHtml(covering.path)}" class="mono">${escapeHtml(covering.path)}</a></div>`;
+<div class="small muted">via <span class="mono">${escapeHtml(covering.path)}</span></div>`;
 
-  return `<span class="pill">Public</span>
-<form method="post" action="/admin/pages/private" style="display:inline">
+  if (!own)
+    return `<form method="post" action="/admin/pages/private">
 <input type="hidden" name="path" value="${escapeHtml(path)}">
+<span class="pill">Public</span>
 <button class="secondary" type="submit">Make private</button></form>`;
-}
 
-function sharesRow(scope: PrivateScope): string {
-  const links = scope.shares.length
-    ? scope.shares
-        .map(
-          (share) => `<tr>
-<td>${escapeHtml(share.label)}</td>
-<td class="small muted">${when(share.createdAt)}</td>
-<td class="small muted">last opened ${when(share.lastUsedAt)}</td>
-<td class="actions"><form method="post" action="/admin/pages/revoke">
-<input type="hidden" name="path" value="${escapeHtml(scope.path)}">
+  const chips = own.shares
+    .map(
+      (share) => `<span class="chip" title="Created ${when(share.createdAt)}, last opened ${when(
+        share.lastUsedAt,
+      )}">${escapeHtml(share.label)}<form method="post" action="/admin/pages/revoke"
+  onsubmit="return confirm('Revoke ${escapeHtml(share.label)}? That link stops working.')">
+<input type="hidden" name="path" value="${escapeHtml(own.path)}">
 <input type="hidden" name="label" value="${escapeHtml(share.label)}">
-<button class="danger" type="submit">Revoke</button></form></td></tr>`,
-        )
-        .join("")
-    : `<tr><td colspan="4" class="muted">No links yet, so nobody can reach this.</td></tr>`;
+<button type="submit" title="Revoke">&times;</button></form></span>`,
+    )
+    .join(" ");
 
-  return `<tr><td colspan="4" style="background:rgba(0,0,0,.02)">
-<div class="small muted">Everything at or under <span class="mono">${escapeHtml(scope.path)}</span> is closed to the public. These links open it.</div>
-<table style="margin-top:.4rem"><tbody>${links}</tbody></table>
-<form method="post" action="/admin/pages/share" class="row" style="margin-top:.4rem">
-<input type="hidden" name="path" value="${escapeHtml(scope.path)}">
-<input name="label" placeholder="Who is this link for?" required>
-<button type="submit">New link</button></form></td></tr>`;
+  return `<div class="row" style="gap:.4rem">
+<span class="pill warn">Private</span>
+<a class="button secondary" href="/admin/pages/link?path=${encodeURIComponent(own.path)}">New link</a>
+<form method="post" action="/admin/pages/public"
+  onsubmit="return confirm('Make ${escapeHtml(own.path)} public? Every link on it stops working.')">
+<input type="hidden" name="path" value="${escapeHtml(own.path)}">
+<button class="secondary" type="submit">Make public</button></form></div>
+<div style="margin-top:.35rem">${chips || '<span class="small muted">No links yet, so nobody can reach it.</span>'}</div>`;
 }
 
-async function pagesScreen(url: URL, minted?: { path: string; label: string; link: string }): Promise<Response> {
+async function pagesScreen(url: URL): Promise<Response> {
   const [pages, grants, privacy] = await Promise.all([listPages(), listGrants(), getPrivacy()]);
   const origin = `${url.protocol}//${url.host}`;
 
@@ -232,56 +222,88 @@ async function pagesScreen(url: URL, minted?: { path: string; label: string; lin
     ? pages
         .map((p) => {
           const own = privacy.scopes.find((scope) => scope.path === p.path);
-          const covering = own ? null : privateScope(privacy, p.path);
-          return `<tr id="page-${escapeHtml(p.path)}">
+          return `<tr>
 <td><a href="/admin/pages/edit?path=${encodeURIComponent(p.path)}">${escapeHtml(p.title)}</a>
 <div class="small muted mono">${escapeHtml(p.path)}</div></td>
 <td><span class="pill">${p.contentType}</span></td>
-<td>${accessCell(p.path, own, covering)}</td>
+<td>${accessCell(p.path, own, own ? null : privateScope(privacy, p.path))}</td>
 <td class="actions">
 <a class="button secondary" href="${escapeHtml(p.path)}" target="_blank" rel="noopener">View</a>
 <form method="post" action="/admin/pages/delete" style="display:inline"
   onsubmit="return confirm('Delete ${escapeHtml(p.path)}?')">
 <input type="hidden" name="path" value="${escapeHtml(p.path)}">
 <button class="danger" type="submit">Delete</button></form>
-</td></tr>${own ? sharesRow(own) : ""}`;
+</td></tr>`;
         })
         .join("")
     : `<tr><td colspan="4" class="muted">Nothing published yet.</td></tr>`;
 
-  // A private path with no page of its own still has to be manageable, or the only way to reopen
-  // it is through Claude.
-  const pathsWithoutPages = privacy.scopes.filter((scope) => !pages.some((p) => p.path === scope.path));
+  // A private path with no page of its own still has to be manageable here, or the only way to
+  // reopen it is through Claude.
+  const orphans = privacy.scopes.filter((scope) => !pages.some((p) => p.path === scope.path));
 
   return page({
     title: "Pages",
     current: "/admin",
     body: `${flash(url)}${guide}
-${
-      minted
-        ? `<div class="notice ok"><strong>Link for ${escapeHtml(minted.label)}</strong>, opening <span class="mono">${escapeHtml(minted.path)}</span>
-<div class="small" style="margin-top:.3rem">Copy it now. Only a hash is stored, so this cannot be shown again.</div>
-<p class="mono" style="word-break:break-all;margin:.5rem 0 0">${escapeHtml(minted.link)}</p>
-<div class="small muted">Send the whole thing. Everything after the <code>#</code> is the secret, it never reaches a server log, and a link without it opens nothing. Anyone holding it is in, so it is only as private as the way you send it.</div></div>`
-        : ""
-    }
 <div class="row" style="justify-content:space-between">
 <h1>Pages</h1><a class="button" href="/admin/pages/edit">New page</a></div>
 <div class="panel"><table>
 <thead><tr><th>Page</th><th>Format</th><th>Access</th><th></th></tr></thead>
 <tbody>${rows}</tbody></table></div>
 ${
-      pathsWithoutPages.length
+      orphans.length
         ? `<h2>Private paths with no page</h2>
-<div class="panel"><table><tbody>${pathsWithoutPages
+<div class="panel"><table><tbody>${orphans
             .map(
               (scope) => `<tr><td class="mono">${escapeHtml(scope.path)}</td>
-<td class="small muted">${scope.shares.length} link${scope.shares.length === 1 ? "" : "s"}</td>
-<td>${accessCell(scope.path, scope, null)}</td></tr>${sharesRow(scope)}`,
+<td>${accessCell(scope.path, scope, null)}</td></tr>`,
             )
             .join("")}</tbody></table></div>`
         : ""
     }`,
+  });
+}
+
+// Minting is its own screen for two reasons: the Pages row stays one line, and a new link can be
+// shown without a redirect that would put the token in a query string. The POST renders this same
+// screen and then rewrites the history entry to this GET, so a refresh asks for the empty form
+// again instead of offering to submit the mint a second time.
+async function linkScreen(url: URL, minted?: { label: string; link: string }): Promise<Response> {
+  const path = normalizePath(url.searchParams.get("path") ?? "");
+  const scope = (await getPrivacy()).scopes.find((s) => s.path === path);
+  if (!scope) return back("/admin", { error: `${path} is not private, so it needs no link.` });
+
+  const here = `/admin/pages/link?path=${encodeURIComponent(path)}`;
+  return page({
+    title: "New link",
+    current: "/admin",
+    narrow: true,
+    body: `${flash(url)}
+<h1>New link</h1>
+<p class="lede">Opens <span class="mono">${escapeHtml(path)}</span> and everything under it. Anyone holding the link is in, so it is only as private as the way you send it.</p>
+${
+      minted
+        ? `<div class="notice ok"><strong>${escapeHtml(minted.label)}</strong>
+<p class="mono" style="word-break:break-all;margin:.5rem 0">${escapeHtml(minted.link)}</p>
+<div class="row"><button class="secondary" type="button" data-copy="${escapeHtml(minted.link)}">Copy link</button>
+<span class="small muted">Copy it now. Only a hash is stored, so it cannot be shown again.</span></div>
+<div class="small muted" style="margin-top:.4rem">Send the whole thing. Everything after the <code>#</code> is the secret, it never reaches a server log, and a link without it opens nothing.</div></div>
+<script>history.replaceState(null,"",${JSON.stringify(here)});</script>`
+        : ""
+    }
+<form method="post" action="/admin/pages/share" class="panel">
+<div class="field">
+<label for="label">Name this link<span class="hint">Just for you, so you can tell links apart when you revoke one. For example Dana, or builders.</span></label>
+<input id="label" name="label" required autofocus>
+</div>
+<input type="hidden" name="path" value="${escapeHtml(path)}">
+<div class="row"><button type="submit">Create link</button>
+<a class="button secondary" href="/admin">Done</a></div>
+</form>
+<script>document.addEventListener("click",function(e){var b=e.target.closest("[data-copy]");if(!b)return;
+navigator.clipboard.writeText(b.getAttribute("data-copy")).then(function(){var was=b.textContent;b.textContent="Copied";
+setTimeout(function(){b.textContent=was},1500)})});</script>`,
   });
 }
 
@@ -659,15 +681,18 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
         const body = await form(request);
         const path = normalizePath(body.path ?? "");
         const label = (body.label ?? "").trim();
-        if (!label) return back("/admin", { error: "Say who the link is for." });
+        const mintUrl = new URL(`/admin/pages/link?path=${encodeURIComponent(path)}`, url);
+        if (!label) return back(mintUrl.pathname + mintUrl.search, { error: "Give the link a name." });
         try {
           const { token } = await mintShare(path, label);
           // Rendered straight into this response, never redirected with the link in a query
           // string: that is the one way a share token could reach a server log.
           const link = `${url.protocol}//${url.host}${path === ROOT_BUNDLE ? "" : path}#${token}`;
-          return pagesScreen(url, { path, label, link });
+          return linkScreen(mintUrl, { label, link });
         } catch (error) {
-          return back("/admin", { error: error instanceof Error ? error.message : String(error) });
+          return back(mintUrl.pathname + mintUrl.search, {
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
       case "/admin/pages/revoke": {
@@ -704,6 +729,8 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
     case "/admin":
     case "/admin/":
       return pagesScreen(url);
+    case "/admin/pages/link":
+      return linkScreen(url);
     case "/admin/pages/edit":
       return pageEditor(url);
     case "/admin/assets":

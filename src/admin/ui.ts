@@ -59,6 +59,11 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .pill.ok { color: var(--ok); border-color: var(--ok); }
 .pill.warn { color: var(--warn); border-color: var(--warn); }
 .pill.bad { color: var(--bad); border-color: var(--bad); }
+.chip { display: inline-flex; align-items: center; gap: .2rem; font-size: .8rem; color: var(--muted);
+  padding: .1rem .25rem .1rem .55rem; border-radius: 99px; border: 1px solid var(--rule); }
+.chip form { display: inline; }
+.chip button { background: transparent; color: var(--muted); border: 0; padding: 0 .25rem; font-weight: 400; }
+.chip button:hover { color: var(--bad); }
 .muted { color: var(--muted); }
 .small { font-size: .85rem; }
 ol.steps { padding-left: 1.2rem; color: var(--muted); font-size: .9rem; }

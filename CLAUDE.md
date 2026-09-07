@@ -105,7 +105,10 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   thing being bought. Never redirect with a token in a query string; the admin screen renders a new link into its
   own response for exactly that reason. Privacy does not nest, and `/` cannot be private. In the admin it is a
   column on the Pages screen, not a section of its own: it is a property of a page's path, and a page covered by
-  another page's scope shows that and offers no second switch for one state.
+  another page's scope shows that and offers no second switch for one state. Minting is its own small screen so
+  the row stays one line, and because the POST that mints has to render the link rather than redirect with it,
+  that response rewrites its history entry to the mint form's own GET: a POST left in history means a refresh
+  offers to submit it again.
 - **A grant is checked against the stored list on every request.** The cookie is HMAC-signed with the scope path
   inside the payload, so it cannot be replayed against another scope, and the share id is looked up in the blob
   every time, so revoking a link stops it on the holder's next request rather than whenever a cookie would have

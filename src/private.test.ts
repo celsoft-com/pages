@@ -340,7 +340,7 @@ describe("the dashboard, on the Pages screen", () => {
     expect((await get("/trip")).status).toBe(404);
     const screen = await (await get("/admin", cookie)).text();
     expect(screen).toContain("Make public");
-    expect(screen).toContain("No links yet, so nobody can reach this.");
+    expect(screen).toContain("No links yet, so nobody can reach it.");
   });
 
   // The one place a share token could still reach a log is a redirect that carries it in a query
@@ -356,6 +356,46 @@ describe("the dashboard, on the Pages screen", () => {
     const token = body.match(/https:\/\/example\.com\/trip#([A-Za-z0-9_-]{43})/)?.[1];
     expect(token).toBeTruthy();
     expect(await (await get("/trip", await redeem(`x#${token}`))).text()).toBe("TRIP PAGE");
+  });
+
+  // A POST response left in history means a refresh offers to submit it again, so the minted
+  // screen rewrites its own history entry to the GET that renders an empty form.
+  it("rewrites history to the form's own GET, which mints nothing", async () => {
+    const cookie = await session();
+    const body = await (await post("/admin/pages/share", { path: "/trip", label: "dana" }, cookie)).text();
+    expect(body).toContain('history.replaceState(null,"","/admin/pages/link?path=%2Ftrip")');
+
+    const refreshed = await get("/admin/pages/link?path=%2Ftrip", cookie);
+    expect(refreshed.status).toBe(200);
+    const form = await refreshed.text();
+    expect(form).toContain("Name this link");
+    expect(form).not.toMatch(/#[A-Za-z0-9_-]{43}/);
+    expect((await json("list_shares", { path: "/trip" })).private[0].shares).toHaveLength(1);
+  });
+
+  it("offers the link to the clipboard", async () => {
+    const cookie = await session();
+    const body = await (await post("/admin/pages/share", { path: "/trip", label: "dana" }, cookie)).text();
+
+    expect(body).toContain("data-copy=");
+    expect(body).toContain("navigator.clipboard.writeText");
+  });
+
+  it("refuses to mint for a path that is not private", async () => {
+    const cookie = await session();
+    const response = await get("/admin/pages/link?path=%2Ftripwire", cookie);
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toContain("error=");
+  });
+
+  it("keeps a missing name on the mint screen rather than dumping to Pages", async () => {
+    const cookie = await session();
+    await post("/admin/pages/private", { path: "/trip" }, cookie);
+    const response = await post("/admin/pages/share", { path: "/trip", label: "  " }, cookie);
+
+    expect(response.headers.get("location")).toContain("/admin/pages/link?path=%2Ftrip");
+    expect(response.headers.get("location")).toContain("error=");
   });
 
   it("revokes one link", async () => {
@@ -419,17 +459,21 @@ describe("the Pages screen shows what is private", () => {
     const body = await screen();
 
     expect(body).toContain("Access");
-    expect(body).toContain('href="#page-/trip"');
     expect(body).toContain("Private");
     expect(body).toContain("Public");
+    // The descendant says which scope closed it and offers no switch of its own.
+    expect(body).toContain('via <span class="mono">/trip</span>');
   });
 
   it("offers no separate control on a page inside a private path", async () => {
     await call("set_privacy", { path: "/trip", private: true });
     const body = await screen();
-    const day1 = body.slice(body.indexOf('id="page-/trip/day1"'));
+    const day1 = body.slice(body.indexOf("/trip/day1"));
+    const row = day1.slice(0, day1.indexOf("</tr>"));
 
-    expect(day1.slice(0, day1.indexOf("</tr>"))).not.toContain("/admin/pages/private");
+    expect(row).toContain("via");
+    expect(row).not.toContain("/admin/pages/private");
+    expect(row).not.toContain("/admin/pages/public");
   });
 
   it("lists a private path that has no page of its own", async () => {
