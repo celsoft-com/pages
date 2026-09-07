@@ -48,6 +48,10 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: .6rem .5rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
 th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 td.actions { text-align: right; white-space: nowrap; }
+/* Row controls are small, so a cell holding two of them plus a state pill stays on one line
+   instead of wrapping into a ragged stack. */
+table button, table .button { padding: .32rem .7rem; font-size: .85rem; white-space: nowrap; }
+
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
   background: var(--code-bg); padding: .12em .35em; border-radius: 4px; word-break: break-all; }
 .notice { border-radius: 8px; padding: .7rem .9rem; margin-bottom: 1.1rem; font-size: .9rem;
@@ -62,7 +66,8 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .chip { display: inline-flex; align-items: center; gap: .2rem; font-size: .8rem; color: var(--muted);
   padding: .1rem .25rem .1rem .55rem; border-radius: 99px; border: 1px solid var(--rule); }
 .chip form { display: inline; }
-.chip button { background: transparent; color: var(--muted); border: 0; padding: 0 .25rem; font-weight: 400; }
+.chip button { background: transparent; color: var(--muted); border: 0; padding: 0 .25rem;
+  font-weight: 400; font-size: .8rem; line-height: 1; }
 .chip button:hover { color: var(--bad); }
 .muted { color: var(--muted); }
 .small { font-size: .85rem; }

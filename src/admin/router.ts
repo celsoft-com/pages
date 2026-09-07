@@ -174,7 +174,7 @@ function accessCell(path: string, own: PrivateScope | undefined, covering: Priva
 <div class="small muted">via <span class="mono">${escapeHtml(covering.path)}</span></div>`;
 
   if (!own)
-    return `<form method="post" action="/admin/pages/private">
+    return `<form method="post" action="/admin/pages/private" class="row" style="gap:.35rem">
 <input type="hidden" name="path" value="${escapeHtml(path)}">
 <span class="pill">Public</span>
 <button class="secondary" type="submit">Make private</button></form>`;
@@ -191,14 +191,16 @@ function accessCell(path: string, own: PrivateScope | undefined, covering: Priva
     )
     .join(" ");
 
-  return `<div class="row" style="gap:.4rem">
+  return `<div class="row" style="gap:.35rem">
 <span class="pill warn">Private</span>
 <a class="button secondary" href="/admin/pages/link?path=${encodeURIComponent(own.path)}">New link</a>
 <form method="post" action="/admin/pages/public"
   onsubmit="return confirm('Make ${escapeHtml(own.path)} public? Every link on it stops working.')">
 <input type="hidden" name="path" value="${escapeHtml(own.path)}">
 <button class="secondary" type="submit">Make public</button></form></div>
-<div style="margin-top:.35rem">${chips || '<span class="small muted">No links yet, so nobody can reach it.</span>'}</div>`;
+<div class="row" style="gap:.3rem;margin-top:.4rem">${
+    chips || '<span class="small muted">No links yet, so nobody can reach it.</span>'
+  }</div>`;
 }
 
 async function pagesScreen(url: URL): Promise<Response> {
