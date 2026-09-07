@@ -93,6 +93,25 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   well-known URL is what carries it: a stored HTML page is verbatim and can be given no `link` tag, so the themed
   layout and the admin chrome link `/favicon.ico` and everything else falls back to it. Never add a settings field
   for this, and never wrap a page to inject an icon.
+- **A private path is a path, and the fragment is why it works.** [set_privacy](src/private/service.ts) closes a
+  path and everything at or under it through the same `contains()` rule as a bundle, so the page, the collections
+  under `/data` and the assets are all gated by one scope; a share link's secret rides in the URL fragment, which
+  browsers never put in a request (RFC 3986 §3.5, RFC 9110 §7.1), so it reaches no access log, no proxy and no
+  `Referer`, and a link unfurler that fetches the URL gets nothing. The cost is a bootstrap problem: the token
+  arrives only in the browser, so the script that reads it has to ride on a response a stranger already gets, which
+  is the 404. That is why [pages/handler.ts](src/pages/handler.ts) serves one `closed()` document for a missing page
+  and a private one alike, byte for byte, headers included, and why the same identity is required of the asset and
+  data 404s. A private path that answered differently from a missing one would announce itself, which is the whole
+  thing being bought. Never redirect with a token in a query string; the admin screen renders a new link into its
+  own response for exactly that reason. Privacy does not nest, and `/` cannot be private.
+- **A grant is checked against the stored list on every request.** The cookie is HMAC-signed with the scope path
+  inside the payload, so it cannot be replayed against another scope, and the share id is looked up in the blob
+  every time, so revoking a link stops it on the holder's next request rather than whenever a cookie would have
+  expired. That is what the one extra `site` read per public request buys. A private response uses
+  `privateHeaders()` and so carries no CDN header and no cache tag: the purge is blind to what changed and could
+  never be trusted to clear something that varies by cookie. [private.test.ts](src/private.test.ts) pins the
+  granted response, not just the blocked one, because a page cached at the edge leaks to the next visitor and the
+  blocked response looks correct either way.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
 - **A summary is a cache, and the blob is the truth.** `writeCollectionBlob` in

@@ -31,7 +31,7 @@ export const INSTRUCTIONS = [
   "- Nested objects and arrays of objects are stored and served unchanged. Merging is shallow though: a nested value you pass to put_item replaces the stored one outright, so send the whole nested value rather than a piece of it.",
   "- GET /data/_collections.json for the index of every collection: an array of {path, url, count, rev, updatedAt} sorted by path. That is how a page discovers what exists over plain HTTP, with no access to these tools. /_collections is reserved and cannot be used as a collection path.",
   "- Every item also has a rev, a number kept outside the stored JSON so it never appears in what the url serves. get_item, list_items and search_items give you the rev; pass it back as if_rev when you write. Updating an existing item requires it, so a write from a stale read is refused rather than overwriting a newer one. Re-read and reapply your change when that happens.",
-  "- It is public, unauthenticated and cached for 60 seconds. Never put anything private in a collection, and expect an edit to take up to a minute to appear on a page.",
+  "- It is unauthenticated and cached for 60 seconds unless it sits under a private path, so expect an edit to take up to a minute to appear on a page. A collection under a private path is served only to a browser holding a share link, and is left out of /data/_collections.json entirely. A collection anywhere else is public to anyone who guesses its path, so put nothing private in one.",
   "",
   "So a page that renders /products looks like this:",
   "  <ul id=\"products\"></ul>",
@@ -46,6 +46,10 @@ export const INSTRUCTIONS = [
   "",
   "Publish that page once, then keep editing items. The page never needs rewriting.",
   "",
+  "",
+  "A path can be closed to the public. set_privacy makes a path private and it covers everything at or under it, the same folder rule as a bundle: the pages, the collections served under /data, and the assets. To anyone without a link every one of those answers exactly as if nothing were published there, so a private path never reveals that it exists, and nothing private is ever cached where the next visitor could be handed it.",
+  "share_path returns the link that opens it. The secret rides in the URL fragment, after the #, which browsers never send to a server: it reaches no access log, no proxy log and no Referer header, and a chat or mail app previewing the link cannot open it. Pass the link on exactly as returned, because a link with the fragment trimmed opens nothing, and it is shown once since only its hash is stored.",
+  "Mint one link per recipient and label it with who it is for, so revoke_share can kill one person's access and leave everybody else working. Revoking takes effect on that holder's next request. Say plainly what this is: anyone holding the link is in, so it is only as private as the channel the owner sends it through, and it needs a browser with JavaScript on. It is right for a draft, a family album or a client preview; it is not a login, and it is not the place for anything whose exposure would actually hurt.",
   "Before publishing a page whose content repeats, offer the owner the choice and say which you recommend: content baked into the page, or a collection the page renders. Baking it in is fine for a one-off; a collection is right for anything that will change.",
 ].join("\n");
 

@@ -7,6 +7,7 @@ import { isSetupComplete } from "./auth/setup";
 import { handleMcp } from "./mcp/handler";
 import { authenticate, metadata, protectedResourceMetadata, register, token } from "./oauth/server";
 import { handlePage } from "./pages/handler";
+import { handleUnlock } from "./private/unlock";
 import { welcomePage } from "./welcome";
 
 function unauthorized(origin: string): Response {
@@ -55,6 +56,9 @@ async function route(request: Request, url: URL): Promise<Response> {
     if (!ownerId) return unauthorized(origin);
     return handleMcp(request);
   }
+
+  // Redeems a share link. The token arrives in the body, never in the URL.
+  if (path === "/_unlock") return handleUnlock(request);
 
   // Segment boundary, not a string prefix: a page may be published at /admin-notes.
   if (path === "/admin" || path.startsWith("/admin/") || path === "/oauth/authorize")

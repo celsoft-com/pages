@@ -41,9 +41,12 @@ describe("instructions", () => {
     expect(INSTRUCTIONS).toMatch(/envelope/);
   });
 
-  it("warns that a collection is public and cached", () => {
-    expect(INSTRUCTIONS).toMatch(/public, unauthenticated and cached for 60 seconds/);
-    expect(INSTRUCTIONS).toMatch(/[Nn]ever put anything private/);
+  // The old wording said a collection is public full stop. A collection under a private path is
+  // not, so the warning has to say which is which rather than one blanket claim.
+  it("warns that a collection is public and cached, unless a private path covers it", () => {
+    expect(INSTRUCTIONS).toMatch(/unauthenticated and cached for 60 seconds/);
+    expect(INSTRUCTIONS).toMatch(/public to anyone who guesses its path, so put nothing private in one/);
+    expect(INSTRUCTIONS).toMatch(/left out of \/data\/_collections\.json/);
   });
 
   it("shows a page that actually renders one", () => {

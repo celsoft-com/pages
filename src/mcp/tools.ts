@@ -24,6 +24,14 @@ import {
   type Verb,
 } from "../transfer";
 import { ROOT_BUNDLE, isValidPath, normalizePath } from "../pages/path";
+import {
+  getPrivacy,
+  mintShare,
+  privateScope,
+  revokeShares,
+  setPrivate,
+  setPublic,
+} from "../private/service";
 import { getSettings, saveSettings } from "../settings";
 import type { Item } from "../types";
 
@@ -73,7 +81,7 @@ const SERVING =
   "echoes back as url. A GET returns a bare JSON array of the items, with no wrapper object, and each served item " +
   "includes its id along with the fields you wrote. Array order is the collection order set by reorder_items and by " +
   "put_item's index, and is preserved exactly, so a page needs no sort field. Nested objects and arrays of objects are " +
-  "stored and served unchanged. It is public, unauthenticated and cached for 60 seconds. " +
+  "stored and served unchanged. It is unauthenticated and cached for 60 seconds. Under a private path it is served only to a browser holding a share link and is left out of the index; anywhere else it is public to anyone who guesses the path. " +
   "GET /data/_collections.json for the index of every collection: an array of {path, url, count, rev, updatedAt} " +
   "sorted by path, so a page can discover collections over plain HTTP with no access to these tools.";
 
@@ -87,6 +95,17 @@ export const BUNDLES =
   "because it would hold the entire site. A resource may still sit at /, and what a browser gets at / is the page " +
   "in the /root bundle. This is organization only, never a boundary: nothing is rejected, moved or blocked by it, " +
   "any page may fetch any collection, and references may cross bundles.";
+
+const PRIVACY =
+  "A private path is closed to the public and opened only by a share link. It covers a path and everything at or " +
+  "under it, the same folder rule as a bundle, so making /trip private closes the page at /trip, every page under " +
+  "it, /data/trip/*.json and every asset under /assets/trip/. To everyone without a link those all answer exactly " +
+  "as if nothing were published there, so a private path never reveals that it exists. Privacy does not nest: a " +
+  "path inside an already private path cannot be a second scope. A share link carries its secret in the URL " +
+  "fragment, after the #, which browsers never send to a server, so the link appears in no server log and no " +
+  "Referer header, and a chat or mail app that previews links cannot open it. Anyone holding a link is in, so it " +
+  "is only as private as the channel it is sent through, and it opens in a browser with JavaScript on. Revoke a " +
+  "link with revoke_share and it stops working on the next request.";
 
 const ENVELOPE = "GET the url returns just the items array, without this envelope";
 
@@ -158,8 +177,35 @@ async function restOfBundle(transfer: Transfer): Promise<{ kind: string; path: s
   ].filter((entry) => !taken.has(entry.path));
 }
 
+// A transfer is not blocked by privacy any more than by a bundle, but a path is exactly what makes
+// something private, so moving a resource out of a private path publishes it and moving one in
+// closes it. Neither is visible in the resource list, and the dangerous direction is silent, so it
+// is reported the same way a broken reference is: named, not refused.
+async function privacyChanges(
+  transfer: Transfer,
+): Promise<{ kind: string; path: string; was: string; now: string }[]> {
+  const privacy = await getPrivacy();
+  const changes = [];
+  for (const resource of transfer.resources) {
+    const before = privateScope(privacy, resource.from);
+    const after = resource.to === null ? null : privateScope(privacy, resource.to);
+    if (before?.path === after?.path) continue;
+    changes.push({
+      kind: resource.kind,
+      path: resource.to ?? resource.from,
+      was: before ? `private, under ${before.path}` : "public",
+      now: after ? `private, under ${after.path}` : "public",
+    });
+  }
+  return changes;
+}
+
 async function transferReply(ctx: ToolContext, transfer: Transfer): Promise<string> {
-  const [stale, rest] = await Promise.all([staleReferences(transfer), restOfBundle(transfer)]);
+  const [stale, rest, privacy] = await Promise.all([
+    staleReferences(transfer),
+    restOfBundle(transfer),
+    privacyChanges(transfer),
+  ]);
   const notes: string[] = [];
 
   if (!transfer.applied)
@@ -177,6 +223,13 @@ async function transferReply(ctx: ToolContext, transfer: Transfer): Promise<stri
     );
 
   if (rest.length > 0) notes.push("Everything in rest_of_bundle stayed exactly where it was.");
+  if (privacy.some((change) => change.now === "public"))
+    notes.push(
+      "Something in privacy_changes left a private path and is now public to anyone who has the URL. Tell the " +
+        "owner before they find out another way, and use set_privacy on the new path if it should stay closed.",
+    );
+  else if (privacy.length > 0)
+    notes.push("Something in privacy_changes moved into a private path and is now closed to the public.");
   if (touchesHomePage(transfer))
     notes.push(
       `${ROOT_BUNDLE} is the page a browser gets at /, so the site root now has no home page until you publish one.`,
@@ -200,6 +253,7 @@ async function transferReply(ctx: ToolContext, transfer: Transfer): Promise<stri
       })),
       breaks: transfer.breaks,
       pages_to_update: stale,
+      ...(privacy.length === 0 ? {} : { privacy_changes: privacy }),
       ...(rest.length === 0 ? {} : { rest_of_bundle: rest }),
       notes,
     }
@@ -1082,13 +1136,182 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "get_site",
     title: "Get site info",
-    description: "Return the site title, description, address and page count.",
+    description:
+      "Return the site title, description, address, page count and every private path with its live share count.",
     inputSchema: object({}),
     handler: async (_args, ctx) => {
-      const [settings, pages] = await Promise.all([getSettings(), listPages()]);
-      return JSON.stringify(
-        { title: settings.title, description: settings.description, url: ctx.siteUrl, pages: pages.length },
-      );
+      const [settings, pages, privacy] = await Promise.all([getSettings(), listPages(), getPrivacy()]);
+      return JSON.stringify({
+        title: settings.title,
+        description: settings.description,
+        url: ctx.siteUrl,
+        pages: pages.length,
+        private: privacy.scopes.map((scope) => ({ path: scope.path, shares: scope.shares.length })),
+      });
+    },
+  },
+  {
+    name: "set_privacy",
+    title: "Make a path private or public",
+    description:
+      "Close a path to the public, or reopen it. " +
+      PRIVACY +
+      " Making a path private takes it away from everyone immediately, including anyone holding an " +
+      "older link to something under it; call share_path to mint the link that opens it. Making it " +
+      "public again revokes every share on it, because those links exist only to open something " +
+      "closed, and reopens everything under it to anyone. / cannot be private: it would close the " +
+      "whole site, and " +
+      ROOT_IS_NOT_A_BUNDLE,
+    inputSchema: object(
+      {
+        path: { type: "string", description: "The path to close or reopen, for example /trip" },
+        private: { type: "boolean", description: "true closes the path, false reopens it" },
+      },
+      ["path", "private"],
+    ),
+    handler: async (args, ctx) => {
+      const path = requirePath(args.path);
+      if (typeof args.private !== "boolean") throw new Error("private must be true or false");
+      if (path === "/") throw new Error(`/ cannot be private. ${ROOT_IS_NOT_A_BUNDLE}`);
+
+      if (args.private) {
+        await setPrivate(path);
+        const held = await bundleContents(path);
+        return JSON.stringify({
+          path,
+          private: true,
+          url: urlFor(ctx, path),
+          closed: { pages: held.pages.length, collections: held.collections.length, assets: held.assets.length },
+          next: "Nobody can reach any of it until you call share_path to mint a link.",
+        });
+      }
+
+      const scope = await setPublic(path);
+      if (!scope) return JSON.stringify({ path, private: false, note: `${path} was already public.` });
+      return JSON.stringify({
+        path,
+        private: false,
+        url: urlFor(ctx, path),
+        revoked: scope.shares.map((share) => share.label),
+        note: "Everything at or under this path is public again, and every share link on it is dead.",
+      });
+    },
+  },
+  {
+    name: "share_path",
+    title: "Mint a share link",
+    description:
+      "Return a link that opens a private path, and make the path private if it is not already. " +
+      PRIVACY +
+      " Mint one link per recipient and label it with who it is for: revoke_share takes a label, so " +
+      "one recipient's link can be killed without disturbing anybody else's. The link is returned " +
+      "once and cannot be shown again, because only its hash is stored; losing it means minting " +
+      "another. Give the whole link to the owner exactly as returned, fragment and all: everything " +
+      "after the # is the secret, and a link with that part trimmed opens nothing.",
+    inputSchema: object(
+      {
+        path: { type: "string", description: "The path to share, for example /trip" },
+        label: {
+          type: "string",
+          description: "Who this link is for, for example \"Dana\" or \"the builders\". Unique per path.",
+        },
+      },
+      ["path", "label"],
+    ),
+    handler: async (args, ctx) => {
+      const path = requirePath(args.path);
+      if (typeof args.label !== "string" || args.label.trim() === "") throw new Error("label is required");
+      if (path === "/") throw new Error(`/ cannot be private. ${ROOT_IS_NOT_A_BUNDLE}`);
+
+      const label = args.label.trim();
+      const { token, share } = await mintShare(path, label);
+      return JSON.stringify({
+        path,
+        label,
+        link: `${urlFor(ctx, path)}#${token}`,
+        created: share.createdAt,
+        note: "Shown once. Only a hash is stored, so this link cannot be printed again.",
+      });
+    },
+  },
+  {
+    name: "list_shares",
+    title: "List private paths and their share links",
+    description:
+      "List every private path with its share links: label, when it was minted and when it was last " +
+      "redeemed. Pass a path for just that one. The links themselves are not stored and cannot be " +
+      "listed, only their labels, so this answers who has access and not what to send them. A path " +
+      "with no shares is closed to everyone, which is a normal state for something still being written.",
+    inputSchema: object({ path: { type: "string", description: "Optional: one private path" } }),
+    handler: async (args, ctx) => {
+      const privacy = await getPrivacy();
+      const wanted = args.path === undefined ? null : requirePath(args.path);
+      const scopes = wanted ? privacy.scopes.filter((scope) => scope.path === wanted) : privacy.scopes;
+
+      if (wanted && scopes.length === 0) {
+        const covering = privateScope(privacy, wanted);
+        return JSON.stringify({
+          path: wanted,
+          private: Boolean(covering),
+          ...(covering ? { closed_by: covering.path } : {}),
+          note: covering
+            ? `${wanted} is private because ${covering.path} is. Its shares are listed under that path.`
+            : `${wanted} is public.`,
+        });
+      }
+
+      return JSON.stringify({
+        private: scopes.map((scope) => ({
+          path: scope.path,
+          url: urlFor(ctx, scope.path),
+          shares: scope.shares.map((share) => ({
+            label: share.label,
+            created: share.createdAt,
+            last_used: share.lastUsedAt ?? null,
+          })),
+        })),
+      });
+    },
+  },
+  {
+    name: "revoke_share",
+    title: "Revoke a share link",
+    description:
+      "Kill a share link. Pass a label to revoke that one recipient's link, or omit it to revoke " +
+      "every link on the path. Effective on the holder's next request, not whenever their browser " +
+      "would have forgotten it, because every request checks the link against the stored list. The " +
+      "path stays private, so revoking the last link leaves it closed to everyone rather than " +
+      "quietly publishing it; call set_privacy with private false to reopen it.",
+    inputSchema: object(
+      {
+        path: { type: "string", description: "The private path, for example /trip" },
+        label: { type: "string", description: "Optional: revoke only the link with this label" },
+      },
+      ["path"],
+    ),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      const label = typeof args.label === "string" && args.label.trim() !== "" ? args.label.trim() : undefined;
+      const gone = await revokeShares(path, label);
+
+      if (gone.length === 0)
+        return JSON.stringify({
+          path,
+          revoked: [],
+          note: label ? `${path} has no share labelled "${label}".` : `${path} has no share links to revoke.`,
+        });
+
+      const privacy = await getPrivacy();
+      const left = privacy.scopes.find((scope) => scope.path === path)?.shares.length ?? 0;
+      return JSON.stringify({
+        path,
+        revoked: gone.map((share) => share.label),
+        remaining: left,
+        note:
+          left === 0
+            ? `${path} is still private and now has no working links, so nobody can reach it.`
+            : `${left} other link${left === 1 ? "" : "s"} still open ${path}.`,
+      });
     },
   },
   {

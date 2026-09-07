@@ -56,6 +56,26 @@ export interface CollectionSummary {
   updatedAt: number;
 }
 
+// A share link is stored as a hash, never as the token itself: the blob is a list of what may be
+// revoked, not a list of live credentials.
+export interface Share {
+  id: string;
+  hash: string;
+  label: string;
+  createdAt: number;
+  lastUsedAt?: number;
+}
+
+export interface PrivateScope {
+  path: string;
+  createdAt: number;
+  shares: Share[];
+}
+
+export interface Privacy {
+  scopes: PrivateScope[];
+}
+
 export interface SiteSettings {
   title: string;
   description: string;

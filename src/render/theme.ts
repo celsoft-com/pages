@@ -3,6 +3,7 @@ export interface LayoutOptions {
   siteTitle: string;
   siteDescription?: string;
   content: string;
+  head?: string;
 }
 
 const STYLES = `
@@ -86,6 +87,7 @@ export function layout(options: LayoutOptions): string {
 <title>${escapeHtml(options.title)}</title>
 ${options.siteDescription ? `<meta name="description" content="${escapeHtml(options.siteDescription)}">` : ""}
 <style>${STYLES}</style>
+${options.head ?? ""}
 </head>
 <body>
 <div class="wrap">

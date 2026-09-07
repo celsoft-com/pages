@@ -15,6 +15,20 @@ export function contentHeaders(): Record<string, string> {
   };
 }
 
+// A private response, and the gate document that stands in for one. No CDN header and no cache
+// tag, so it is never stored at the edge where the next visitor could be handed it: the purge is
+// blind to what changed and could not be trusted to clear a response that varies by cookie.
+export function privateHeaders(): Record<string, string> {
+  return {
+    "cache-control": "private, no-store",
+    vary: "cookie",
+    // A share link lives in the fragment and so is never in a Referer, but a link out of a private
+    // page would still name the page. Nothing about a private path travels to another site.
+    "referrer-policy": "no-referrer",
+    "x-robots-tag": "noindex, nofollow",
+  };
+}
+
 // A content-addressed URL: the bytes behind it can never change, so nothing has to expire it.
 export function immutableHeaders(): Record<string, string> {
   return {
@@ -23,10 +37,11 @@ export function immutableHeaders(): Record<string, string> {
   };
 }
 
-// Reads, and the OAuth dance, which changes nothing a browser can see.
+// Reads, the OAuth dance, and redeeming a share link: none of them change what a page serves.
 const READ_ONLY = [
   "/oauth/register",
   "/oauth/token",
+  "/_unlock",
   "/.well-known/oauth-authorization-server",
   "/.well-known/oauth-protected-resource",
 ];
