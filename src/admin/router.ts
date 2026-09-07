@@ -28,7 +28,7 @@ import {
 import { getPrivacy, mintShare, privateScope, revokeShares, setPrivate, setPublic } from "../private/service";
 import { getSettings, saveSettings } from "../settings";
 import type { Item, Owner, PrivateScope } from "../types";
-import { escapeHtml, notice, page, redirect } from "./ui";
+import { confirmAction, escapeHtml, notice, page, redirect } from "./ui";
 
 function flash(url: URL): string {
   const ok = url.searchParams.get("ok");
@@ -231,6 +231,7 @@ function accessCell(
 async function pagesScreen(url: URL): Promise<Response> {
   const [pages, grants, privacy] = await Promise.all([listPages(), listGrants(), getPrivacy()]);
   const origin = `${url.protocol}//${url.host}`;
+  const armed = url.searchParams.get("confirm");
 
   const guide = checklist([
     {
@@ -256,10 +257,16 @@ async function pagesScreen(url: URL): Promise<Response> {
 <td>${accessCell(p.path, own, own ? null : privateScope(privacy, p.path), true)}</td>
 <td class="actions">
 <a class="button secondary" href="${escapeHtml(p.path)}" target="_blank" rel="noopener">View</a>
-<form method="post" action="/admin/pages/delete" style="display:inline"
-  onsubmit="return confirm('Delete ${escapeHtml(p.path)}?')">
-<input type="hidden" name="path" value="${escapeHtml(p.path)}">
-<button class="danger" type="submit">Delete</button></form>
+${confirmAction({
+            here: "/admin",
+            token: `delete:${p.path}`,
+            armed,
+            action: "/admin/pages/delete",
+            fields: { path: p.path },
+            label: "Delete",
+            confirm: `Delete ${p.path} for good`,
+            cancel: "Keep it",
+          })}
 </td></tr>`;
         })
         .join("")
@@ -301,9 +308,13 @@ function accessPanel(input: {
   own: PrivateScope | undefined;
   covering: PrivateScope | null;
   here: string;
+  armed: string | null;
   minted?: { label: string; link: string };
 }): string {
-  const { path, own, covering, here, minted } = input;
+  const { path, own, covering, here, armed, minted } = input;
+  // Every control here arms through the panel's own anchor, so answering the question lands back
+  // on the question.
+  const anchor = `${here}#access`;
 
   if (covering)
     return `<h2 id="access">Access</h2>
@@ -330,11 +341,15 @@ function accessPanel(input: {
 <td>${escapeHtml(share.label)}</td>
 <td class="small muted">created ${when(share.createdAt)}</td>
 <td class="small muted">last opened ${when(share.lastUsedAt)}</td>
-<td class="actions"><form method="post" action="/admin/pages/revoke">
-<input type="hidden" name="path" value="${escapeHtml(own.path)}">
-<input type="hidden" name="label" value="${escapeHtml(share.label)}">
-<input type="hidden" name="return" value="${escapeHtml(`${here}#access`)}">
-<button class="danger" type="submit">Revoke</button></form></td></tr>`,
+<td class="actions">${confirmAction({
+            here: anchor,
+            token: `revoke:${share.label}`,
+            armed,
+            action: "/admin/pages/revoke",
+            fields: { path: own.path, label: share.label, return: anchor },
+            label: "Revoke",
+            confirm: `Revoke ${share.label}, that link stops opening it`,
+          })}</td></tr>`,
         )
         .join("")
     : `<tr><td colspan="4" class="muted">No links yet, so nobody can reach it.</td></tr>`;
@@ -365,12 +380,22 @@ ${
 <input type="hidden" name="path" value="${escapeHtml(own.path)}">
 <button type="submit">Create link</button>
 </form>
-<form method="post" action="/admin/pages/public" style="margin-top:.8rem"
-  onsubmit="return confirm('Make ${escapeHtml(own.path)} public? Every link on it stops working.')">
-<input type="hidden" name="path" value="${escapeHtml(own.path)}">
-<input type="hidden" name="return" value="${escapeHtml(`${here}#access`)}">
-<button class="secondary" type="submit">Make public</button>
-<span class="small muted" style="margin-left:.5rem">Reopens everything under it and kills every link above.</span></form>
+<div class="row" style="margin-top:.8rem">${confirmAction({
+    here: anchor,
+    token: "public",
+    armed,
+    action: "/admin/pages/public",
+    fields: { path: own.path, return: anchor },
+    label: "Make public",
+    confirm: own.shares.length
+      ? `Open ${own.path} to everyone and break ${own.shares.length} link${
+          own.shares.length === 1 ? "" : "s"
+        }`
+      : `Open ${own.path} to everyone`,
+    className: "secondary",
+    cancel: "Leave it private",
+  })}
+<span class="small muted">Reopens everything under it and kills every link above.</span></div>
 </div>
 <script>document.addEventListener("click",function(e){var b=e.target.closest("[data-copy]");if(!b)return;
 navigator.clipboard.writeText(b.getAttribute("data-copy")).then(function(){var was=b.textContent;b.textContent="Copied";
@@ -394,7 +419,14 @@ async function pathAccessScreen(url: URL, minted?: { label: string; link: string
 <h1><span class="mono">${escapeHtml(path)}</span></h1>
 <a class="button secondary" href="/admin">Back to pages</a></div>
 <p class="lede">No page is published at this path, but it is private, so whatever is under it needs a link.</p>
-${accessPanel({ path, own, covering: null, here: `/admin/pages/access?path=${encodeURIComponent(path)}`, minted })}`,
+${accessPanel({
+      path,
+      own,
+      covering: null,
+      here: `/admin/pages/access?path=${encodeURIComponent(path)}`,
+      armed: url.searchParams.get("confirm"),
+      minted,
+    })}`,
   });
 }
 
@@ -412,6 +444,7 @@ async function pageEditor(url: URL, minted?: { label: string; link: string }): P
       own,
       covering: own ? null : privateScope(privacy, existing.path),
       here: `/admin/pages/edit?path=${encodeURIComponent(existing.path)}`,
+      armed: url.searchParams.get("confirm"),
       minted,
     });
   }
@@ -711,6 +744,7 @@ async function movePageForm(request: Request): Promise<Response> {
 
 async function assetsScreen(url: URL): Promise<Response> {
   const assets = await listAssets();
+  const armed = url.searchParams.get("confirm");
   const rows = assets.length
     ? assets
         .map(
@@ -719,9 +753,16 @@ async function assetsScreen(url: URL): Promise<Response> {
 <td class="small muted">${(a.size / 1024).toFixed(1)} KB</td>
 <td class="actions">
 <a class="button secondary" href="${escapeHtml(assetUrlFor(a))}" target="_blank" rel="noopener">Open</a>
-<form method="post" action="/admin/assets/delete" style="display:inline">
-<input type="hidden" name="key" value="${escapeHtml(a.key)}">
-<button class="danger" type="submit">Delete</button></form>
+${confirmAction({
+            here: "/admin/assets",
+            token: `delete:${a.key}`,
+            armed,
+            action: "/admin/assets/delete",
+            fields: { key: a.key },
+            label: "Delete",
+            confirm: `Delete ${a.filename} for good`,
+            cancel: "Keep it",
+          })}
 </td></tr>`,
         )
         .join("")
@@ -759,15 +800,22 @@ async function uploadAsset(request: Request): Promise<Response> {
 
 async function connectionsScreen(url: URL): Promise<Response> {
   const grants = await listGrants();
+  const armed = url.searchParams.get("confirm");
   const rows = grants.length
     ? grants
         .map(
           (grant) => `<tr>
 <td>${escapeHtml(grant.clientName)}</td>
 <td class="small muted">${new Date(grant.createdAt).toISOString().slice(0, 16).replace("T", " ")} UTC</td>
-<td class="actions"><form method="post" action="/admin/connections/revoke">
-<input type="hidden" name="grant_id" value="${escapeHtml(grant.id)}">
-<button class="danger" type="submit">Revoke</button></form></td></tr>`,
+<td class="actions">${confirmAction({
+            here: "/admin/connections",
+            token: `revoke:${grant.id}`,
+            armed,
+            action: "/admin/connections/revoke",
+            fields: { grant_id: grant.id },
+            label: "Revoke",
+            confirm: `Revoke ${grant.clientName}, it has to connect again`,
+          })}</td></tr>`,
         )
         .join("")
     : `<tr><td colspan="3" class="muted">Nothing connected yet.</td></tr>`;
@@ -863,6 +911,7 @@ async function authorizeScreen(request: Request, url: URL, owner: Owner): Promis
 
 async function dataScreen(url: URL): Promise<Response> {
   const collections = await listCollections();
+  const armed = url.searchParams.get("confirm");
   const rows = collections.length
     ? collections
         .map(
@@ -872,10 +921,16 @@ async function dataScreen(url: URL): Promise<Response> {
 <td class="small muted">${c.count} items<div class="small muted">rev ${c.rev}</div></td>
 <td class="actions">
 <a class="button secondary" href="/data${escapeHtml(c.path)}.json" target="_blank" rel="noopener">Open</a>
-<form method="post" action="/admin/data/delete" style="display:inline"
-  onsubmit="return confirm('Delete ${escapeHtml(c.path)} and every item in it?')">
-<input type="hidden" name="path" value="${escapeHtml(c.path)}">
-<button class="danger" type="submit">Delete</button></form>
+${confirmAction({
+            here: "/admin/data",
+            token: `delete:${c.path}`,
+            armed,
+            action: "/admin/data/delete",
+            fields: { path: c.path },
+            label: "Delete",
+            confirm: `Delete ${c.path} and its ${c.count} item${c.count === 1 ? "" : "s"}`,
+            cancel: "Keep it",
+          })}
 </td></tr>`,
         )
         .join("")

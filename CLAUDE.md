@@ -120,6 +120,18 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   there is one. Because the POST that mints a link has to render it rather than redirect with it, that response
   rewrites its history entry to whichever GET it came from: a POST left in history means a refresh offers to
   submit it again.
+- **The app asks its own questions.** No `confirm`, no `alert`, no `prompt`, and no dialog the browser draws:
+  they are unstyled, they say the origin instead of the site, they cannot be tested and on a phone they arrive
+  detached from whatever was tapped. A warning is text on the screen next to the thing it is about, rendered by the
+  same server that renders the rest. A confirmation is the button mutating in place: the first press turns it into
+  its own confirmation, stated in full, and a second press commits, so the question is asked where the answer is
+  given and nothing covers the row being acted on. A destructive action that has to explain itself puts the
+  explanation in the panel, not in a popup, and the wording says what will happen rather than asking whether the
+  user is sure: `Delete /trip/items and its 3 items`, never `Are you sure?`. `confirmAction` in
+  [ui.ts](src/admin/ui.ts) is the single rendering of that, and the armed state rides in the query as
+  `?confirm=<token>`, so an unarmed screen carries no form that could post the destructive thing, one row is armed
+  at a time, cancelling is a link that drops the parameter, and both states are HTML a test can read.
+  [confirm.test.ts](src/admin/confirm.test.ts) pins that and that no admin screen ships a dialog at all.
 - **A grant is checked against the stored list on every request.** The cookie is HMAC-signed with the scope path
   inside the payload, so it cannot be replayed against another scope, and the share id is looked up in the blob
   every time, so revoking a link stops it on the holder's next request rather than whenever a cookie would have

@@ -371,9 +371,9 @@ describe("the dashboard, on the Pages screen", () => {
     expect(refreshed.status).toBe(200);
     const form = await refreshed.text();
     expect(form).toContain("Name this link");
-    // Everything the row gave up is here.
-    expect(form).toContain("/admin/pages/public");
-    expect(form).toContain("/admin/pages/revoke");
+    // Everything the row gave up is here, each destructive control armed by its own link.
+    expect(form).toContain("confirm=public");
+    expect(form).toContain("confirm=revoke%3Adana");
     expect(form).not.toMatch(/#[A-Za-z0-9_-]{43}/);
     expect((await json("list_shares", { path: "/trip" })).private[0].shares).toHaveLength(1);
   });
@@ -599,9 +599,9 @@ describe("the page editor holds every access control", () => {
     const body = await editor("/trip");
 
     expect(body).toContain("dana");
-    expect(body).toContain("/admin/pages/revoke");
+    expect(body).toContain("confirm=revoke%3Adana");
     expect(body).toContain("/admin/pages/share");
-    expect(body).toContain("/admin/pages/public");
+    expect(body).toContain("confirm=public");
     expect(body).toContain("Name this link");
   });
 

@@ -42,7 +42,10 @@ button, .button { font: inherit; font-weight: 560; padding: .55rem 1rem; border-
   border: 1px solid transparent; background: var(--accent); color: var(--accent-fg);
   cursor: pointer; text-decoration: none; display: inline-block; }
 button.secondary, .button.secondary { background: transparent; color: var(--fg); border-color: var(--rule); }
-button.danger { background: transparent; color: var(--bad); border-color: var(--rule); }
+button.danger, .button.danger { background: transparent; color: var(--bad); border-color: var(--rule); }
+/* An armed control is the question, so it stops looking like the thing it was and reads as the
+   commit it now is. */
+button.armed, .button.armed { background: var(--bad); color: var(--panel); border-color: var(--bad); }
 .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: .6rem .5rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
@@ -116,6 +119,48 @@ export function page(options: {
 </body></html>`;
 
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+// A question the app asks itself. The control is a link that arms it, and the armed rendering is
+// the same control in the same place saying what the press will do, so the question is asked where
+// the answer is given and nothing is drawn over the row being acted on. The armed state rides in
+// the query, which is why this needs no script and a test can read both states.
+export function confirmAction(input: {
+  here: string;
+  token: string;
+  armed: string | null;
+  action: string;
+  fields: Record<string, string>;
+  label: string;
+  confirm: string;
+  cancel?: string;
+  className?: string;
+}): string {
+  const { here, token, armed, action, fields, label, confirm } = input;
+
+  if (armed !== token)
+    return `<a class="button ${input.className ?? "danger"}" href="${escapeHtml(
+      withConfirm(here, token),
+    )}">${escapeHtml(label)}</a>`;
+
+  const hidden = Object.entries(fields)
+    .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`)
+    .join("");
+
+  return `<form method="post" action="${action}" style="display:inline">${hidden}
+<button class="danger armed" type="submit">${escapeHtml(confirm)}</button>
+<a class="link" href="${escapeHtml(withConfirm(here, null))}" style="margin-left:.6rem">${escapeHtml(
+    input.cancel ?? "Cancel",
+  )}</a></form>`;
+}
+
+// Merged into whatever query the screen already carries, and its fragment kept, so an armed
+// control on the page editor comes back to the panel it sits in.
+function withConfirm(here: string, token: string | null): string {
+  const url = new URL(here, "https://admin.invalid");
+  if (token) url.searchParams.set("confirm", token);
+  else url.searchParams.delete("confirm");
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 export function notice(kind: "ok" | "bad" | "warn", message: string): string {
