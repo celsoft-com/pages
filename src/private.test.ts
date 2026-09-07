@@ -364,9 +364,10 @@ describe("the dashboard, on the Pages screen", () => {
   it("rewrites history to the form's own GET, which mints nothing", async () => {
     const cookie = await session();
     const body = await (await post("/admin/pages/share", { path: "/trip", label: "dana" }, cookie)).text();
-    expect(body).toContain('history.replaceState(null,"","/admin/pages/sharing?path=%2Ftrip")');
+    // /trip has a page, so its access is managed in that page's editor.
+    expect(body).toContain('history.replaceState(null,"","/admin/pages/edit?path=%2Ftrip")');
 
-    const refreshed = await get("/admin/pages/sharing?path=%2Ftrip", cookie);
+    const refreshed = await get("/admin/pages/edit?path=%2Ftrip", cookie);
     expect(refreshed.status).toBe(200);
     const form = await refreshed.text();
     expect(form).toContain("Name this link");
@@ -387,10 +388,30 @@ describe("the dashboard, on the Pages screen", () => {
 
   it("refuses to mint for a path that is not private", async () => {
     const cookie = await session();
-    const response = await get("/admin/pages/sharing?path=%2Ftripwire", cookie);
+    const response = await get("/admin/pages/access?path=%2Fquotes", cookie);
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toContain("error=");
+  });
+
+  // Two screens for one path is how they drift, so the standalone one only exists for a private
+  // path that has no page of its own.
+  it("sends a private path that has a page to that page's editor", async () => {
+    const cookie = await session();
+    await call("set_privacy", { path: "/trip", private: true });
+    const response = await get("/admin/pages/access?path=%2Ftrip", cookie);
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/admin/pages/edit?path=%2Ftrip#access");
+  });
+
+  it("keeps its own screen for a private path with no page", async () => {
+    const cookie = await session();
+    await call("set_privacy", { path: "/quotes", private: true });
+    const body = await (await get("/admin/pages/access?path=%2Fquotes", cookie)).text();
+
+    expect(body).toContain("No page is published at this path");
+    expect(body).toContain("Name this link");
   });
 
   it("keeps a missing name on the mint screen rather than dumping to Pages", async () => {
@@ -398,7 +419,7 @@ describe("the dashboard, on the Pages screen", () => {
     await post("/admin/pages/private", { path: "/trip" }, cookie);
     const response = await post("/admin/pages/share", { path: "/trip", label: "  " }, cookie);
 
-    expect(response.headers.get("location")).toContain("/admin/pages/sharing?path=%2Ftrip");
+    expect(response.headers.get("location")).toContain("/admin/pages/edit?path=%2Ftrip");
     expect(response.headers.get("location")).toContain("error=");
   });
 
@@ -493,14 +514,91 @@ describe("the Pages screen shows what is private", () => {
 
   // The row is one line: a state and a link to the screen that changes it. Every control that used
   // to sit in the cell lives on that screen now.
-  it("keeps every control off the row", async () => {
+  it("keeps every control off the row and points at the editor", async () => {
     await call("set_privacy", { path: "/trip", private: true });
     const body = await screen();
     const table = body.slice(body.indexOf("<thead>"), body.indexOf("</tbody>"));
 
-    expect(table).toContain("/admin/pages/sharing?path=%2Ftrip");
+    expect(table).toContain("/admin/pages/edit?path=%2Ftrip#access");
     expect(table).not.toContain("/admin/pages/public");
     expect(table).not.toContain("/admin/pages/revoke");
     expect(table).not.toContain("/admin/pages/share\"");
+  });
+});
+
+// A page's access lives with its content, so opening a page to edit it is the one place that
+// answers who can read it and does something about it.
+describe("the page editor holds every access control", () => {
+  async function editor(path: string): Promise<string> {
+    const cookie = (await createSessionCookie((await getOwner())!)).split(";")[0];
+    return (await get(`/admin/pages/edit?path=${encodeURIComponent(path)}`, cookie)).text();
+  }
+
+  it("offers Make private on a public page", async () => {
+    const body = await editor("/trip");
+
+    expect(body).toContain('id="access"');
+    expect(body).toContain("/admin/pages/private");
+    expect(body).toContain("Make private");
+    expect(body).toContain("Anyone with the URL can read this.");
+  });
+
+  it("offers links, revoke and Make public on a private page", async () => {
+    await share("/trip", "dana");
+    const body = await editor("/trip");
+
+    expect(body).toContain("dana");
+    expect(body).toContain("/admin/pages/revoke");
+    expect(body).toContain("/admin/pages/share");
+    expect(body).toContain("/admin/pages/public");
+    expect(body).toContain("Name this link");
+  });
+
+  it("sends a covered page to the scope that closed it, with no switch of its own", async () => {
+    await call("set_privacy", { path: "/trip", private: true });
+    const body = await editor("/trip/day1");
+
+    expect(body).toContain("Closed because");
+    expect(body).toContain("/admin/pages/edit?path=%2Ftrip#access");
+    expect(body).not.toContain("/admin/pages/private");
+    expect(body).not.toContain("/admin/pages/public");
+  });
+
+  it("shows a minted link in the editor it was minted from", async () => {
+    await call("set_privacy", { path: "/trip", private: true });
+    const cookie = (await createSessionCookie((await getOwner())!)).split(";")[0];
+    const response = await handle(
+      new Request("https://example.com/admin/pages/share", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ path: "/trip", label: "dana" }).toString(),
+      }),
+    );
+    const body = await response.text();
+
+    expect(body).toContain("Content");
+    expect(body).toContain("data-copy=");
+    expect(body).toMatch(/https:\/\/example\.com\/trip#[A-Za-z0-9_-]{43}/);
+  });
+
+  it("says nothing about access on a page that does not exist yet", async () => {
+    const cookie = (await createSessionCookie((await getOwner())!)).split(";")[0];
+    const body = await (await get("/admin/pages/edit", cookie)).text();
+
+    expect(body).not.toContain('id="access"');
+  });
+
+  it("nests no form inside the access panel, which a browser would drop", async () => {
+    await share("/trip", "dana");
+    const body = await editor("/trip");
+    const panel = body.slice(body.indexOf('id="access"'));
+
+    let depth = 0;
+    for (const tag of panel.match(/<\/?form/g) ?? []) {
+      depth += tag === "<form" ? 1 : -1;
+      expect(depth).toBeLessThanOrEqual(1);
+      expect(depth).toBeGreaterThanOrEqual(0);
+    }
+    expect(depth).toBe(0);
   });
 });

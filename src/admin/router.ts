@@ -171,7 +171,20 @@ function when(at: number | undefined): string {
 // One line, one text action. A page's row says what the state is and links to the screen that
 // changes it; three buttons in a narrow cell wrap into a stack and read as clutter, and the
 // management they offered is all on that screen anyway.
-function accessCell(path: string, own: PrivateScope | undefined, covering: PrivateScope | null): string {
+// A page's access is managed in its editor, alongside its content. A private path with no page
+// has no editor, so it gets its own screen.
+function manageHref(path: string, hasPage: boolean): string {
+  return hasPage
+    ? `/admin/pages/edit?path=${encodeURIComponent(path)}#access`
+    : `/admin/pages/access?path=${encodeURIComponent(path)}`;
+}
+
+function accessCell(
+  path: string,
+  own: PrivateScope | undefined,
+  covering: PrivateScope | null,
+  hasPage: boolean,
+): string {
   if (covering)
     return `<span class="pill warn">Private</span>
 <span class="small muted">via <span class="mono">${escapeHtml(covering.path)}</span></span>`;
@@ -185,7 +198,7 @@ function accessCell(path: string, own: PrivateScope | undefined, covering: Priva
   const count = own.shares.length;
   return `<div class="row" style="gap:.5rem">
 <span class="pill warn">Private</span>
-<a class="link" href="/admin/pages/sharing?path=${encodeURIComponent(own.path)}">${
+<a class="link" href="${manageHref(own.path, hasPage)}">${
     count === 0 ? "Add a link" : `${count} link${count === 1 ? "" : "s"}`
   }</a></div>${
     count === 0
@@ -219,7 +232,7 @@ async function pagesScreen(url: URL): Promise<Response> {
 <td><a href="/admin/pages/edit?path=${encodeURIComponent(p.path)}">${escapeHtml(p.title)}</a>
 <div class="small"><span class="muted mono">${escapeHtml(p.path)}</span></div></td>
 <td><span class="pill">${p.contentType}</span></td>
-<td>${accessCell(p.path, own, own ? null : privateScope(privacy, p.path))}</td>
+<td>${accessCell(p.path, own, own ? null : privateScope(privacy, p.path), true)}</td>
 <td class="actions">
 <a class="button secondary" href="${escapeHtml(p.path)}" target="_blank" rel="noopener">View</a>
 <form method="post" action="/admin/pages/delete" style="display:inline"
@@ -250,7 +263,7 @@ ${
 <div class="panel"><table><tbody>${orphans
             .map(
               (scope) => `<tr><td class="mono">${escapeHtml(scope.path)}</td>
-<td>${accessCell(scope.path, scope, null)}</td></tr>`,
+<td>${accessCell(scope.path, scope, null, false)}</td></tr>`,
             )
             .join("")}</tbody></table></div>`
         : ""
@@ -258,79 +271,126 @@ ${
   });
 }
 
-// Everything about one private path lives here: what opens it, what to revoke, and the switch
-// that reopens it. That is what keeps the Pages row to a single line. Minting has to render its
-// link rather than redirect with it, so the POST rewrites its history entry to this GET, because
-// a POST left in history means a refresh offers to submit it again.
-async function sharingScreen(url: URL, minted?: { label: string; link: string }): Promise<Response> {
-  const path = normalizePath(url.searchParams.get("path") ?? "");
-  const scope = (await getPrivacy()).scopes.find((s) => s.path === path);
-  if (!scope) return back("/admin", { error: `${path} is not private, so it needs no links.` });
+// One rendering of everything about a path's access, so the page editor and the screen for a
+// private path with no page cannot drift apart. Minting has to render its link rather than
+// redirect with it, so the caller passes the GET this screen sits at and the response rewrites its
+// history entry to it: a POST left in history means a refresh offers to submit it again.
+function accessPanel(input: {
+  path: string;
+  own: PrivateScope | undefined;
+  covering: PrivateScope | null;
+  here: string;
+  minted?: { label: string; link: string };
+}): string {
+  const { path, own, covering, here, minted } = input;
 
-  const here = `/admin/pages/sharing?path=${encodeURIComponent(path)}`;
+  if (covering)
+    return `<h2 id="access">Access</h2>
+<div class="panel"><div class="row"><span class="pill warn">Private</span>
+<span>Closed because <span class="mono">${escapeHtml(covering.path)}</span> is private.</span></div>
+<div class="small muted" style="margin-top:.5rem">A private path covers everything at or under it, and privacy does not nest, so its links are managed there. <a href="/admin/pages/edit?path=${encodeURIComponent(
+      covering.path,
+    )}#access">Open ${escapeHtml(covering.path)}</a></div></div>`;
 
-  const rows = scope.shares.length
-    ? scope.shares
+  if (!own)
+    return `<h2 id="access">Access</h2>
+<div class="panel"><div class="row"><span class="pill">Public</span>
+<span>Anyone with the URL can read this.</span></div>
+<form method="post" action="/admin/pages/private" style="margin-top:.7rem">
+<input type="hidden" name="path" value="${escapeHtml(path)}">
+<button class="secondary" type="submit">Make private</button></form>
+<div class="small muted" style="margin-top:.5rem">Closes this path and everything under it: the pages, the data served under <code>/data</code> and the assets. Only a link you send will open it.</div></div>`;
+
+  const rows = own.shares.length
+    ? own.shares
         .map(
           (share) => `<tr>
 <td>${escapeHtml(share.label)}</td>
 <td class="small muted">created ${when(share.createdAt)}</td>
 <td class="small muted">last opened ${when(share.lastUsedAt)}</td>
 <td class="actions"><form method="post" action="/admin/pages/revoke">
-<input type="hidden" name="path" value="${escapeHtml(path)}">
+<input type="hidden" name="path" value="${escapeHtml(own.path)}">
 <input type="hidden" name="label" value="${escapeHtml(share.label)}">
 <button class="danger" type="submit">Revoke</button></form></td></tr>`,
         )
         .join("")
     : `<tr><td colspan="4" class="muted">No links yet, so nobody can reach it.</td></tr>`;
 
-  return page({
-    title: `Sharing ${path}`,
-    current: "/admin",
-    body: `${flash(url)}
-<div class="row" style="justify-content:space-between">
-<h1>Sharing <span class="mono">${escapeHtml(path)}</span></h1>
-<a class="button secondary" href="/admin">Back to pages</a></div>
-<p class="lede">This path and everything under it is closed to the public: the pages, the data served under <code>/data</code> and the assets. Only these links open it, and anyone holding one is in, so a link is only as private as the way you send it.</p>
+  return `<h2 id="access">Access</h2>
+<div class="panel">
+<div class="row"><span class="pill warn">Private</span>
+<span>Closed to the public. Only these links open it.</span></div>
+<div class="small muted" style="margin-top:.5rem">Covers <span class="mono">${escapeHtml(own.path)}</span> and everything under it. Anyone holding a link is in, so a link is only as private as the way you send it.</div>
 ${
-      minted
-        ? `<div class="notice ok"><strong>${escapeHtml(minted.label)}</strong>
+    minted
+      ? `<div class="notice ok" style="margin-top:.8rem"><strong>${escapeHtml(minted.label)}</strong>
 <p class="mono" style="word-break:break-all;margin:.5rem 0">${escapeHtml(minted.link)}</p>
 <div class="row"><button class="secondary" type="button" data-copy="${escapeHtml(minted.link)}">Copy link</button>
 <span class="small muted">Copy it now. Only a hash is stored, so it cannot be shown again.</span></div>
 <div class="small muted" style="margin-top:.4rem">Send the whole thing. Everything after the <code>#</code> is the secret, it never reaches a server log, and a link without it opens nothing.</div></div>
 <script>history.replaceState(null,"",${JSON.stringify(here)});</script>`
-        : ""
-    }
-<div class="panel"><table>
+      : ""
+  }
+<table style="margin-top:.8rem">
 <thead><tr><th>Link</th><th>Created</th><th>Used</th><th></th></tr></thead>
-<tbody>${rows}</tbody></table></div>
-<h2>New link</h2>
-<form method="post" action="/admin/pages/share" class="panel">
+<tbody>${rows}</tbody></table>
+<form method="post" action="/admin/pages/share" style="margin-top:.8rem">
 <div class="field">
 <label for="label">Name this link<span class="hint">Just for you, so you can tell links apart when you revoke one. For example Dana, or builders.</span></label>
-<input id="label" name="label" required autofocus>
+<input id="label" name="label" required>
 </div>
-<input type="hidden" name="path" value="${escapeHtml(path)}">
+<input type="hidden" name="path" value="${escapeHtml(own.path)}">
 <button type="submit">Create link</button>
 </form>
-<h2>Stop sharing</h2>
-<div class="panel">
-<form method="post" action="/admin/pages/public"
-  onsubmit="return confirm('Make ${escapeHtml(path)} public? Every link on it stops working.')">
-<input type="hidden" name="path" value="${escapeHtml(path)}">
-<button class="secondary" type="submit">Make public</button></form>
-<div class="small muted" style="margin-top:.5rem">Reopens everything at or under <span class="mono">${escapeHtml(path)}</span> to anyone, and every link above stops working.</div>
+<form method="post" action="/admin/pages/public" style="margin-top:.8rem"
+  onsubmit="return confirm('Make ${escapeHtml(own.path)} public? Every link on it stops working.')">
+<input type="hidden" name="path" value="${escapeHtml(own.path)}">
+<button class="secondary" type="submit">Make public</button>
+<span class="small muted" style="margin-left:.5rem">Reopens everything under it and kills every link above.</span></form>
 </div>
 <script>document.addEventListener("click",function(e){var b=e.target.closest("[data-copy]");if(!b)return;
 navigator.clipboard.writeText(b.getAttribute("data-copy")).then(function(){var was=b.textContent;b.textContent="Copied";
-setTimeout(function(){b.textContent=was},1500)})});</script>`,
+setTimeout(function(){b.textContent=was},1500)})});</script>`;
+}
+
+// A private path with no page of its own has no editor to live in, so it gets this. Anything with
+// a page is redirected to that page, because two screens for one path is how they drift.
+async function pathAccessScreen(url: URL, minted?: { label: string; link: string }): Promise<Response> {
+  const path = normalizePath(url.searchParams.get("path") ?? "");
+  const privacy = await getPrivacy();
+  const own = privacy.scopes.find((scope) => scope.path === path);
+  if (!own) return back("/admin", { error: `${path} is not private, so it has no links.` });
+  if (await getPage(path)) return redirect(`/admin/pages/edit?path=${encodeURIComponent(path)}#access`);
+
+  return page({
+    title: `Access ${path}`,
+    current: "/admin",
+    body: `${flash(url)}
+<div class="row" style="justify-content:space-between">
+<h1><span class="mono">${escapeHtml(path)}</span></h1>
+<a class="button secondary" href="/admin">Back to pages</a></div>
+<p class="lede">No page is published at this path, but it is private, so whatever is under it needs a link.</p>
+${accessPanel({ path, own, covering: null, here: `/admin/pages/access?path=${encodeURIComponent(path)}`, minted })}`,
   });
 }
 
-async function pageEditor(url: URL): Promise<Response> {
+async function pageEditor(url: URL, minted?: { label: string; link: string }): Promise<Response> {
   const path = url.searchParams.get("path");
   const existing = path ? await getPage(path) : null;
+
+  // Access belongs to a path, so there is nothing to show until the page has one.
+  let access = "";
+  if (existing) {
+    const privacy = await getPrivacy();
+    const own = privacy.scopes.find((scope) => scope.path === existing.path);
+    access = accessPanel({
+      path: existing.path,
+      own,
+      covering: own ? null : privateScope(privacy, existing.path),
+      here: `/admin/pages/edit?path=${encodeURIComponent(existing.path)}`,
+      minted,
+    });
+  }
 
   return page({
     title: existing ? `Edit ${existing.path}` : "New page",
@@ -360,7 +420,8 @@ async function pageEditor(url: URL): Promise<Response> {
 </div>
 <div class="row"><button type="submit">Save</button>
 <a class="button secondary" href="/admin">Cancel</a></div>
-</form>`,
+</form>
+${access}`,
   });
 }
 
@@ -702,18 +763,21 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
         const body = await form(request);
         const path = normalizePath(body.path ?? "");
         const label = (body.label ?? "").trim();
-        const mintUrl = new URL(`/admin/pages/sharing?path=${encodeURIComponent(path)}`, url);
-        if (!label) return back(mintUrl.pathname + mintUrl.search, { error: "Give the link a name." });
+        // An error goes back to where the form was, and so does a success: the editor for a page,
+        // the access screen for a private path that has none.
+        const editing = Boolean(await getPage(path));
+        const home = new URL(manageHref(path, editing), url);
+        const flashTo = `${home.pathname}${home.search}`;
+
+        if (!label) return back(flashTo, { error: "Give the link a name." });
         try {
           const { token } = await mintShare(path, label);
           // Rendered straight into this response, never redirected with the link in a query
           // string: that is the one way a share token could reach a server log.
           const link = `${url.protocol}//${url.host}${path === ROOT_BUNDLE ? "" : path}#${token}`;
-          return sharingScreen(mintUrl, { label, link });
+          return editing ? pageEditor(home, { label, link }) : pathAccessScreen(home, { label, link });
         } catch (error) {
-          return back(mintUrl.pathname + mintUrl.search, {
-            error: error instanceof Error ? error.message : String(error),
-          });
+          return back(flashTo, { error: error instanceof Error ? error.message : String(error) });
         }
       }
       case "/admin/pages/revoke": {
@@ -750,8 +814,8 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
     case "/admin":
     case "/admin/":
       return pagesScreen(url);
-    case "/admin/pages/sharing":
-      return sharingScreen(url);
+    case "/admin/pages/access":
+      return pathAccessScreen(url);
     case "/admin/pages/edit":
       return pageEditor(url);
     case "/admin/assets":

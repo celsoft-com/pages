@@ -107,10 +107,12 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   column on the Pages screen, not a section of its own: it is a property of a page's path, and a page covered by
   another page's scope shows that and offers no second switch for one state. The row carries a state and one
   text action, never a control: three buttons in a narrow cell wrap into a ragged stack and read as three sizes
-  of the same thing. Everything about one private path, the links and the switch back to public, is on its own
-  screen, and because the POST that mints a link has to render it rather than redirect with it, that response
-  rewrites its history entry to the screen's own GET: a POST left in history means a refresh offers to submit
-  it again.
+  of the same thing. The controls all live in the page's own editor, next to its content, because a page has
+  one screen and access is a fact about that page; `accessPanel` is the single rendering of them, and the
+  standalone `/admin/pages/access` exists only for a private path with no page, redirecting to the editor when
+  there is one. Because the POST that mints a link has to render it rather than redirect with it, that response
+  rewrites its history entry to whichever GET it came from: a POST left in history means a refresh offers to
+  submit it again.
 - **A grant is checked against the stored list on every request.** The cookie is HMAC-signed with the scope path
   inside the payload, so it cannot be replayed against another scope, and the share id is looked up in the blob
   every time, so revoking a link stops it on the holder's next request rather than whenever a cookie would have
