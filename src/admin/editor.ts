@@ -15,9 +15,11 @@ const THEME = `
 .prism-code-editor:focus-within { border-color: var(--accent); }
 .token.punctuation, .token.attr-equals, .token.operator { color: var(--muted); }
 .token.tag, .token.doctype-tag, .token.title, .token.list { color: var(--accent); }
-.token.attr-name, .token.url > .content, .token.code-snippet { color: var(--warn); }
+.token.attr-name, .token.url > .content, .token.code-snippet,
+.token.property, .token.number, .token.unit, .token.boolean, .token.constant { color: var(--warn); }
 .token.attr-value, .token.string, .token.url-link, .token.url > .url { color: var(--ok); }
-.token.entity, .token.blockquote { color: var(--bad); }
+.token.entity, .token.blockquote, .token.keyword, .token.atrule, .token.rule { color: var(--bad); }
+.token.selector, .token.function, .token.class-name, .token.maybe-class-name { color: var(--accent); }
 .token.comment, .token.prolog, .token.cdata { color: var(--muted); font-style: italic; }
 .token.bold, .token.important { font-weight: 700; }
 .token.italic { font-style: italic; }
@@ -34,6 +36,10 @@ const [{ editorFromPlaceholder }, { defaultCommands, editHistory }, { matchTags 
   import(CDN + "/extensions/matchTags.js"),
   import(CDN + "/languages/html.js"),
   import(CDN + "/prism/languages/markdown.js"),
+  // A style or script element names its language and the grammar is looked up when the text is
+  // tokenized, so loading these is the whole of highlighting what is embedded in a page.
+  import(CDN + "/prism/languages/css.js"),
+  import(CDN + "/prism/languages/javascript.js"),
 ]);
 
 const placeholder = document.querySelector("textarea[data-editor]");
