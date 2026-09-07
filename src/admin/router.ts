@@ -28,6 +28,7 @@ import {
 import { getPrivacy, mintShare, privateScope, revokeShares, setPrivate, setPublic } from "../private/service";
 import { getSettings, saveSettings } from "../settings";
 import type { Item, Owner, PrivateScope } from "../types";
+import { editorHead } from "./editor";
 import { confirmAction, escapeHtml, notice, page, redirect } from "./ui";
 
 function flash(url: URL): string {
@@ -452,6 +453,7 @@ async function pageEditor(url: URL, minted?: { label: string; link: string }): P
   return page({
     title: existing ? `Edit ${existing.path}` : "New page",
     current: "/admin",
+    head: editorHead,
     body: `${flash(url)}
 <h1>${existing ? "Edit page" : "New page"}</h1>
 ${access}
@@ -484,7 +486,7 @@ ${
 </div>
 <div class="field">
   <label for="content">Content</label>
-  <textarea id="content" name="content" required>${escapeHtml(existing?.body ?? "")}</textarea>
+  <textarea id="content" name="content" data-editor required>${escapeHtml(existing?.body ?? "")}</textarea>
 </div>
 <div class="row"><button type="submit">Save</button>
 <a class="button secondary" href="/admin">Cancel</a></div>

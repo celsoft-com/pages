@@ -142,6 +142,14 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   never be trusted to clear something that varies by cookie. [private.test.ts](src/private.test.ts) pins the
   granted response, not just the blocked one, because a page cached at the edge leaks to the next visitor and the
   blocked response looks correct either way.
+- **The page editor's highlighting is a CDN script, and it is allowed to fail.**
+  [editor.ts](src/admin/editor.ts) loads prism-code-editor from jsDelivr at an exact version on the
+  edit screen only. It overlays a real `<textarea>`, so the form posts exactly as it did; replacing
+  the placeholder takes the `name` with it, which is why the script puts it back. Bundling it
+  instead would mean a client build step for the one screen that wants one, and the fallback costs
+  nothing: with no script the field is the plain textarea the server already rendered. The colours
+  are the admin's own palette, never a vendored theme, because the admin has a light and a dark
+  scheme and a theme file has one.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
 - **A summary is a cache, and the blob is the truth.** `writeCollectionBlob` in

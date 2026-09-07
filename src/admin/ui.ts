@@ -113,6 +113,7 @@ export function page(options: {
   current?: string;
   chrome?: boolean;
   narrow?: boolean;
+  head?: string;
 }): Response {
   const nav = options.chrome === false
     ? ""
@@ -128,6 +129,7 @@ export function page(options: {
 <link rel="icon" href="/favicon.ico">
 <title>${escapeHtml(options.title)}</title>
 <style>${STYLES}</style>
+${options.head ?? ""}
 </head><body>
 <div class="${options.narrow ? "narrow" : "wrap"}">${nav}${options.body}${
     options.chrome === false ? "" : `<footer class="build">${escapeHtml(describeBuild())}</footer>`
