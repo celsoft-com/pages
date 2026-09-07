@@ -397,6 +397,8 @@ async function pageEditor(url: URL, minted?: { label: string; link: string }): P
     current: "/admin",
     body: `${flash(url)}
 <h1>${existing ? "Edit page" : "New page"}</h1>
+${access}
+${existing ? "<h2>Content</h2>" : ""}
 <form method="post" action="/admin/pages/save" class="panel">
 <input type="hidden" name="original" value="${escapeHtml(existing?.path ?? "")}">
 <div class="field">
@@ -420,8 +422,7 @@ async function pageEditor(url: URL, minted?: { label: string; link: string }): P
 </div>
 <div class="row"><button type="submit">Save</button>
 <a class="button secondary" href="/admin">Cancel</a></div>
-</form>
-${access}`,
+</form>`,
   });
 }
 

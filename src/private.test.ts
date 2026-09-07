@@ -534,6 +534,14 @@ describe("the page editor holds every access control", () => {
     return (await get(`/admin/pages/edit?path=${encodeURIComponent(path)}`, cookie)).text();
   }
 
+  it("puts access above the content form", async () => {
+    const body = await editor("/trip");
+
+    expect(body.indexOf('id="access"')).toBeGreaterThan(-1);
+    expect(body.indexOf('id="access"')).toBeLessThan(body.indexOf("<h2>Content</h2>"));
+    expect(body.indexOf("<h2>Content</h2>")).toBeLessThan(body.indexOf('name="content"'));
+  });
+
   it("offers Make private on a public page", async () => {
     const body = await editor("/trip");
 
