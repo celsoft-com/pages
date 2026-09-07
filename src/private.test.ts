@@ -339,8 +339,9 @@ describe("the dashboard, on the Pages screen", () => {
 
     expect((await get("/trip")).status).toBe(404);
     const screen = await (await get("/admin", cookie)).text();
-    expect(screen).toContain("Make public");
-    expect(screen).toContain("No links yet, so nobody can reach it.");
+    expect(screen).toContain("Private");
+    expect(screen).toContain("Add a link");
+    expect(screen).toContain("Nobody can reach it.");
   });
 
   // The one place a share token could still reach a log is a redirect that carries it in a query
@@ -363,12 +364,15 @@ describe("the dashboard, on the Pages screen", () => {
   it("rewrites history to the form's own GET, which mints nothing", async () => {
     const cookie = await session();
     const body = await (await post("/admin/pages/share", { path: "/trip", label: "dana" }, cookie)).text();
-    expect(body).toContain('history.replaceState(null,"","/admin/pages/link?path=%2Ftrip")');
+    expect(body).toContain('history.replaceState(null,"","/admin/pages/sharing?path=%2Ftrip")');
 
-    const refreshed = await get("/admin/pages/link?path=%2Ftrip", cookie);
+    const refreshed = await get("/admin/pages/sharing?path=%2Ftrip", cookie);
     expect(refreshed.status).toBe(200);
     const form = await refreshed.text();
     expect(form).toContain("Name this link");
+    // Everything the row gave up is here.
+    expect(form).toContain("/admin/pages/public");
+    expect(form).toContain("/admin/pages/revoke");
     expect(form).not.toMatch(/#[A-Za-z0-9_-]{43}/);
     expect((await json("list_shares", { path: "/trip" })).private[0].shares).toHaveLength(1);
   });
@@ -383,7 +387,7 @@ describe("the dashboard, on the Pages screen", () => {
 
   it("refuses to mint for a path that is not private", async () => {
     const cookie = await session();
-    const response = await get("/admin/pages/link?path=%2Ftripwire", cookie);
+    const response = await get("/admin/pages/sharing?path=%2Ftripwire", cookie);
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toContain("error=");
@@ -394,7 +398,7 @@ describe("the dashboard, on the Pages screen", () => {
     await post("/admin/pages/private", { path: "/trip" }, cookie);
     const response = await post("/admin/pages/share", { path: "/trip", label: "  " }, cookie);
 
-    expect(response.headers.get("location")).toContain("/admin/pages/link?path=%2Ftrip");
+    expect(response.headers.get("location")).toContain("/admin/pages/sharing?path=%2Ftrip");
     expect(response.headers.get("location")).toContain("error=");
   });
 
@@ -461,6 +465,7 @@ describe("the Pages screen shows what is private", () => {
     expect(body).toContain("Access");
     expect(body).toContain("Private");
     expect(body).toContain("Public");
+    expect(body).toContain("Make private");
     // The descendant says which scope closed it and offers no switch of its own.
     expect(body).toContain('via <span class="mono">/trip</span>');
   });
@@ -474,6 +479,7 @@ describe("the Pages screen shows what is private", () => {
     expect(row).toContain("via");
     expect(row).not.toContain("/admin/pages/private");
     expect(row).not.toContain("/admin/pages/public");
+    expect(row).not.toContain("/admin/pages/sharing");
   });
 
   it("lists a private path that has no page of its own", async () => {
@@ -482,6 +488,19 @@ describe("the Pages screen shows what is private", () => {
   });
 
   it("has no sharing tab", async () => {
-    expect(await screen()).not.toContain("/admin/sharing");
+    expect(await screen()).not.toContain("/admin/sharing?");
+  });
+
+  // The row is one line: a state and a link to the screen that changes it. Every control that used
+  // to sit in the cell lives on that screen now.
+  it("keeps every control off the row", async () => {
+    await call("set_privacy", { path: "/trip", private: true });
+    const body = await screen();
+    const table = body.slice(body.indexOf("<thead>"), body.indexOf("</tbody>"));
+
+    expect(table).toContain("/admin/pages/sharing?path=%2Ftrip");
+    expect(table).not.toContain("/admin/pages/public");
+    expect(table).not.toContain("/admin/pages/revoke");
+    expect(table).not.toContain("/admin/pages/share\"");
   });
 });

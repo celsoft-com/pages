@@ -48,9 +48,12 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: .6rem .5rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
 th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 td.actions { text-align: right; white-space: nowrap; }
-/* Row controls are small, so a cell holding two of them plus a state pill stays on one line
-   instead of wrapping into a ragged stack. */
+/* A table row gets one kind of control: a text action. Buttons in a narrow cell wrap into a
+   ragged stack and read as three different sizes of the same thing. */
 table button, table .button { padding: .32rem .7rem; font-size: .85rem; white-space: nowrap; }
+button.link { background: transparent; border: 0; padding: 0; font-size: .85rem; font-weight: 500;
+  color: var(--accent); text-decoration: underline; cursor: pointer; white-space: nowrap; }
+a.link { font-size: .85rem; font-weight: 500; white-space: nowrap; }
 
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
   background: var(--code-bg); padding: .12em .35em; border-radius: 4px; word-break: break-all; }
