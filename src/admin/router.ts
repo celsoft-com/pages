@@ -16,6 +16,7 @@ import { listGrants, revokeGrant } from "../oauth/store";
 import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
 import { HOME_IS_GENERATED, isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
 import { bundleContents } from "../inventory";
+import { originOf } from "../origin";
 import {
   privacyChanges,
   restOfBundle,
@@ -231,7 +232,7 @@ function accessCell(
 async function pagesScreen(url: URL): Promise<Response> {
   const [all, grants, privacy] = await Promise.all([listPages(), listGrants(), getPrivacy()]);
   const pages = all.filter((p) => p.path !== ROOT_BUNDLE);
-  const origin = `${url.protocol}//${url.host}`;
+  const origin = originOf(url);
   const armed = url.searchParams.get("confirm");
 
   const guide = checklist([
@@ -827,7 +828,7 @@ async function connectionsScreen(url: URL): Promise<Response> {
         .join("")
     : `<tr><td colspan="3" class="muted">Nothing connected yet.</td></tr>`;
 
-  const origin = `${url.protocol}//${url.host}`;
+  const origin = originOf(url);
   return page({
     title: "Connections",
     current: "/admin/connections",
@@ -1100,7 +1101,7 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
           const { token } = await mintShare(path, label);
           // Rendered straight into this response, never redirected with the link in a query
           // string: that is the one way a share token could reach a server log.
-          const link = `${url.protocol}//${url.host}${path === ROOT_BUNDLE ? "" : path}#${token}`;
+          const link = `${originOf(url)}${path === ROOT_BUNDLE ? "" : path}#${token}`;
           return editing ? pageEditor(home, { label, link }) : pathAccessScreen(home, { label, link });
         } catch (error) {
           return back(flashTo, { error: error instanceof Error ? error.message : String(error) });

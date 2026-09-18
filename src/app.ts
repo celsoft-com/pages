@@ -7,6 +7,7 @@ import { isSetupComplete } from "./auth/setup";
 import { handleMcp } from "./mcp/handler";
 import { authenticate, metadata, protectedResourceMetadata, register, token } from "./oauth/server";
 import { handlePage } from "./pages/handler";
+import { originOf, publicUrl } from "./origin";
 import { handleUnlock } from "./private/unlock";
 import { welcomePage } from "./welcome";
 
@@ -23,7 +24,7 @@ function unauthorized(origin: string): Response {
 }
 
 export async function handle(request: Request): Promise<Response> {
-  const url = new URL(request.url);
+  const url = publicUrl(request);
   const path = url.pathname;
 
   try {
@@ -42,7 +43,7 @@ export async function handle(request: Request): Promise<Response> {
 }
 
 async function route(request: Request, url: URL): Promise<Response> {
-  const origin = `${url.protocol}//${url.host}`;
+  const origin = originOf(url);
   const path = url.pathname;
 
   if (path === "/.well-known/oauth-authorization-server") return metadata(origin);

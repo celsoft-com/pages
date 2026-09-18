@@ -1,3 +1,4 @@
+import { originOf, publicUrl } from "../origin";
 import { TOOLS, type ToolContext } from "./tools";
 
 const PROTOCOL_VERSION = "2025-06-18";
@@ -129,8 +130,8 @@ export async function handleMcp(request: Request): Promise<Response> {
     return Response.json(failure(null, -32700, "Parse error"), { status: 400 });
   }
 
-  const url = new URL(request.url);
-  const ctx: ToolContext = { siteUrl: `${url.protocol}//${url.host}` };
+  const url = publicUrl(request);
+  const ctx: ToolContext = { siteUrl: originOf(url) };
 
   const messages = Array.isArray(payload) ? payload : [payload];
   const responses: unknown[] = [];

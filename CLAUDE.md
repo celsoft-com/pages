@@ -177,6 +177,13 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   nothing: with no script the field is the plain textarea the server already rendered. The colours
   are the admin's own palette, never a vendored theme, because the admin has a light and a dark
   scheme and a theme file has one.
+- **Every URL the site hands out comes from one place.** [origin.ts](src/origin.ts) reads
+  `x-forwarded-proto`, because anything terminating TLS in front of this forwards a plain http
+  request and `request.url` then names a scheme the visitor is not on. That reached a share link,
+  the OAuth metadata, the MCP connector URL and the admin's own origin as five copies of
+  `${url.protocol}//${url.host}`, so a sixth would have been written the same way. The header is
+  trusted, as `x-forwarded-for` already is in the rate limiter: a forged one can only make a
+  generated link say http, which is where it would have been anyway.
 - **Blob keys carry no slashes.** `encodeKey` in [store.ts](src/store.ts) maps `/a/b` to `a~b`; Netlify rejects keys starting with a slash.
 - **Markdown is themed, HTML is verbatim.** Never wrap a stored HTML page.
 - **A summary is a cache, and the blob is the truth.** `writeCollectionBlob` in
