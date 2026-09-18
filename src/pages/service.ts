@@ -1,6 +1,12 @@
 import { encodeKey, stores } from "../store";
 import type { ContentType, Page, PageSummary } from "../types";
-import { normalizePath } from "./path";
+import { HOME_IS_GENERATED, ROOT_BUNDLE, normalizePath } from "./path";
+
+// What to say when a page is not there. At /root it is not missing: it is the one page nothing
+// stores, and a client told only that nothing is there will try to publish one.
+export function noPageAt(path: string): string {
+  return path === ROOT_BUNDLE ? HOME_IS_GENERATED : `No page exists at ${path}`;
+}
 
 export async function getPage(path: string): Promise<Page | null> {
   const stored = await stores.pages().get(encodeKey(normalizePath(path)), { type: "json" });
@@ -63,6 +69,7 @@ export async function savePage(input: {
   body: string;
 }): Promise<Page> {
   const path = normalizePath(input.path);
+  if (path === ROOT_BUNDLE) throw new Error(HOME_IS_GENERATED);
   const existing = await getPage(path);
   const now = Date.now();
   const page: Page = {
@@ -146,7 +153,7 @@ export async function editPage(input: {
 }): Promise<{ page: Page; replaced: number; lines: number[] }> {
   const path = normalizePath(input.path);
   const page = await getPage(path);
-  if (!page) throw new Error(`No page exists at ${path}`);
+  if (!page) throw new Error(noPageAt(path));
   if (input.find === "") throw new Error("find must not be empty");
 
   const occurrences = page.body.split(input.find).length - 1;

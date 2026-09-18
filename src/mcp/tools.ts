@@ -13,13 +13,12 @@ import {
   revOf,
   setRefs,
 } from "../data/service";
-import { deriveTitle, editPage, getPage, listPages, savePage, slicePage } from "../pages/service";
+import { deriveTitle, editPage, getPage, listPages, noPageAt, savePage, slicePage } from "../pages/service";
 import {
   privacyChanges,
   restOfBundle,
   runTransfer,
   staleReferences,
-  touchesHomePage,
   type Kind,
   type Scope,
   type Transfer,
@@ -68,6 +67,8 @@ function detectFormat(content: string, declared?: string): "markdown" | "html" {
   return /^\s*(<!doctype html|<html[\s>])/i.test(content) ? "html" : "markdown";
 }
 
+// The URL a browser uses for a path. /root is served at /, and a share link built on it has to be
+// the one the recipient opens: a redirect that carried the fragment would still be a second URL.
 function urlFor(ctx: ToolContext, path: string): string {
   return `${ctx.siteUrl}${path === "/" || path === ROOT_BUNDLE ? "" : path}`;
 }
@@ -94,8 +95,10 @@ export const BUNDLES =
   "is no owner and no owning page, and nothing is ever unfiled or ungrouped: a resource's own path already says " +
   "which bundles hold it, so publishing a page at /trip changes nothing about what is under /trip. Matching is on " +
   "whole path segments, so /bavaria does not hold /bavaria-lessons/lessons. One exception: / is not a bundle, " +
-  "because it would hold the entire site. A resource may still sit at /, and what a browser gets at / is the page " +
-  "in the /root bundle. This is organization only, never a boundary: nothing is rejected, moved or blocked by it, " +
+  "because it would hold the entire site. A resource may still sit at /, and what a browser gets at / is the site " +
+  "contents, a generated list of every public page that no tool writes or deletes. The /root bundle is an ordinary " +
+  "folder holding the favicon and whatever else is filed there. This is organization only, never a boundary: " +
+  "nothing is rejected, moved or blocked by it, " +
   "any page may fetch any collection, and references may cross bundles.";
 
 const PRIVACY =
@@ -159,7 +162,7 @@ const TRANSFER =
   "unless you pass overwrite, and changes nothing when it refuses.";
 
 function resourceUrl(ctx: ToolContext, kind: Kind, path: string): string {
-  if (kind === "page") return urlFor(ctx, path === ROOT_BUNDLE ? "/" : path);
+  if (kind === "page") return urlFor(ctx, path);
   if (kind === "collection") return dataUrl(ctx, path);
   return `${ctx.siteUrl}/assets${path}`;
 }
@@ -194,11 +197,6 @@ async function transferReply(ctx: ToolContext, transfer: Transfer): Promise<stri
     );
   else if (privacy.length > 0)
     notes.push("Something in privacy_changes moved into a private path and is now closed to the public.");
-  if (touchesHomePage(transfer))
-    notes.push(
-      `${ROOT_BUNDLE} is the page a browser gets at /, so the site root now has no home page until you publish one.`,
-    );
-
   return JSON.stringify(
     {
       operation: transfer.verb,
@@ -308,7 +306,7 @@ export const TOOLS: ToolDefinition[] = [
     handler: async (args) => {
       const path = requirePath(args.path);
       const page = await getPage(path);
-      if (!page) throw new Error(`No page exists at ${path}`);
+      if (!page) throw new Error(noPageAt(path));
 
       const whole = args.find === undefined && args.offset === undefined && args.limit === undefined;
       if (whole)
@@ -375,7 +373,9 @@ export const TOOLS: ToolDefinition[] = [
       {
         path: {
           type: "string",
-          description: `Page path, for example /about. The page at ${ROOT_BUNDLE} is what a browser gets at /.`,
+          description:
+            "Page path, for example /about. / is the generated site contents, so a page cannot be published there; " +
+            "every page you publish is listed on it.",
         },
         content: { type: "string", description: "Markdown or a full HTML document" },
         format: { type: "string", enum: ["markdown", "html"], description: "Defaults to auto-detect" },
@@ -413,7 +413,7 @@ export const TOOLS: ToolDefinition[] = [
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       const existing = await getPage(path);
-      if (!existing) throw new Error(`No page exists at ${path}. Use publish_page to create it.`);
+      if (!existing) throw new Error(`${noPageAt(path)}. Use publish_page to create it.`);
       if (typeof args.content !== "string" || args.content.length === 0)
         throw new Error("content is required");
 

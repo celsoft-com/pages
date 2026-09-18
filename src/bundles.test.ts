@@ -151,39 +151,52 @@ describe("/ is not a bundle", () => {
   });
 });
 
-describe("the home page is a folder like any other", () => {
+describe("the site root is the contents of the site", () => {
   const visit = (path: string) => handlePage(new Request(`https://example.com${path}`));
 
-  it("serves the /root page at the site root", async () => {
-    await call("publish_page", { path: "/root", content: "# Welcome home", overwrite: true });
-    expect(await (await visit("/")).text()).toContain("Welcome home");
+  it("lists every published page", async () => {
+    await call("publish_page", { path: "/about", content: "# About us" });
+    await call("publish_page", { path: "/trip/day1", content: "# Day one" });
+
+    const body = await (await visit("/")).text();
+    expect(body).toContain('href="/about"');
+    expect(body).toContain("About us");
+    expect(body).toContain('href="/trip/day1"');
   });
 
-  it("gives the home page one URL, not two", async () => {
-    await call("publish_page", { path: "/root", content: "# Welcome home", overwrite: true });
+  it("says so when nothing is published", async () => {
+    expect(await (await visit("/")).text()).toContain("Nothing is published yet");
+  });
+
+  it("is not a page, so nothing publishes one there", async () => {
+    await expect(call("publish_page", { path: "/root", content: "# Home" })).rejects.toThrow(/site contents/);
+    expect(await getPage(ROOT_BUNDLE)).toBeNull();
+  });
+
+  it("gives the site root one URL, not two", async () => {
     const response = await visit("/root");
     expect(response.status).toBe(301);
     expect(response.headers.get("location")).toBe("/");
   });
 
-  it("never serves a page stored at /, only the one in /root", async () => {
+  it("never lists a page stored at / or /root, which nothing serves", async () => {
     await savePageDirect("/", "# Old home");
-    expect((await visit("/")).status).toBe(404);
+    await savePageDirect(ROOT_BUNDLE, "# Older home");
 
-    await call("publish_page", { path: "/root", content: "# New home", overwrite: true });
-    expect(await (await visit("/")).text()).toContain("New home");
+    const body = await (await visit("/")).text();
+    expect(body).not.toContain("Old home");
+    expect(body).not.toContain("Older home");
   });
 
   it("holds its own collections like any other bundle", async () => {
-    await call("publish_page", { path: "/root", content: "# Home", overwrite: true });
     await saveCollection("/root/links", [{ id: "a" }]);
     expect(await call("list_bundle", { path: "/root" })).toContain("collection /root/links");
   });
 
-  it("is where setup puts the very first page", async () => {
+  it("is what a brand new site answers with, before anything is published", async () => {
     await completeSetup("a-long-enough-password");
-    expect(await getPage(ROOT_BUNDLE)).not.toBeNull();
-    expect(await (await visit("/")).text()).toContain("Welcome");
+    expect(await getPage(ROOT_BUNDLE)).toBeNull();
+    expect((await visit("/")).status).toBe(200);
   });
 });
 
@@ -331,9 +344,10 @@ describe("bundles are organization, never a boundary", () => {
   });
 });
 
-describe("the site root with no home page", () => {
-  it("is a plain 404, with no stand-in and no fallback", async () => {
-    await call("publish_page", { path: "/hello", content: "# Hello", overwrite: true });
-    expect((await handlePage(new Request("https://example.com/"))).status).toBe(404);
+describe("the site root with nothing published", () => {
+  it("is the contents page saying so, not a 404", async () => {
+    const response = await handlePage(new Request("https://example.com/"));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Nothing is published yet");
   });
 });

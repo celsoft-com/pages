@@ -372,21 +372,33 @@ describe("atomicity", () => {
   });
 });
 
-describe("the home page bundle", () => {
-  it("says so when the page served at / is taken away", async () => {
-    await savePage({ path: "/root", contentType: "markdown", title: "Home", body: "# Home" });
-
-    const moved = await json("move_page", { from: "/root", to: "/archive/home" });
-    expect(moved.notes.join(" ")).toContain("the site root now has no home page");
-
-    const deleted = await json("delete_page", { path: "/archive/home" });
-    expect(deleted.notes.join(" ")).not.toContain("the site root now has no home page");
+describe("the site root is generated, so no transfer may write it", () => {
+  it("refuses a page moved onto /root", async () => {
+    await savePage({ path: "/archive/home", contentType: "markdown", title: "Home", body: "# Home" });
+    await expect(call("move_page", { from: "/archive/home", to: "/root" })).rejects.toThrow(/site contents/);
+    expect(await getPage("/archive/home")).not.toBeNull();
   });
 
-  it("gives the home page its served url, not its stored path", async () => {
+  it("refuses a page copied onto /root", async () => {
     await savePage({ path: "/archive/home", contentType: "markdown", title: "Home", body: "# Home" });
-    const reply = await json("move_page", { from: "/archive/home", to: "/root" });
-    expect(reply.resources[0].url).toBe("https://example.com");
+    await expect(call("copy_page", { from: "/archive/home", to: "/root" })).rejects.toThrow(/site contents/);
+  });
+
+  // A bundle verb never names the page it would land there, which is the whole reason the check
+  // is on the target rather than on the argument.
+  it("refuses a bundle move that would land a page on /root", async () => {
+    await savePage({ path: "/archive", contentType: "markdown", title: "Archive", body: "# Archive" });
+    await expect(call("move_bundle", { from: "/archive", to: "/root", confirm: true })).rejects.toThrow(
+      /site contents/,
+    );
+    expect(await getPage("/archive")).not.toBeNull();
+  });
+
+  // The /root folder itself is ordinary: the favicon and anything else filed there still moves.
+  it("still moves what is under /root", async () => {
+    await saveCollection("/root/links", [{ id: "one" }]);
+    await call("move_bundle", { from: "/root", to: "/links", confirm: true });
+    expect(await getCollection("/links/links")).not.toBeNull();
   });
 });
 
@@ -403,20 +415,20 @@ describe("a page stored at /", () => {
   });
 
   it("reports no stale lines, because / names no resource", async () => {
-    const reply = await json("move_page", { from: "/", to: "/root" });
+    const reply = await json("move_page", { from: "/", to: "/home" });
     expect(reply.pages_to_update).toEqual([]);
     expect(reply.notes.join(" ")).not.toContain("still names a path that has gone");
   });
 
   it("reports no rest of bundle, because / is not a bundle", async () => {
-    const reply = await json("move_page", { from: "/", to: "/root" });
+    const reply = await json("move_page", { from: "/", to: "/home" });
     expect(reply.rest_of_bundle).toBeUndefined();
   });
 
-  it("still moves the page and serves it at the site root", async () => {
-    await json("move_page", { from: "/", to: "/root" });
+  it("still moves the page off /, where nothing served it", async () => {
+    await json("move_page", { from: "/", to: "/home" });
     expect(await getPage("/")).toBeNull();
-    expect((await getPage("/root"))!.title).toBe("Welcome");
+    expect((await getPage("/home"))!.title).toBe("Welcome");
   });
 
   it("never lists the resource it just created as something that stayed put", async () => {

@@ -6,7 +6,8 @@ import { listPages } from "./pages/service";
 
 export const ROOT_IS_NOT_A_BUNDLE =
   "/ is not a bundle: it would hold every page, collection and asset on the site. Every other path is. " +
-  `As a page path / means ${ROOT_BUNDLE}, the home page bundle, which is served at / and lists like any other. ` +
+  `What a browser gets at / is the site contents, generated from every public page, and ${ROOT_BUNDLE} is an ` +
+  "ordinary folder holding the favicon and whatever else is filed there. " +
   "Call list_pages or list_collections to see what exists.";
 
 export interface PageEntry {

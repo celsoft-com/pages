@@ -8,8 +8,8 @@ import {
   writeCollectionBlob,
 } from "./data/service";
 import { ROOT_IS_NOT_A_BUNDLE, bundleContents, referencesInto, type BrokenReference } from "./inventory";
-import { ROOT_BUNDLE, normalizeAssetPath, normalizePath } from "./pages/path";
-import { findInPages, getPage, listPages, writePageBlob, type PageMatch } from "./pages/service";
+import { HOME_IS_GENERATED, ROOT_BUNDLE, normalizeAssetPath, normalizePath } from "./pages/path";
+import { findInPages, getPage, listPages, noPageAt, writePageBlob, type PageMatch } from "./pages/service";
 import { getPrivacy, privateScope } from "./private/service";
 import { encodeKey, stores } from "./store";
 import type { Asset, Collection, Page } from "./types";
@@ -57,7 +57,7 @@ interface Sources {
 async function gather(scope: Scope, verb: Verb, from: string): Promise<Sources> {
   if (scope === "page") {
     const page = await getPage(from);
-    if (!page) throw new Error(`No page exists at ${from}`);
+    if (!page) throw new Error(noPageAt(from));
     return { pages: [page], collections: [], assets: [] };
   }
 
@@ -143,7 +143,12 @@ export async function planTransfer(input: {
 
   const targets = new Map<string, string>();
   if (to !== null) {
-    for (const page of sources.pages) targets.set(`page${page.path}`, retarget(page.path, from, to));
+    for (const page of sources.pages) {
+      const target = retarget(page.path, from, to);
+      // A page verb names it outright; a bundle verb can land one there without ever saying so.
+      if (target === ROOT_BUNDLE) throw new Error(HOME_IS_GENERATED);
+      targets.set(`page${page.path}`, target);
+    }
     for (const c of sources.collections) targets.set(`collection${c.path}`, retarget(c.path, from, to));
     for (const a of sources.assets) if (a.path) targets.set(`asset${a.path}`, retarget(a.path, from, to));
   }
@@ -395,11 +400,6 @@ export function stalePatterns(transfer: Transfer): RegExp[] {
       patterns.push(new RegExp(`(?<![A-Za-z0-9._~-])${escape(resource.from)}(?![A-Za-z0-9._~/-])`));
   }
   return patterns;
-}
-
-// /root is served at /, so moving or deleting it changes what a browser gets at the site root.
-export function touchesHomePage(transfer: Transfer): boolean {
-  return transfer.verb !== "copy" && transfer.resources.some((r) => r.kind === "page" && r.from === ROOT_BUNDLE);
 }
 
 export async function staleReferences(transfer: Transfer): Promise<PageMatch[]> {

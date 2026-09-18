@@ -56,14 +56,19 @@ export interface Access {
 
 const PUBLIC: Access = { scope: null, open: true };
 
-export async function accessTo(request: Request, path: string): Promise<Access> {
-  const scope = privateScope(await getPrivacy(), path);
+// Takes the scope rather than the path, for a caller that has already read the privacy blob and
+// has another question to ask of it. One read answers both.
+export async function accessToScope(request: Request, scope: PrivateScope | null): Promise<Access> {
   if (!scope) return PUBLIC;
 
   const shareId = await validGrant(request, scope);
   if (!shareId) return { scope, open: false };
 
   return { scope, open: true, cookie: (await grantCookie(scope.path, shareId)) ?? undefined };
+}
+
+export async function accessTo(request: Request, path: string): Promise<Access> {
+  return accessToScope(request, privateScope(await getPrivacy(), path));
 }
 
 // A hash-keyed asset names its own bytes and sits at no path, so no scope can contain it. That is

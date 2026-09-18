@@ -87,8 +87,8 @@ repoint the page, confirm it renders, then delete the source.
 Every tool returns the same envelope: `operation`, `scope`, `from`, `to`, `applied`, `resources`, `breaks`,
 `pages_to_update`, `notes`, and `rest_of_bundle` on a page verb. Each resource carries its kind, both paths,
 the target URL and whether it replaced something, plus item count, rev and refs for a collection and size for
-an asset. Moving or deleting the `/root` page says so in `notes`, because that is the page a browser gets at
-the site root.
+an asset. A page may never land on `/root`: the site root is generated, so a page verb naming it and a bundle verb
+that would carry one there are both refused before anything is written.
 
 That is enough to verify the result without a follow-up call.
 

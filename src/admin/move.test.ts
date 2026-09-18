@@ -98,11 +98,13 @@ describe("the move screen", () => {
     expect(body).toContain("stays behind at its old URL");
   });
 
-  it("warns that moving the home page empties the site root", async () => {
-    await savePage({ path: "/root", contentType: "markdown", title: "Home", body: "# Home" });
-    const body = await (await get("/admin/pages/move?path=%2Froot")).text();
+  it("refuses a move onto the site root, which is generated", async () => {
+    await savePage({ path: "/trip", contentType: "markdown", title: "Trip", body: "# Trip" });
+    const response = await post("/admin/pages/move", { from: "/trip", to: "/root", scope: "page" });
 
-    expect(body).toContain("no home page");
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toContain("site+contents");
+    expect(await getPage("/trip")).not.toBeNull();
   });
 
   it("turns away a path with no page", async () => {

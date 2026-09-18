@@ -14,14 +14,13 @@ import { changePassword, completeSetup, getOwner, isSetupComplete } from "../aut
 import { completeAuthorize, parseAuthorize } from "../oauth/server";
 import { listGrants, revokeGrant } from "../oauth/store";
 import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
-import { isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
+import { HOME_IS_GENERATED, isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
 import { bundleContents } from "../inventory";
 import {
   privacyChanges,
   restOfBundle,
   runTransfer,
   staleReferences,
-  touchesHomePage,
   type Scope,
   type Transfer,
 } from "../transfer";
@@ -230,7 +229,8 @@ function accessCell(
 }
 
 async function pagesScreen(url: URL): Promise<Response> {
-  const [pages, grants, privacy] = await Promise.all([listPages(), listGrants(), getPrivacy()]);
+  const [all, grants, privacy] = await Promise.all([listPages(), listGrants(), getPrivacy()]);
+  const pages = all.filter((p) => p.path !== ROOT_BUNDLE);
   const origin = `${url.protocol}//${url.host}`;
   const armed = url.searchParams.get("confirm");
 
@@ -246,6 +246,15 @@ async function pagesScreen(url: URL): Promise<Response> {
       body: 'Ask Claude to publish a page, or <a href="/admin/pages/edit">write one here</a>.',
     },
   ]);
+
+  // The site root is not a page: it is the list of them, generated on every request. It still has
+  // a path, so it carries the same access control as any other row and nothing else.
+  const homeRow = `<tr>
+<td>Contents<div class="small"><span class="muted mono">/</span></div>
+<div class="small muted">Every public page, listed automatically.</div></td>
+<td><span class="pill">generated</span></td>
+<td>${accessCell(ROOT_BUNDLE, privacy.scopes.find((scope) => scope.path === ROOT_BUNDLE), null, false)}</td>
+<td class="actions"><a class="button secondary" href="/" target="_blank" rel="noopener">View</a></td></tr>`;
 
   const rows = pages.length
     ? pages
@@ -275,7 +284,9 @@ ${confirmAction({
 
   // A private path with no page of its own still has to be manageable here, or the only way to
   // reopen it is through Claude.
-  const orphans = privacy.scopes.filter((scope) => !pages.some((p) => p.path === scope.path));
+  const orphans = privacy.scopes.filter(
+    (scope) => scope.path !== ROOT_BUNDLE && !pages.some((p) => p.path === scope.path),
+  );
 
   return page({
     title: "Pages",
@@ -285,7 +296,7 @@ ${confirmAction({
 <h1>Pages</h1><a class="button" href="/admin/pages/edit">New page</a></div>
 <div class="panel"><table>
 <thead><tr><th>Page</th><th>Format</th><th>Access</th><th></th></tr></thead>
-<tbody>${rows}</tbody></table></div>
+<tbody>${homeRow}${rows}</tbody></table></div>
 ${
       orphans.length
         ? `<h2>Private paths with no page</h2>
@@ -412,14 +423,22 @@ async function pathAccessScreen(url: URL, minted?: { label: string; link: string
   if (!own) return back("/admin", { error: `${path} is not private, so it has no links.` });
   if (await getPage(path)) return redirect(`/admin/pages/edit?path=${encodeURIComponent(path)}#access`);
 
+  // The site contents has no page to live in either, and it is the one path here a visitor reaches
+  // at a different URL than the one it is named by.
+  const home = path === ROOT_BUNDLE;
+
   return page({
-    title: `Access ${path}`,
+    title: `Access ${home ? "/" : path}`,
     current: "/admin",
     body: `${flash(url)}
 <div class="row" style="justify-content:space-between">
-<h1><span class="mono">${escapeHtml(path)}</span></h1>
+<h1><span class="mono">${escapeHtml(home ? "/" : path)}</span></h1>
 <a class="button secondary" href="/admin">Back to pages</a></div>
-<p class="lede">No page is published at this path, but it is private, so whatever is under it needs a link.</p>
+<p class="lede">${
+      home
+        ? "The site contents is closed, so only a link opens it. Every page stays reachable at its own path unless it is private too."
+        : "No page is published at this path, but it is private, so whatever is under it needs a link."
+    }</p>
 ${accessPanel({
       path,
       own,
@@ -433,6 +452,8 @@ ${accessPanel({
 
 async function pageEditor(url: URL, minted?: { label: string; link: string }): Promise<Response> {
   const path = url.searchParams.get("path");
+  if (path && (normalizePath(path) === ROOT_BUNDLE || normalizePath(path) === "/"))
+    return back("/admin", { error: HOME_IS_GENERATED });
   const existing = path ? await getPage(path) : null;
 
   // Access belongs to a path, so there is nothing to show until the page has one.
@@ -469,7 +490,7 @@ ${
   <a class="link" href="/admin/pages/move?path=${encodeURIComponent(existing.path)}">Move or rename</a></div>
 </div>`
         : `<div class="field">
-  <label for="path">Path<span class="hint">Lowercase, for example /about. Use / for the home page.</span></label>
+  <label for="path">Path<span class="hint">Lowercase, for example /about. The site root lists every page, so nothing is published there.</span></label>
   <input id="path" name="path" type="text" required value="" placeholder="/about">
 </div>`
     }
@@ -502,10 +523,7 @@ async function savePageForm(request: Request): Promise<Response> {
   const body = await form(request);
   const path = normalizePath(body.path ?? "");
   if (!isValidPath(path)) return back("/admin/pages/edit", { error: `Path "${body.path}" is not usable.` });
-  if (path === "/")
-    return back("/admin/pages/edit", {
-      error: `/ is not a page path. Publish the home page at ${ROOT_BUNDLE}, which is served at /.`,
-    });
+  if (path === "/" || path === ROOT_BUNDLE) return back("/admin/pages/edit", { error: HOME_IS_GENERATED });
 
   await savePage({
     path,
@@ -590,12 +608,6 @@ page, collection and file on the site. Only the page can move.</div>`;
 <h1>Move page</h1>
 <p class="lede">At <span class="mono">${escapeHtml(path)}</span>. Nothing is copied and no page content is rewritten:
 a page hardcodes the URLs it fetches, so whatever still names the old path is listed for you to edit afterwards.</p>
-${
-      path === ROOT_BUNDLE
-        ? `<div class="notice warn">${escapeHtml(ROOT_BUNDLE)} is the page a browser gets at <span class="mono">/</span>.
-Move it and the site root has no home page until you publish one here again.</div>`
-        : ""
-    }
 <form method="post" action="/admin/pages/move" class="panel">
 <input type="hidden" name="from" value="${escapeHtml(path)}">
 <div class="field">
@@ -703,12 +715,6 @@ ${
         : `<h2>Left where it was</h2>
 <div class="panel">${inventoryTable(rest)}</div>`
     }
-${
-      touchesHomePage(transfer)
-        ? `<div class="notice warn">${escapeHtml(ROOT_BUNDLE)} is the page a browser gets at
-<span class="mono">/</span>, so the site root has no home page until you publish one there again.</div>`
-        : ""
-    }
 <div class="row"><a class="button" href="${here}">Open the page</a>
 <a class="button secondary" href="/admin">Back to pages</a></div>
 <script>history.replaceState(null,"",${JSON.stringify(here)});</script>`,
@@ -723,8 +729,7 @@ async function movePageForm(request: Request): Promise<Response> {
   const home = `/admin/pages/move?path=${encodeURIComponent(from)}`;
 
   if (!isValidPath(to)) return back(home, { error: `Path "${body.to}" is not usable.` });
-  if (to === "/")
-    return back(home, { error: `/ is not a page path. The home page is ${ROOT_BUNDLE}, which is served at /.` });
+  if (to === "/" || to === ROOT_BUNDLE) return back(home, { error: HOME_IS_GENERATED });
 
   try {
     return moveResult(

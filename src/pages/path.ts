@@ -2,6 +2,15 @@
 // this bundle and is served at /, so nothing sits above everything else.
 export const ROOT_BUNDLE = "/root";
 
+// The home page is the site's contents, generated from what is published, so it is the one page
+// nobody writes, edits or deletes. It is still a path: /root is what privacy closes, what a share
+// link opens and where the favicon sits, and a page blob stored there would be a second home page
+// nothing serves. Every write that would make one is refused with this.
+export const HOME_IS_GENERATED =
+  `${ROOT_BUNDLE} is served at / as the site contents, a list of every public page, generated on every ` +
+  "request. It is not stored, so it cannot be published, edited, moved onto or deleted. Publish at any " +
+  "other path and it appears in the list.";
+
 export function normalizePath(input: string): string {
   let path = input.trim();
   try {

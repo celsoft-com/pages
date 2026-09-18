@@ -1,12 +1,14 @@
 import { contentHeaders, privateHeaders } from "../cache";
-import { accessTo, type Access } from "../private/gate";
+import { accessTo, accessToScope, type Access } from "../private/gate";
+import { getPrivacy, privateScope } from "../private/service";
 import { UNLOCK_HEAD } from "../private/unlock";
 import { renderMarkdown } from "../render/markdown";
 import { escapeHtml, layout } from "../render/theme";
 import { getSettings } from "../settings";
 import type { Page } from "../types";
+import { contentsEtag, contentsHtml, listable } from "./contents";
 import { ROOT_BUNDLE, normalizePath } from "./path";
-import { getPage } from "./service";
+import { getPage, listPages } from "./service";
 
 function html(body: string, access: Access, etag: string): Response {
   const headers: Record<string, string> = {
@@ -48,21 +50,38 @@ async function closed(path: string): Promise<Response> {
   });
 }
 
+// The contents of the site, generated on every request. It is closed and opened like any other
+// page, through the /root scope: / itself can never be one, because a scope holds everything at or
+// under its path and that would be the site.
+async function contents(request: Request): Promise<Response> {
+  const privacy = await getPrivacy();
+  const access = await accessToScope(request, privateScope(privacy, ROOT_BUNDLE));
+  if (!access.open) return closed("/");
+
+  const settings = await getSettings();
+  const pages = listable(await listPages()).filter((page) => !privateScope(privacy, page.path));
+  const body = contentsHtml({
+    siteTitle: settings.title,
+    siteDescription: settings.description || undefined,
+    pages,
+  });
+  return html(body, access, contentsEtag(pages));
+}
+
 export async function handlePage(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const path = normalizePath(url.pathname);
 
-  // The home page lives in its own bundle and is served at /, so it has one URL, not two.
+  // The home page is served at /, so it has one URL, not two.
   if (path === ROOT_BUNDLE) return new Response(null, { status: 301, headers: { location: "/" } });
 
-  // / serves the /root page and nothing else. A page stored at / is an ordinary resource nobody serves.
-  const target = path === "/" ? ROOT_BUNDLE : path;
+  if (path === "/") return contents(request);
 
   // Before the page is read, so a stranger's request costs one blob read and reveals nothing.
-  const access = await accessTo(request, target);
+  const access = await accessTo(request, path);
   if (!access.open) return closed(path);
 
-  const page = await getPage(target);
+  const page = await getPage(path);
   if (!page) return closed(path);
 
   if (page.contentType === "html") return html(page.body, access, String(page.updatedAt));

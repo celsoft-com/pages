@@ -273,18 +273,32 @@ describe("the shape of privacy", () => {
   });
 });
 
-describe("the home page can be private", () => {
+describe("the site contents can be private", () => {
   it("closes / and opens it with the link", async () => {
-    await savePage({ path: "/root", contentType: "html", title: "h", body: "HOME PAGE" });
+    await savePage({ path: "/hello", contentType: "markdown", title: "Hello", body: "# Hello" });
     const link = await share("/root");
     expect((await get("/")).status).toBe(404);
 
     const response = await unlock(link.split("#")[1]);
-    // The home page bundle is /root but its one URL is /, so that is where the script sends them.
+    // The contents is named by /root but its one URL is /, so that is where the script sends them.
     expect(await response.json()).toEqual({ path: "/" });
 
     const cookie = response.headers.get("set-cookie")!.split(";")[0];
-    expect(await (await get("/", cookie)).text()).toBe("HOME PAGE");
+    expect(await (await get("/", cookie)).text()).toContain("Hello");
+  });
+
+  // A page under its own scope is left out whoever is asking. Listing it for a link holder would
+  // make a public response vary by cookie, and that response is cached at the edge for everyone.
+  it("leaves a private page out of the list", async () => {
+    await savePage({ path: "/trip", contentType: "markdown", title: "The trip", body: "# The trip" });
+    await savePage({ path: "/hello", contentType: "markdown", title: "Hello", body: "# Hello" });
+    const link = await share("/trip");
+
+    const cookie = (await unlock(link.split("#")[1])).headers.get("set-cookie")!.split(";")[0];
+    const body = await (await get("/", cookie)).text();
+
+    expect(body).toContain("Hello");
+    expect(body).not.toContain("The trip");
   });
 });
 

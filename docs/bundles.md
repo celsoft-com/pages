@@ -48,8 +48,10 @@ In `delete_bundle` this is the difference between a wrong listing and permanent 
   so it stays true as tools are added.
 - **A resource may still sit at `/`.** A page, collection or asset there is an ordinary resource; it is just
   not reachable through a bundle. A collection at `/` keeps its `/data/index.json` address.
-- **What a browser gets at `/` is the page in the `/root` folder.** `/root` is an ordinary bundle, and `/root`
-  itself redirects to `/` so that page has one URL.
+- **What a browser gets at `/` is the site contents**, a list of every public page, generated on every request.
+  Nothing publishes, edits or deletes it. `/root` names it as a path, which is what closes it and opens it with a
+  share link, and `/root` itself redirects to `/` so it has one URL. The `/root` folder is otherwise ordinary: the
+  favicon and anything else filed there behaves like any other resource.
 - **Nothing is migrated.** A page already stored at `/` stays exactly where it is.
 
 ## Organization is not a boundary
@@ -80,7 +82,7 @@ Serving is unchanged. Collection `/a/b` is served at `/data/a/b.json` as a bare 
 - `list_bundle('/trip')` holds `/trip/day1/items`, and so does `list_bundle('/trip/day1')`.
 - Every bundle operation refuses `/`, while a page or collection may still sit there.
 - A collection at `/` still writes and still serves at `/data/index.json`.
-- The home page at `/root` serves at `/`, and `/root` redirects there.
+- `/` lists every public page and no private one; a page cannot be published, moved or copied onto `/root`.
 - An asset at `/trip/images/coburg.jpg` serves at `/assets/trip/images/coburg.jpg`; one uploaded before
   paths keeps its exact hash URL.
 - An asset named `index.html` or `notes.md` keeps its filename.

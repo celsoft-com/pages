@@ -2,8 +2,6 @@ import { randomBytes, recoveryCode, toBase64 } from "../crypto/random";
 import { stores } from "../store";
 import type { Owner } from "../types";
 import { hashSecret } from "./password";
-import { ROOT_BUNDLE } from "../pages/path";
-import { savePage } from "../pages/service";
 
 const KEY = "owner";
 
@@ -34,17 +32,7 @@ export async function completeSetup(password: string): Promise<{ owner: Owner; r
   const stored = await getOwner();
   if (!stored || stored.id !== owner.id) throw new Error("setup already complete");
 
-  await savePage({
-    path: ROOT_BUNDLE,
-    contentType: "markdown",
-    title: "Welcome",
-    body: `# Welcome
-
-This site was just set up. Its owner writes pages here by talking to Claude.
-
-Ask Claude to replace this page whenever you are ready.`,
-  });
-
+  // Nothing is published: the site root is the contents of the site, and an empty site says so.
   return { owner: stored, recovery };
 }
 
