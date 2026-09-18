@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+#MISE description="Run the test suite once"
+#MISE depends=["install"]
+set -euo pipefail
+source "${0:A:h}/_lib.sh"
+
+exec npm test -- "$@"

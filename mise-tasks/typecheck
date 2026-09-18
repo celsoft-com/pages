@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+#MISE description="Typecheck without emitting"
+#MISE depends=["install"]
+set -euo pipefail
+source "${0:A:h}/_lib.sh"
+
+exec npm run typecheck

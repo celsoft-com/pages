@@ -1,0 +1,11 @@
+# mise manages the toolchain and the tasks for this repo.
+# https://mise.jdx.dev  —  run `mise install` to provision everything.
+#
+# TASKS are FILE tasks under ./mise-tasks (executable zsh scripts), never an inline
+# [tasks] table here. Run `mise tasks` to list them.
+#
+# The netlify CLI is deliberately NOT declared here: it is a Homebrew install on a dev
+# machine (`brew install netlify-cli`), not a global npm one scattered outside mise.
+
+[tools]
+node = "22"

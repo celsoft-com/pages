@@ -1,0 +1,47 @@
+#!/usr/bin/env zsh
+#MISE description="Run the site locally with netlify dev, over https on the tailnet when it can"
+#MISE depends=["install"]
+set -euo pipefail
+source "${0:A:h}/../_lib.sh"
+
+command -v netlify >/dev/null || die "netlify CLI not found. Install it with: brew install netlify-cli"
+
+port=${1:-8888}
+base="http://localhost:${port}"
+
+facts=("${(@f)$(tailscale_facts)}")
+host=${facts[1]:-}
+https=${facts[2]:-no}
+
+header "pages dev server"
+info "$base"
+
+# The session cookie and the private-path grant cookie are both Secure, which a browser honours
+# by dropping them over plain http on any host but localhost: the login would loop and a share
+# link would open nothing. So the tailnet is offered over https or not at all. tailscale serve
+# runs in the foreground here rather than with --bg, so it takes its config away when it stops
+# instead of leaving the tailnet pointed at a dead port.
+serve_pid=
+if [[ -n $host && $https == yes ]]; then
+  tailscale serve "$port" >/dev/null 2>&1 &
+  serve_pid=$!
+  trap '[[ -n $serve_pid ]] && kill $serve_pid 2>/dev/null' EXIT INT TERM
+  info "https://${host}"
+elif [[ -n $host ]]; then
+  dim "Tailnet: enable HTTPS certificates at https://login.tailscale.com/admin/dns, then rerun"
+  dim "this for https://${host}. Plain http would drop the session cookie and loop the login."
+else
+  dim "Tailscale is not up, so this is reachable from this machine only."
+fi
+
+# Blobs live in this checkout's own .netlify sandbox, so every worktree is its own site with
+# its own password. A new one has no owner blob yet, which is what sends you to setup rather
+# than to a login that cannot work.
+owner=(.netlify/blobs-serve/entries/**/site:site/owner(N))
+if (( ${#owner} )); then
+  dim "Site set up in this worktree: ${base}/admin/login"
+else
+  dim "New site in this worktree: ${base}/admin/setup to pick a password"
+fi
+
+netlify dev --port "$port"

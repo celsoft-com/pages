@@ -5,11 +5,30 @@ Self-deployable MCP-driven site host on Netlify.
 ## Local development
 
 ```
-npm install
-netlify dev
+mise run dev          # netlify dev, after installing deps if they are stale
+mise run test         # the suite once; args pass through, e.g. -- src/transfer.test.ts
+mise run typecheck
+mise run build        # typecheck + tests, what Netlify runs before it deploys
 ```
 
-`npm test` runs the suite, `npx tsc --noEmit` typechecks. Blobs run locally through `netlify dev`.
+Tasks are executable zsh files under [mise-tasks/](mise-tasks), never an inline `[tasks]` table;
+[_lib.sh](mise-tasks/_lib.sh) is sourced, not run, so it carries no `+x`. The npm scripts still
+work and the tasks call them, so there is one definition of each command.
+
+`mise run dev` offers the tailnet over https or not at all. The session cookie
+([session.ts](src/auth/session.ts)) and the private-path grant cookie ([gate.ts](src/private/gate.ts))
+are both `Secure`, which a browser honours by dropping them over plain http on any host but
+localhost, so an http tailnet URL loops the login and opens nothing behind a share link. With
+HTTPS certificates enabled on the tailnet the task runs `tailscale serve` in the foreground, so
+the config goes away with the server rather than leaving the tailnet pointed at a dead port;
+without them it says how to turn them on. Both facts come from one `tailscale status --json`.
+Never paper over this by making the cookies conditional: they are the deployed site's cookies.
+
+Blobs run in a local sandbox under `netlify dev`, in this checkout's own `.netlify/`, so every
+worktree is its own site with its own password and nothing is shared between them. A new one is an
+unset-up site, which is why `mise run dev` looks for the owner blob and prints `/admin/setup` or
+`/admin/login` accordingly: a login screen on a site with no owner is the one state that looks
+broken rather than new. `mise run dev:reset` deletes this worktree's local site and nothing else.
 
 ## Architecture
 

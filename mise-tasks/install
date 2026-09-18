@@ -1,0 +1,14 @@
+#!/usr/bin/env zsh
+#MISE description="Install npm dependencies, skipping the work when they are already current"
+set -euo pipefail
+source "${0:A:h}/_lib.sh"
+
+if [[ ! -d node_modules ]]; then
+  header "Installing dependencies"
+  exec npm ci
+fi
+
+if [[ package-lock.json -nt node_modules ]]; then
+  header "Lockfile changed, syncing dependencies"
+  exec npm install
+fi

@@ -1,0 +1,18 @@
+#!/usr/bin/env zsh
+#MISE description="Delete this worktree's local site, so the next dev run starts at /admin/setup"
+set -euo pipefail
+source "${0:A:h}/../_lib.sh"
+
+store=.netlify/blobs-serve
+if [[ ! -e $store ]]; then
+  info "No local site in this worktree."
+  exit 0
+fi
+
+header "Deleting this worktree's local site"
+info "${PWD}/${store}"
+warn "Other worktrees and the deployed site are untouched."
+confirm "Delete it?" || die "Left alone."
+
+rm -rf "$store"
+success "gone. The next dev run starts at /admin/setup."
