@@ -53,6 +53,15 @@ const BROUTER = {
         "total-time": "10104",
         "filtered ascend": "162",
         "plain-ascend": "-52",
+        // One row per way segment, each ending on a coordinate of the line above. The real service
+        // returns hundreds; three is enough to cover a tagged way, a prohibition and an untagged
+        // surface, which are the three cases the analysis has to tell apart.
+        messages: [
+          ["Longitude", "Latitude", "Elevation", "Distance", "WayTags"],
+          ["10962800", "50200000", "300", "12000", "highway=cycleway surface=asphalt route_bicycle_rcn=yes"],
+          ["10962900", "50100000", "305", "11000", "highway=path surface=gravel bicycle=no"],
+          ["10891700", "49891700", "245", "33693", "highway=residential"],
+        ],
       },
     },
   ],

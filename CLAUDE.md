@@ -348,5 +348,19 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   belongs to the page; surviving points come back exactly as the router sent them, elevation included. Cycling and
   walking never go to the public OSRM server: it is a car-only deployment that accepts any profile and answers
   identically either way, so a walking route from it is a motorway that says nothing about being one.
+- **A bike route is chosen and then checked, and neither is a score.** `prefer` is `safety`, `balanced` or `speed`,
+  cycling only, named for the trade rather than for any provider's profiles. It is a real one: on one 67 km ride
+  safety spent 1.6 km extra to cut main-road riding from 4.5 km to 2.7 km, and speed put 48 km of the same ride on
+  primary and secondary roads. Asking for one on a walking or driving route is refused, never ignored, because a
+  caller who asked for a safer line and silently got the ordinary one believes something untrue about their route.
+  Checking is `ways`: metres by surface and by highway type, metres on a signed cycle route, and warnings for
+  explicit prohibitions only — `bicycle=no` is a fact somebody wrote down, "busy road" is an opinion. `analyzed_m`
+  is the `check_refs` rule again: it is how much of the route carried tags at all, it is 0 when the router reports
+  none, and untagged ground is counted under its own name, because a summary that examined nothing must not read
+  like one that passed. OSM coverage is near total in Bavaria and thin elsewhere. Never add a single safety number:
+  safe depends on the rider, it could not survive a provider change, and the moment one exists nobody reads the
+  breakdown. The per-way `segments` table lives in the asset keyed to coordinate indices and is remapped when the
+  line is simplified, since thinning it must never leave the table pointing at the wrong places while still
+  looking valid.
 - **Tests gate the deploy.** `npm run build` is `tsc --noEmit && vitest run`, and Netlify runs it, so a failing test
   fails the deploy. Blobs are mocked in [test/blobs.ts](src/test/blobs.ts); tests never need a network.

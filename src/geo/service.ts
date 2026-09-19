@@ -1,13 +1,16 @@
 import { assetUrlFor, putAsset } from "../assets/service";
 import { normalizeAssetPath } from "../pages/path";
 import {
+  PREFERS,
   PROFILES,
   geocode as providerGeocode,
   route as providerRoute,
   type Position,
+  type Prefer,
   type Profile,
   type RouteLeg,
 } from "./providers";
+import { remapSegments, type TagAnalysis, type Warning } from "./tags";
 
 // A route is written straight to an asset rather than returned. The geometry for a 126 km drive is
 // 3330 points and 75 KB; handing that to a caller so the caller can hand it back spends the same
@@ -46,6 +49,12 @@ export function parseProfile(raw: unknown): Profile {
   return raw as Profile;
 }
 
+export function parsePrefer(raw: unknown): Prefer {
+  if (raw === undefined || raw === null || raw === "") return "balanced";
+  if (!PREFERS.includes(raw as Prefer)) throw new Error(`prefer must be one of ${PREFERS.join(", ")}.`);
+  return raw as Prefer;
+}
+
 function perpendicular(p: number[], a: number[], b: number[]): number {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
@@ -79,12 +88,25 @@ function douglasPeucker(points: number[][], tolerance: number): number[][] {
 //
 // Simplifying is the caller's choice and off by default: how much detail a line needs is a question
 // about the zoom it will be drawn at, and that is a decision belonging to the page, not to storage.
-export function simplify(coordinates: Position[], metres: number): Position[] {
-  if (!(metres > 0) || coordinates.length < 3) return coordinates;
+export function simplifyIndices(coordinates: Position[], metres: number): number[] {
+  if (!(metres > 0) || coordinates.length < 3) return coordinates.map((_, index) => index);
   const meanLat = coordinates.reduce((sum, position) => sum + position[1], 0) / coordinates.length;
   const scale = Math.max(Math.cos((meanLat * Math.PI) / 180), 1e-6);
   const projected = coordinates.map((position, index) => [position[0] * scale, position[1], index]);
-  return douglasPeucker(projected, metres / METRES_PER_DEGREE).map((point) => coordinates[point[2]]);
+  return douglasPeucker(projected, metres / METRES_PER_DEGREE).map((point) => point[2]);
+}
+
+export function simplify(coordinates: Position[], metres: number): Position[] {
+  return simplifyIndices(coordinates, metres).map((index) => coordinates[index]);
+}
+
+export interface Ways {
+  analyzed_m: number;
+  surface_m: Record<string, number>;
+  way_type_m: Record<string, number>;
+  on_cycle_route_m: number;
+  warnings: Warning[];
+  segment_count: number;
 }
 
 export interface RouteWrite {
@@ -93,6 +115,7 @@ export interface RouteWrite {
   provider: string;
   attribution: string;
   profile: Profile;
+  prefer: Prefer;
   distance_m: number;
   duration_s: number;
   ascent_m: number | null;
@@ -101,11 +124,13 @@ export interface RouteWrite {
   has_elevation: boolean;
   bytes: number;
   legs: RouteLeg[];
+  ways: Ways;
 }
 
 export async function routeToAsset(input: {
   stops: Position[];
   profile: Profile;
+  prefer: Prefer;
   to: string;
   simplifyMetres: number;
   siteUrl: string;
@@ -113,8 +138,10 @@ export async function routeToAsset(input: {
   const path = normalizeAssetPath(input.to);
   if (path === "/") throw new Error("to must name a file, for example /trip/route.geojson");
 
-  const result = await providerRoute(input.stops, input.profile);
-  const coordinates = simplify(result.coordinates, input.simplifyMetres);
+  const result = await providerRoute(input.stops, input.profile, input.prefer);
+  const kept = simplifyIndices(result.coordinates, input.simplifyMetres);
+  const coordinates = kept.map((index) => result.coordinates[index]);
+  const analysis: TagAnalysis = remapSegments(result.analysis, kept);
 
   // Provenance only. No name, no colour, no width: there is a whole convention for putting styling
   // into GeoJSON properties and it is the wrong place for it, because appearance belongs to the page
@@ -128,9 +155,18 @@ export async function routeToAsset(input: {
       ascent_m: result.ascent_m,
       descent_m: result.descent_m,
       profile: input.profile,
+      prefer: input.prefer,
       provider: result.provider,
       attribution: result.attribution,
       generated: new Date().toISOString().slice(0, 10),
+      analyzed_m: analysis.analyzed_m,
+      surface_m: analysis.surface_m,
+      way_type_m: analysis.way_type_m,
+      on_cycle_route_m: analysis.on_cycle_route_m,
+      warnings: analysis.warnings,
+      // The per-way table, keyed to coordinate indices, so a page can colour the line by surface
+      // and point at the stretch it should warn about. The reply carries the count, not the table.
+      segments: analysis.segments,
     },
   };
 
@@ -154,6 +190,7 @@ export async function routeToAsset(input: {
     provider: result.provider,
     attribution: result.attribution,
     profile: input.profile,
+    prefer: input.prefer,
     distance_m: result.distance_m,
     duration_s: result.duration_s,
     ascent_m: result.ascent_m,
@@ -162,6 +199,14 @@ export async function routeToAsset(input: {
     has_elevation: coordinates.length > 0 && coordinates[0].length > 2,
     bytes: bytes.byteLength,
     legs: result.legs,
+    ways: {
+      analyzed_m: analysis.analyzed_m,
+      surface_m: analysis.surface_m,
+      way_type_m: analysis.way_type_m,
+      on_cycle_route_m: analysis.on_cycle_route_m,
+      warnings: analysis.warnings,
+      segment_count: analysis.segments.length,
+    },
   };
 }
 

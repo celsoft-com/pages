@@ -13,8 +13,8 @@ import {
   revOf,
   setRefs,
 } from "../data/service";
-import { geocodeQuery, parseProfile, parseStops, routeToAsset } from "../geo/service";
-import { PROFILES } from "../geo/providers";
+import { geocodeQuery, parsePrefer, parseProfile, parseStops, routeToAsset } from "../geo/service";
+import { PREFERS, PROFILES } from "../geo/providers";
 import { deriveTitle, editPage, getPage, listPages, noPageAt, savePage, slicePage } from "../pages/service";
 import {
   privacyChanges,
@@ -1456,6 +1456,18 @@ export const TOOLS: AnyTool[] = [
       "profile is cycling, walking or driving, cycling by default. Cycling and walking are routed by BRouter, whose " +
       "lines carry elevation and whose reply reports ascent; driving by OSRM. Setting ORS_API_KEY routes everything " +
       "through openrouteservice instead. " +
+      "prefer is safety, balanced or speed, and applies to cycling only. It is a real trade rather than a label: on one " +
+      "67 km ride, safety spent 1.6 km extra to cut main-road riding from 4.5 km to 2.7 km, while speed put 49 km of the " +
+      "same ride on primary and secondary roads. Asking for safety on a walking or driving route is refused rather than " +
+      "ignored. " +
+      "The reply reports what the ways are actually made of, under ways: metres by surface and by highway type, how much " +
+      "is on a signed cycle route, and warnings for explicit prohibitions such as bicycle=no. Check those before telling " +
+      "anyone a route is rideable. analyzed_m is how much of the route carried tags at all, and it is 0 when the router " +
+      "reports none: that means nothing was examined, which is not the same as nothing being wrong, and untagged ground " +
+      "is counted under its own name rather than quietly left out. None of it is a safety score, because safe depends on " +
+      "the rider; it is what OpenStreetMap records, and OpenStreetMap can be wrong or silent. " +
+      "The stored asset also carries a per-way segments table keyed to coordinate indices, so a page can colour the line " +
+      "by surface and point at the stretch it warns about. " +
       "The full line is stored unless simplify_m is passed, because how much detail a line needs depends on the zoom it " +
       "will be drawn at, and that is the page's decision rather than storage's. " +
       "Keep the stops themselves in a collection so the owner can edit them, and put the attribution from the reply on " +
@@ -1469,6 +1481,11 @@ export const TOOLS: AnyTool[] = [
         },
         to: { type: "string", description: "Asset path to write, for example /trip/route.geojson" },
         profile: { type: "string", enum: PROFILES, description: "cycling, walking or driving. Default cycling." },
+        prefer: {
+          type: "string",
+          enum: PREFERS,
+          description: "Cycling only: safety, balanced or speed. Default balanced.",
+        },
         simplify_m: {
           type: "number",
           description: "Optional. Drop points that move the line by less than this many metres.",
@@ -1480,6 +1497,7 @@ export const TOOLS: AnyTool[] = [
       routeToAsset({
         stops: parseStops(args.stops),
         profile: parseProfile(args.profile),
+        prefer: parsePrefer(args.prefer),
         to: typeof args.to === "string" ? args.to : "",
         simplifyMetres: Number(args.simplify_m) || 0,
         siteUrl: ctx.siteUrl,

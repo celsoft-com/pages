@@ -78,11 +78,50 @@ about the zoom it will be drawn at, and that is the page's decision, not storage
 survive are returned exactly as the router sent them, elevation included: thinning a line must never
 also edit the points it keeps.
 
-## 6. Providers
+## 6. Bike routes: choosing, then checking
+
+Two different jobs, and a bike page needs both.
+
+**Choosing** is `prefer`: `safety`, `balanced` or `speed`, cycling only. A real trade, measured on one
+67 km Bamberg–Nürnberg ride:
+
+| prefer | distance | main roads | on a signed cycle route |
+| --- | --- | --- | --- |
+| `safety` | 68.7 km | 2.7 km | 93% |
+| `balanced` | 67.1 km | 4.5 km | 89% |
+| `speed` | 63.8 km | 48.4 km | 10% |
+
+Safety buys that with unpaved: it adds around 2 km of track and path. Whether that is a good trade is
+the rider's call, which is the argument for reporting the mix rather than scoring it. Asking for a
+`prefer` on a walking or driving route is refused rather than ignored, because a caller who asked for
+a safer line and silently got the ordinary one believes something untrue about their route.
+
+**Checking** is `ways` in the reply: metres by surface, metres by highway type, metres on a signed
+cycle route, and `warnings` for explicit prohibitions. Only unambiguous ones — `bicycle=no`,
+`bicycle=dismount`, `access=private`, `access=no`. "Busy road" is an opinion; `bicycle=no` is a fact
+somebody went and wrote down. That ride has 96 m of it, at both ends, which no profile avoids because
+it is the way in and out of Bamberg's old town.
+
+**`analyzed_m` is the honesty field.** It is how much of the route carried tags at all, and it is `0`
+when the router reports none, which is the [check_refs](../src/mcp/tools.ts) rule again: a summary
+that checked nothing must not read like a summary that passed. Untagged ground is counted under
+`untagged` in the breakdowns for the same reason. OSM coverage is near total in Bavaria and thin
+elsewhere, and a route that is 40% untagged must not look like a route that is 40% asphalt.
+
+**None of it is a safety score**, and nothing here will add one. Safe depends on whether it is you or
+a seven-year-old, a score cannot survive a provider change, and the moment one exists people stop
+reading the breakdown.
+
+The stored asset carries a per-way `segments` table keyed to coordinate indices, so a page can colour
+the line by surface and point at the stretch it warns about. Simplification remaps those indices,
+because thinning the line must never leave the table pointing at the wrong places while still looking
+valid.
+
+## 7. Providers
 
 | profile | keyless | with `ORS_API_KEY` |
 | --- | --- | --- |
-| cycling | BRouter, `trekking` | openrouteservice, `cycling-regular` |
+| cycling | BRouter, `safety` / `trekking` / `fastbike` by `prefer` | openrouteservice, `cycling-regular` |
 | walking | BRouter, `hiking-beta` | openrouteservice, `foot-walking` |
 | driving | OSRM | openrouteservice, `driving-car` |
 | geocoding | Nominatim | openrouteservice (Pelias) |
@@ -98,10 +137,13 @@ It returns one line and no per-stop breakdown, so `legs` comes back empty; OSRM 
 fill it. An empty `legs` means the router does not break the line down, not that the route has one
 leg.
 
-All of these are fair-use services. `ORS_API_KEY` buys an SLA, not a capability, and is the only
-configuration this feature has.
+All of these are fair-use services. `ORS_API_KEY` buys an SLA, and today it costs two things: there is
+no equivalent of BRouter's `safety` profile, so a non-balanced `prefer` is refused rather than
+approximated, and openrouteservice reports surface through a different encoding that nothing here has
+been able to verify against a real key, so `analyzed_m` comes back `0`. Both are stated by the
+response rather than papered over. Wiring `extra_info` up is the obvious next job.
 
-## 7. The page side
+## 8. The page side
 
 The site steers it and does not implement it. The MCP instructions in
 [handler.ts](../src/mcp/handler.ts) tell a client to keep stops in a collection, fetch the asset for

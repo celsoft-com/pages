@@ -319,9 +319,19 @@ describe("geo results", () => {
       "legs",
       "path",
       "points",
+      "prefer",
       "profile",
       "provider",
       "url",
+      "ways",
+    ]);
+    expect(keys(r.ways)).toEqual([
+      "analyzed_m",
+      "on_cycle_route_m",
+      "segment_count",
+      "surface_m",
+      "warnings",
+      "way_type_m",
     ]);
   });
 });

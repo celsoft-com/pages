@@ -9,11 +9,21 @@
 // no vendor score scale, no formatted label, no styling. A vendor id in a published result would
 // marry the API to that vendor for the life of the API.
 
+import { analyseBrouter, emptyAnalysis, type TagAnalysis } from "./tags";
+
 const TIMEOUT_MS = 20_000;
 const USER_AGENT = "pages-site (+https://github.com/celsoft-com/pages)";
 
 export type Profile = "driving" | "cycling" | "walking";
 export const PROFILES: Profile[] = ["driving", "cycling", "walking"];
+
+// The second axis of a bike route, and a real trade rather than a label. On the same three stops
+// BRouter's safety profile spends 1.6 km extra to cut main-road riding from 4.5 km to 2.7 km, and
+// its fastbike profile puts 49 km of the same ride on primary and secondary roads. Every bicycle
+// router has a version of this choice, so it is named in the neutral terms of the trade itself
+// rather than by any provider's profile names.
+export type Prefer = "safety" | "balanced" | "speed";
+export const PREFERS: Prefer[] = ["safety", "balanced", "speed"];
 
 // GeoJSON order, [lon, lat], optionally with elevation third (RFC 7946 §3.1.1). A router that knows
 // the terrain says so here, and a bike page wanting an elevation profile reads it straight off the
@@ -57,6 +67,9 @@ export interface RouteResult {
   descent_m: number | null;
   // Empty where the router does not break the line down by stop. Not every engine does.
   legs: RouteLeg[];
+  // What the ways are made of. analyzed_m is 0 when the router reports no tags at all, which the
+  // caller has to be able to tell apart from a route with nothing wrong on it.
+  analysis: TagAnalysis;
 }
 
 const OSM = "© OpenStreetMap contributors, ODbL";
@@ -179,20 +192,32 @@ async function osrmRoute(stops: Position[]): Promise<RouteResult> {
       distance_m: Math.round(leg.distance),
       duration_s: Math.round(leg.duration),
     })),
+    analysis: emptyAnalysis(),
   };
 }
 
 // BRouter answers with GeoJSON already, carries elevation as the third ordinate, and reports a
 // filtered ascent rather than the raw sum of every wobble in the terrain data, which is the number a
 // cyclist actually wants. It returns one line and no per-stop breakdown, so legs comes back empty.
-const BROUTER_PROFILE: Partial<Record<Profile, string>> = {
-  cycling: "trekking",
-  walking: "hiking-beta",
+const BROUTER_CYCLING: Record<Prefer, string> = {
+  safety: "safety",
+  balanced: "trekking",
+  speed: "fastbike",
 };
 
-async function brouterRoute(stops: Position[], profile: Profile): Promise<RouteResult> {
-  const name = BROUTER_PROFILE[profile];
-  if (!name) throw new Error(`BRouter has no profile for ${profile}.`);
+// Refused rather than quietly ignored. A caller who asked for a safer line and silently got the
+// ordinary one would believe something about the route that is not true.
+function brouterProfile(profile: Profile, prefer: Prefer): string {
+  if (profile === "cycling") return BROUTER_CYCLING[prefer];
+  if (prefer !== "balanced") {
+    throw new Error(`prefer "${prefer}" applies to cycling only; a ${profile} route has no such variant.`);
+  }
+  if (profile === "walking") return "hiking-beta";
+  throw new Error(`BRouter has no profile for ${profile}.`);
+}
+
+async function brouterRoute(stops: Position[], profile: Profile, prefer: Prefer): Promise<RouteResult> {
+  const name = brouterProfile(profile, prefer);
   const url =
     "https://brouter.de/brouter?" +
     new URLSearchParams({
@@ -216,6 +241,7 @@ async function brouterRoute(stops: Position[], profile: Profile): Promise<RouteR
     ascent_m: num(p["filtered ascend"]),
     descent_m: null,
     legs: [],
+    analysis: analyseBrouter(p.messages, feature.geometry.coordinates as Position[]),
   };
 }
 
@@ -247,10 +273,25 @@ async function orsRoute(stops: Position[], profile: Profile): Promise<RouteResul
       distance_m: Math.round(segment.distance),
       duration_s: Math.round(segment.duration),
     })),
+    // openrouteservice can report surface and way type through extra_info, but it is a different
+    // encoding and nothing here has been able to verify it against a real key. Reporting nothing
+    // analysed is honest; inventing a clean breakdown would not be.
+    analysis: emptyAnalysis(),
   };
 }
 
-export async function route(stops: Position[], profile: Profile): Promise<RouteResult> {
-  if (keyed()) return orsRoute(stops, profile);
-  return profile === "driving" ? osrmRoute(stops) : brouterRoute(stops, profile);
+export async function route(stops: Position[], profile: Profile, prefer: Prefer): Promise<RouteResult> {
+  if (keyed()) {
+    if (prefer !== "balanced") {
+      throw new Error(
+        `prefer "${prefer}" is not available through openrouteservice; unset ORS_API_KEY to use it, or pass balanced.`,
+      );
+    }
+    return orsRoute(stops, profile);
+  }
+  if (profile === "driving") {
+    if (prefer !== "balanced") throw new Error(`prefer "${prefer}" applies to cycling only.`);
+    return osrmRoute(stops);
+  }
+  return brouterRoute(stops, profile, prefer);
 }
