@@ -76,6 +76,46 @@ first. Files are capped, and the discovery entry for `upload_asset` states the c
 Read the error status, not just the body: 409 means a revision moved and the write was refused,
 which a retry loop must handle by re-reading rather than resending.
 
+## Downloading an asset
+
+**There is no tool that returns an asset's bytes, and one would be a mistake.** Every reply from
+this API is JSON that lands in the calling agent's context, so fetching a three megabyte image
+through a tool would spend the whole file there, plus a third again for the encoding, to produce
+something the agent cannot look at anyway. The way to read an asset is to fetch its own URL and
+write the response straight to a file. That is the only way, and it is not a workaround:
+
+```python
+import urllib.request
+
+req = urllib.request.Request(f"{SITE}/assets/trip/map.png",
+                             headers={"Authorization": f"Bearer {TOKEN}"})
+with urllib.request.urlopen(req) as r, open("map.png", "wb") as out:
+    out.write(r.read())
+```
+
+Or, from a shell, `curl -o map.png` with the same header. The bytes go from the site to the disk
+without passing through the conversation, which is the whole point.
+
+**Get the URL from the site, never build one.** `list_assets` returns every asset with its URL,
+and `upload_asset` returns the URL of what it just stored. A path may be stored under a content
+hash instead, in which case there is no path to assemble a URL from.
+
+**The token matters only for a private path.** A public asset needs no credential at all. One
+under a path the owner has closed answers 404 to everybody without one, byte for byte the same
+404 as a file that was never uploaded, so an agent that omits the header cannot tell the two
+apart and will report the asset missing.
+
+**Uploading is the mirror image.** Build the base64 in a program and write the JSON to a file,
+then send that file. Never read a binary file into the conversation to encode it by hand, and
+never paste base64 into an argument: the file is the point at which the bytes stop being
+something anyone has to look at.
+
+**A file too big is a dead end, not a different door.** The cap the discovery entry states comes
+from the host's limit on a single request, so there is no bulk endpoint hiding somewhere, no way
+to send a file in pieces and nothing to be gained by trying another client. A photograph over the
+limit has to be resized or recompressed before it goes up. Say that to the owner rather than
+retrying, and never quietly upload a cropped or degraded version of what they gave you.
+
 ## Making a call from a shell
 
 The bundled scripts exist so a token never reaches argv and a page body never reaches shell

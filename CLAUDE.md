@@ -169,6 +169,22 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   never be trusted to clear something that varies by cookie. [private.test.ts](src/private.test.ts) pins the
   granted response, not just the blocked one, because a page cached at the edge leaks to the next visitor and the
   blocked response looks correct either way.
+- **Bytes leave by HTTP, never through a tool.** A tool result is text in the calling agent's
+  context, so an asset's bytes can never come back that way: a three megabyte image fetched through
+  a tool is spent there, a third larger for the encoding, to produce something the agent cannot look
+  at. `/assets/<path>` is the only way to read one, which is why `accessToScope`
+  ([gate.ts](src/private/gate.ts)) opens a private scope for a bearer credential as well as a share
+  cookie. It is tried only after the cookie fails, so an ordinary visitor pays nothing for it, and it
+  goes through `admit` so guessing a token there is rate limited like every other door. Nothing about
+  the response to a request carrying no credential changes, which is what keeps a private path
+  indistinguishable from a missing one. The registry stays metadata only: `list_assets` hands out the
+  URLs, and `upload_asset` is the single capped exception, base64 in because JSON-RPC carries no
+  bytes and a client with no shell has no other way to send a file. Never add a tool that returns
+  bytes. The 4 MB cap is not a policy to relax: Netlify caps a function's whole request at 6 MB and
+  base64 costs a third, so a raw binary endpoint would buy about 1.4x and cost the second surface
+  this design exists to avoid. Chunked upload would lift it properly and brings part storage,
+  assembly and cleanup with it; that trade was looked at and declined. What the tool text and the
+  skill owe a client is that the ceiling is the host's, so nobody goes hunting for a bigger door.
 - **The page editor's highlighting is a CDN script, and it is allowed to fail.**
   [editor.ts](src/admin/editor.ts) loads prism-code-editor from jsDelivr at an exact version on the
   edit screen only. It overlays a real `<textarea>`, so the form posts exactly as it did; replacing

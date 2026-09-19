@@ -4,6 +4,7 @@ import { createSessionCookie } from "./auth/session";
 import { completeSetup, getOwner } from "./auth/setup";
 import { saveCollection } from "./data/service";
 import { TOOLS, type ToolContext } from "./mcp/tools";
+import { mintToken, revokeToken } from "./auth/tokens";
 import { savePage } from "./pages/service";
 import { putAsset } from "./assets/service";
 import { resetBlobs } from "./test/blobs";
@@ -168,6 +169,57 @@ describe("a share link opens it", () => {
     const token = link.split("#")[1];
     const stored = JSON.stringify(await json("list_shares"));
     expect(stored).not.toContain(token);
+  });
+});
+
+// An asset is bytes, and bytes cannot travel through a tool result, so reading one back means an
+// HTTP GET that writes to a file. On a private path that request has to say who it is, and the
+// token a client already holds for /api/v1 is what it says it with.
+describe("a token opens it", () => {
+  beforeEach(() => call("set_privacy", { path: "/trip", private: true }));
+
+  function withToken(path: string, token: string): Promise<Response> {
+    return handle(
+      new Request(`https://example.com${path}`, { headers: { authorization: `Bearer ${token}` } }),
+    );
+  }
+
+  it("serves the asset, and the page and collection under the same scope", async () => {
+    const { secret } = await mintToken("cron", "write");
+
+    expect(await (await withToken("/assets/trip/map.png", secret)).text()).toBe("MAPBYTES");
+    expect(await (await withToken("/trip", secret)).text()).toBe("TRIP PAGE");
+    expect(await (await withToken("/data/trip/items.json", secret)).json()).toEqual([{ id: "a", name: "one" }]);
+  });
+
+  it("opens it for a read-only token, because reading is all this is", async () => {
+    const { secret } = await mintToken("reader", "read");
+    expect(await (await withToken("/assets/trip/map.png", secret)).text()).toBe("MAPBYTES");
+  });
+
+  it("hands back no grant cookie, so a credential never turns into a share", async () => {
+    const { secret } = await mintToken("cron", "write");
+    expect((await withToken("/trip", secret)).headers.get("set-cookie")).toBeNull();
+  });
+
+  it("is stored nowhere, since what it returns varies by credential", async () => {
+    const { secret } = await mintToken("cron", "write");
+    const response = await withToken("/assets/trip/map.png", secret);
+
+    expect(response.headers.get("netlify-cdn-cache-control")).toBeNull();
+    expect(response.headers.get("netlify-cache-tag")).toBeNull();
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("answers a revoked token exactly as it answers no token at all", async () => {
+    const { secret, token } = await mintToken("cron", "write");
+    await revokeToken(token.id);
+
+    const refused = await withToken("/assets/trip/map.png", secret);
+    const none = await get("/assets/trip/map.png");
+
+    expect(refused.status).toBe(none.status);
+    expect(await refused.text()).toBe(await none.text());
   });
 });
 
