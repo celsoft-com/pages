@@ -291,6 +291,15 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   write meant neither figure described what a reader actually saw. `MAX_AGE` is exported so a test can hold the
   stated window and the header together; state the behaviour first (a write clears the CDN as it finishes) and the
   backstop second, and never quote a duration that nothing pins.
+- **The API is HTTP, and the skill's scripts are a convenience.** `POST /api/v1/<tool>` with a JSON object and a
+  bearer token is the whole interface, so any language calls it with nothing installed. The bundled scripts exist
+  for two shell-specific problems, a token reaching argv and a page body reaching shell quoting, and documenting
+  only them taught clients that the API *is* a shell tool: the first reader concluded that uploading a file meant
+  base64 through a here-doc and balked, which is a fair reading of a page that showed nothing else.
+  [SKILL.md](skills/pages-api/SKILL.md) leads with the HTTP shape and a dependency-free client, and says to prefer
+  it for anything binary or bulky. `upload_asset` carries bytes as base64 because one registry serves this API and
+  a JSON-RPC connector both, and JSON-RPC cannot carry bytes; a raw binary endpoint would be the second surface the
+  whole design exists to avoid, so the answer is to show the one line that encodes a file, not to add an endpoint.
 - **The served contract is public API.** Collection `/a/b` is served at `/data/a/b.json` as a bare array, each item
   carrying its `id`, in collection order, with nested values untouched. Pages are written against that with no MCP
   access, so it cannot drift: the tool text, the MCP instructions and the tests all state it. Changing any of it means

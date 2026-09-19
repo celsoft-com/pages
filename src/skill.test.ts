@@ -11,6 +11,8 @@ const SKILL = readFileSync(new URL("../skills/pages-api/SKILL.md", import.meta.u
 const NOT_TOOLS = new Set([
   "if_rev",
   "input_schema",
+  "content_type",
+  "content_base64",
   "pages_site_url",
   "pages_api_token",
   "xdg_config_home",

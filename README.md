@@ -63,6 +63,19 @@ curl -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
 `GET /api/v1` lists every tool the token may call, with its JSON Schema. That list is generated
 from the site, so it is never out of date.
 
+It is plain HTTP and JSON, so any language talks to it with nothing installed:
+
+```python
+import json, urllib.request
+
+req = urllib.request.Request(
+    f"{SITE}/api/v1/put_item",
+    data=json.dumps({"path": "/beers", "fields": {"name": "Pilsner"}}).encode(),
+    headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
+)
+print(json.load(urllib.request.urlopen(req)))
+```
+
 ## License
 
 MIT

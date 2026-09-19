@@ -43,9 +43,43 @@ That text is deliberately not repeated here. It is one string on the site, serve
 to the MCP connector alike, so a site running a newer deploy teaches you its newer conventions
 with nothing to update on your side. A copy in this file would be a second, older answer.
 
-## Making a call
+## The API is HTTP, and the scripts are a convenience
 
-Arguments go in as a JSON file, the result comes back as JSON on stdout:
+Every call is one POST of a JSON object with a bearer token, and every reply is JSON. Any language
+does that with no dependencies, and reaching for a real HTTP client is usually the better move:
+
+```python
+import base64, json, urllib.request
+
+def call(tool, **args):
+    req = urllib.request.Request(
+        f"{SITE}/api/v1/{tool}",
+        data=json.dumps(args).encode(),
+        headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.load(r)
+
+call("publish_page", path="/notes", content="# Notes")
+call("upload_asset", path="/notes/shot.png", filename="shot.png",
+     content_type="image/png",
+     content_base64=base64.b64encode(open("shot.png", "rb").read()).decode())
+```
+
+**Prefer this for anything binary or bulky.** `upload_asset` takes the file base64 encoded in the
+field `content_base64`, which is one line in any language and genuinely awkward in a shell, where
+it means encoding to a temporary file and splicing it into JSON without a newline getting in. The
+field is base64 because one registry serves both this API and an MCP connector, and JSON-RPC has
+no way to carry bytes; a raw binary endpoint would be a second surface to keep in step with the
+first. Files are capped, and the discovery entry for `upload_asset` states the ceiling.
+
+Read the error status, not just the body: 409 means a revision moved and the write was refused,
+which a retry loop must handle by re-reading rather than resending.
+
+## Making a call from a shell
+
+The bundled scripts exist so a token never reaches argv and a page body never reaches shell
+quoting. Arguments go in as a JSON file, the result comes back as JSON on stdout:
 
 ```
 scripts/pages-call get_page /tmp/args.json
