@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { MAX_AGE } from "../cache";
 import { resetBlobs } from "../test/blobs";
 import { handleMcp, INSTRUCTIONS } from "./handler";
 import { TOOLS } from "./tools";
@@ -45,9 +46,26 @@ describe("instructions", () => {
   // The old wording said a collection is public full stop. A collection under a private path is
   // not, so the warning has to say which is which rather than one blanket claim.
   it("warns that a collection is public and cached, unless a private path covers it", () => {
-    expect(INSTRUCTIONS).toMatch(/unauthenticated and cached for 60 seconds/);
+    expect(INSTRUCTIONS).toMatch(/unauthenticated, and cached at the CDN until a write clears it/);
     expect(INSTRUCTIONS).toMatch(/public to anyone who guesses its path, so put nothing private in one/);
     expect(INSTRUCTIONS).toMatch(/left out of \/data\/_collections\.json/);
+  });
+
+  // An agent that believes content is built will reach for git to publish, which is both wrong and
+  // destructive: it would commit somebody's blog post into the site's source code.
+  it("says plainly that content is stored, not built, and needs no deploy", () => {
+    expect(INSTRUCTIONS).toMatch(/Nothing here is built, generated or compiled/);
+    expect(INSTRUCTIONS).toMatch(/never runs a build, never makes a deploy, never needs a commit/);
+    expect(INSTRUCTIONS).toMatch(/you have the wrong tool/);
+  });
+
+  // The header says five minutes and the purge fires on every write. Saying a minute taught a wait
+  // that does not happen, and understated the one case that does.
+  it("does not promise a propagation delay the cache does not have", () => {
+    expect(INSTRUCTIONS).not.toMatch(/60 seconds/);
+    expect(INSTRUCTIONS).not.toMatch(/up to a minute/);
+    expect(INSTRUCTIONS).toMatch(/expires on its own within five minutes/);
+    expect(MAX_AGE / 60, "the instructions say five minutes; the header must agree").toBe(5);
   });
 
   it("shows a page that actually renders one", () => {

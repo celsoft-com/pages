@@ -895,9 +895,9 @@ function tokenPanel(input: {
 <div class="panel">
 <div class="small muted">For a service that runs on its own: a cron job, a script, anything with no browser to sign in with. It sends the token and calls the same tools Claude does, over plain HTTP at <span class="mono">${escapeHtml(origin)}/api/v1</span>.</div>
 <div class="small muted" style="margin-top:.4rem">To teach a coding agent how to use it, run these two once. The second asks for the token and does not echo it, so it stays out of your shell history.</div>
-${commandLine("npx skills add celsoft-com/pages -g")}
+${commandLine("npx skills add celsoft-com/pages --skill '*' -g -y")}
 ${commandLine(`~/.claude/skills/pages-api/scripts/pages-login ${origin}`)}
-<div class="small muted">That path is where Claude Code keeps skills. Another agent puts them somewhere else, and knows where.</div>
+<div class="small muted">That path is where Claude Code keeps skills. Another agent puts them somewhere else, and knows where. If the first command asks which agent to install to, add <span class="mono">-a '*'</span>.</div>
 ${
     minted
       ? `<div class="notice ok" style="margin-top:.8rem"><strong>${escapeHtml(minted.label)}</strong>

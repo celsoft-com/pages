@@ -6,12 +6,19 @@ verified: 2026-09-18
 
 # Working with a pages site
 
-A pages site is one person's website, deployed to their own Netlify account. It serves pages,
-JSON data collections and uploaded assets, and it takes instructions two ways: an MCP connector
-for a chat client, and this REST API for anything else.
+A pages site is one person's website, running on their own Netlify account. It serves pages, JSON
+data collections and uploaded assets, and it takes instructions two ways: an MCP connector for a
+chat client, and this REST API for anything else.
 
 **Never assume the address.** Every install is a different site at a different URL. The site and
 token come from configuration, and the scripts here resolve them.
+
+**A call is the publish.** The site keeps its content in storage and serves it live, so a call
+here takes effect on the next request. Do not commit anything, do not push, do not open a pull
+request, do not run a deploy, and do not go looking for a build to wait on. None of those are how
+content reaches this site, and putting somebody's page into a git repository because it looked
+like a static site generator is a mess to undo. The site's code is deployed from a repository;
+what you write through this API is not.
 
 ## Getting the tool list
 

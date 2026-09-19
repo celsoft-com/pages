@@ -74,9 +74,9 @@ describe("minting a token", () => {
 describe("the setup commands", () => {
   it("bakes this site's own address into the command, so it is never typed", async () => {
     const body = await screen();
-    expect(body).toContain("npx skills add celsoft-com/pages -g");
+    expect(body).toContain("npx skills add celsoft-com/pages --skill '*' -g -y");
     expect(body).toContain("pages-login https://example.com");
-    expect(body).toContain('data-copy="npx skills add celsoft-com/pages -g"');
+    expect(body).toContain(`data-copy="npx skills add celsoft-com/pages --skill '*' -g -y"`);
   });
 
   // The whole point of the second command asking for the token is that the token is not in it.

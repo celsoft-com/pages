@@ -6,6 +6,10 @@ const PROTOCOL_VERSION = "2025-06-18";
 
 export const INSTRUCTIONS = [
   "Publish and edit pages on this site. Markdown is rendered into the site theme; full HTML documents are served exactly as written.",
+  "",
+  "How this site works, because it is not what a static site does. One function serves every page, collection and asset straight out of storage. Nothing here is built, generated or compiled, and no file is written into a repository. A write lands in storage and the next request serves it, so a change is live at once and there is nothing to wait for and nothing to trigger.",
+  "So: publishing never runs a build, never makes a deploy, never needs a commit, a push or a pull request, and never touches the site's source code. If you are reaching for git, a CI job or a deploy command to get content onto this site, you have the wrong tool: use these tools and it is already done. The site's own code deploys that way, but its content never does.",
+  "The one delay is caching. A public response is cleared from the CDN as the write finishes, so a reader sees the change straight away. The cache also expires on its own within five minutes, which only matters if a purge is ever missed.",
   "To change part of a page, read only that part with get_page, passing find or offset and limit, and change it with edit_page, which replaces an exact snippet and refuses one that matches more than once. Rewriting a whole page with update_page to change one line sends the document twice, once in and once back out, and that is what edit_page is for.",
   "",
   "Repeating content belongs in a data collection rather than hard-coded into a page: products, posts, events, team members, menu items, FAQs, anything the owner will add to or edit later.",
@@ -34,7 +38,7 @@ export const INSTRUCTIONS = [
   "- Nested objects and arrays of objects are stored and served unchanged. Merging is shallow though: a nested value you pass to put_item replaces the stored one outright, so send the whole nested value rather than a piece of it.",
   "- GET /data/_collections.json for the index of every collection: an array of {path, url, count, rev, updatedAt} sorted by path. That is how a page discovers what exists over plain HTTP, with no access to these tools. /_collections is reserved and cannot be used as a collection path.",
   "- Every item also has a rev, a number kept outside the stored JSON so it never appears in what the url serves. get_item, list_items and search_items give you the rev; pass it back as if_rev when you write. Updating an existing item requires it, so a write from a stale read is refused rather than overwriting a newer one. Re-read and reapply your change when that happens.",
-  "- It is unauthenticated and cached for 60 seconds unless it sits under a private path, so expect an edit to take up to a minute to appear on a page. A collection under a private path is served only to a browser holding a share link, and is left out of /data/_collections.json entirely. A collection anywhere else is public to anyone who guesses its path, so put nothing private in one.",
+  "- It is unauthenticated, and cached at the CDN until a write clears it, which a write does as it finishes. A collection under a private path is served only to a browser holding a share link, and is left out of /data/_collections.json entirely. A collection anywhere else is public to anyone who guesses its path, so put nothing private in one.",
   "",
   "So a page that renders /products looks like this:",
   "  <ul id=\"products\"></ul>",

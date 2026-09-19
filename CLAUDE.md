@@ -268,7 +268,7 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   minute would otherwise keep the whole site's cache cold; only a proven read opts out, so forgetting to teach that
   about something is slow rather than wrong.
 - **The skill points at the site, it does not copy it.** [skills/pages-api](skills/pages-api) is an Agent Skills
-  collection shipped from this repo, installed with `npx skills add celsoft-com/pages -g` and named in the README
+  collection shipped from this repo, installed with `npx skills add celsoft-com/pages --skill '*' -g -y` and named in the README
   and on the Connections screen. It exists because every install is a different site at a different URL, so an agent
   needs to be told how to find the address and the token, not what the tools are. It carries no tool list, no schema
   and no copy of the instructions: `INSTRUCTIONS` is one string in [handler.ts](src/mcp/handler.ts) that MCP and the
@@ -279,6 +279,18 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   Its scripts keep the token out of argv by passing it through a curl config file, take arguments as a file rather
   than a command line so page content never reaches the process list, and never block on stdin: an agent's stdin is
   an open pipe nobody closes, so `pages-call` reads it only when passed `-` and `pages-login` reads it with a timeout.
+- **Content is stored, never built, and the instructions have to say so.** One function serves every page,
+  collection and asset out of blobs, so a write is live on the next request: no build runs, no deploy happens, and
+  nothing about publishing touches git or this repo. That is not what a Netlify repo looks like from outside, and a
+  client that assumes a static site generator reaches for a commit and a push to publish, which would put somebody's
+  page into the site's source code. So `INSTRUCTIONS` states it in the site's own voice, names the tools a client
+  must not reach for, and [handler.test.ts](src/mcp/handler.test.ts) pins those sentences. The README says the same
+  thing before the deploy button, because the button is where the wrong model comes from.
+- **A number in prose drifts away from the header that means it.** The instructions told clients a collection was
+  cached for sixty seconds while `MAX_AGE` in [cache.ts](src/cache.ts) said five minutes, and the purge on every
+  write meant neither figure described what a reader actually saw. `MAX_AGE` is exported so a test can hold the
+  stated window and the header together; state the behaviour first (a write clears the CDN as it finishes) and the
+  backstop second, and never quote a duration that nothing pins.
 - **The served contract is public API.** Collection `/a/b` is served at `/data/a/b.json` as a bare array, each item
   carrying its `id`, in collection order, with nested values untouched. Pages are written against that with no MCP
   access, so it cannot drift: the tool text, the MCP instructions and the tests all state it. Changing any of it means

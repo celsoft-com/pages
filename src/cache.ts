@@ -4,7 +4,11 @@ import { purgeCache } from "@netlify/functions";
 // a handler sends and the thing the purge clears cannot drift apart.
 const TAG = "content";
 
-const MAX_AGE = 300;
+// The backstop, in seconds, for a purge that never lands. Exported because the instructions state
+// it in words to clients, and a number in prose drifts away from the header silently: this was
+// documented as sixty seconds while the header said five minutes, which taught a wait that does
+// not happen and understated the one that can.
+export const MAX_AGE = 300;
 
 // A path an owner can overwrite: cached at the edge, never in a browser, cleared on any write.
 export function contentHeaders(): Record<string, string> {

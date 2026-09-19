@@ -6,6 +6,15 @@ Deploy it to your own Netlify account, connect Claude, and ask it to publish pag
 
 Lists of things (products, posts, events) can live in a data collection instead of being typed into a page. Claude edits one item at a time, the page fetches the whole collection as JSON, and nothing has to be rewritten to change a price.
 
+## Not a static site generator
+
+This deploys once and then stops being a build. One function serves every page, collection and
+asset out of storage, so publishing writes a record and the next visitor sees it. There is no
+rebuild, no deploy, and no build minutes burned when you change a word.
+
+Your content never enters this repository. A deploy happens when the site's *code* changes, which
+is when you take an upstream update. Writing a page is not a code change and does not need one.
+
 ## Deploy
 
 [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/celsoft-com/pages)
@@ -32,8 +41,11 @@ create an API token under **API tokens**, and pick whether it may write or only 
 There is a skill that teaches any agent how to use it. Install it once:
 
 ```
-npx skills add celsoft-com/pages -g
+npx skills add celsoft-com/pages --skill '*' -g -y
 ```
+
+The flags matter: without them it opens an interactive picker. Add `-a '*'` if it asks which agent
+to install to.
 
 Then tell your agent your site's address and give it the token, and it will work out the rest
 from the site itself. It reaches Claude Code, Cursor, Codex and anything else that reads the

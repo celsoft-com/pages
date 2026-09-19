@@ -122,7 +122,8 @@ const SERVING =
   "echoes back as url. A GET returns a bare JSON array of the items, with no wrapper object, and each served item " +
   "includes its id along with the fields you wrote. Array order is the collection order set by reorder_items and by " +
   "put_item's index, and is preserved exactly, so a page needs no sort field. Nested objects and arrays of objects are " +
-  "stored and served unchanged. It is unauthenticated and cached for 60 seconds. Under a private path it is served only to a browser holding a share link and is left out of the index; anywhere else it is public to anyone who guesses the path. " +
+  "stored and served unchanged. Writing an item is live at once: nothing is rebuilt and no deploy is involved, and the CDN copy is cleared by the write itself. " +
+  "The served JSON is unauthenticated. Under a private path it is served only to a browser holding a share link and is left out of the index; anywhere else it is public to anyone who guesses the path. " +
   "GET /data/_collections.json for the index of every collection: an array of {path, url, count, rev, updatedAt} " +
   "sorted by path, so a page can discover collections over plain HTTP with no access to these tools.";
 
