@@ -85,14 +85,17 @@ Needed once per machine, and again whenever a token is revoked.
 1. **Ask the owner for their site's address.** It is whatever they open in a browser.
 2. **Tell them where the token is.** In the site, open **Connections**, find **API tokens**, name
    a token, choose read-only or read and write, and press Create. It is shown once.
-3. **Save it without printing it.** Have them pipe it in, so it never lands in the transcript:
+3. **Have them run it themselves.** The Connections screen shows this command with their address
+   already in it, so there is nothing for either of you to type:
 
    ```
-   pbpaste | scripts/pages-login https://their-site.example
+   scripts/pages-login https://their-site.example
    ```
 
-   Anything that writes the token as a command argument puts it in shell history and in the
-   process list. Do not do that, and never echo a token back, not even partially.
+   At a terminal it asks for the token and does not echo it. Piping one in works too, for CI.
+   Either way the token never becomes a command argument, because that would put it in shell
+   history and in the process list. Never put a token in a command, and never echo one back, not
+   even partially.
 
 `PAGES_SITE_URL` and `PAGES_API_TOKEN` in the environment override the saved config, which is
 what CI and a staging site should use.

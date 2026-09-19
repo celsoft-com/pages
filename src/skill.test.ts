@@ -54,8 +54,17 @@ describe("the shipped skill", () => {
     expect(SKILL).not.toMatch(/"type"\s*:\s*"object"/);
   });
 
-  it("keeps the token off the command line wherever it tells someone to save it", () => {
-    expect(SKILL).toMatch(/pbpaste \| scripts\/pages-login/);
-    expect(SKILL).not.toMatch(/pages-login\s+\S+\s+pat_/);
+  // The invariant, not one spelling of the command: a token as an argument is in shell history
+  // and in the process list, and an example showing it there is the one people copy.
+  it("never shows a token as a command argument, and says why", () => {
+    expect(SKILL).not.toMatch(/pat_[A-Za-z0-9_-]{4,}/);
+
+    // Per line: \s matches a newline, so a whole-file regex reads the next line as an argument.
+    const overlong = SKILL.split("\n")
+      .filter((line) => line.includes("pages-login"))
+      .filter((line) => line.trim().replace(/^[`|\s]+/, "").split(/\s+/).length > 2);
+    expect(overlong, "a token belongs on stdin, never after the site").toEqual([]);
+
+    expect(SKILL).toMatch(/never put a token in a command/i);
   });
 });

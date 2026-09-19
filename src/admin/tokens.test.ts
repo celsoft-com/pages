@@ -71,6 +71,25 @@ describe("minting a token", () => {
   });
 });
 
+describe("the setup commands", () => {
+  it("bakes this site's own address into the command, so it is never typed", async () => {
+    const body = await screen();
+    expect(body).toContain("npx skills add celsoft-com/pages -g");
+    expect(body).toContain("pages-login https://example.com");
+    expect(body).toContain('data-copy="npx skills add celsoft-com/pages -g"');
+  });
+
+  // The whole point of the second command asking for the token is that the token is not in it.
+  it("never puts a token in a command", async () => {
+    const minted = await (await post("/admin/connections/tokens", { label: "feed", access: "write" })).text();
+    const secret = minted.match(/pat_[A-Za-z0-9_-]+/)![0];
+
+    for (const match of minted.match(/data-copy="[^"]*"/g) ?? [])
+      if (match.includes("pages-login") || match.includes("npx skills"))
+        expect(match).not.toContain(secret);
+  });
+});
+
 describe("the token list", () => {
   it("says what each one can do and offers revoke in the row", async () => {
     await post("/admin/connections/tokens", { label: "price feed", access: "read" });

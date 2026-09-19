@@ -20,21 +20,30 @@ esac
 
 site=$(printf '%s' "$site" | sed 's#/*$##')
 
+# A person at a terminal is asked, with the token not echoed, so it reaches neither the screen
+# nor the shell history. A pipe is read instead, which is what an agent and CI use.
 if [ -t 0 ]; then
-  echo "pages: pipe the token in, for example: pbpaste | pages-login $site" >&2
+  printf 'Paste the token for %s (it will not be shown): ' "$site" >&2
+  read -rs token
+  printf '\n' >&2
+else
+  # Timed, because an agent's stdin is often an open pipe nobody is going to close, and a
+  # setup step that hangs forever is worse than one that tells you how to feed it.
+  if ! read -r -t 10 token; then
+    echo "pages: nothing arrived on stdin. Pipe the token in, for example: pbpaste | pages-login $site" >&2
+    exit 64
+  fi
+fi
+
+if [ -z "$token" ]; then
+  echo "pages: no token given." >&2
   exit 64
 fi
 
-# Timed, because an agent's stdin is often an open pipe nobody is going to close, and a
-# setup step that hangs forever is worse than one that tells you how to feed it.
-if ! read -r -t 10 token; then
-  echo "pages: nothing arrived on stdin. Pipe the token in, for example: pbpaste | pages-login $site" >&2
-  exit 64
-fi
-if [ -z "$token" ]; then
-  echo "pages: no token on stdin." >&2
-  exit 64
-fi
+case "$token" in
+  pat_*) ;;
+  *) echo "pages: that does not look like a token. It starts with pat_ and is shown once when you create it." >&2; exit 64 ;;
+esac
 
 dir="${XDG_CONFIG_HOME:-$HOME/.config}/pages"
 file="$dir/config"

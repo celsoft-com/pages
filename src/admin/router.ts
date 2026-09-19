@@ -850,6 +850,15 @@ ${tokenPanel({ tokens, here: "/admin/connections", armed, origin, minted })}`,
   });
 }
 
+// A command the owner runs, with this site's own address already in it. Copying beats reading a
+// URL off the screen and typing it, which is where a trailing slash or a missing s in https comes
+// from, and both fail later and less clearly than a typo usually does.
+function commandLine(command: string): string {
+  return `<div class="row" style="margin-top:.5rem;align-items:center;gap:.6rem">
+<code class="mono" style="flex:1;word-break:break-all">${escapeHtml(command)}</code>
+<button class="secondary" type="button" data-copy="${escapeHtml(command)}">Copy</button></div>`;
+}
+
 // Tokens sit beside connected clients because both answer one question: what has access right now.
 // A service has no browser to sign in with, so it cannot do the flow above; this is the other door.
 function tokenPanel(input: {
@@ -885,7 +894,10 @@ function tokenPanel(input: {
   return `<h2 id="tokens">API tokens</h2>
 <div class="panel">
 <div class="small muted">For a service that runs on its own: a cron job, a script, anything with no browser to sign in with. It sends the token and calls the same tools Claude does, over plain HTTP at <span class="mono">${escapeHtml(origin)}/api/v1</span>.</div>
-<div class="small muted" style="margin-top:.4rem">To teach a coding agent how to use it, install the skill once with <span class="mono">npx skills add celsoft-com/pages -g</span>, then give it this address and a token.</div>
+<div class="small muted" style="margin-top:.4rem">To teach a coding agent how to use it, run these two once. The second asks for the token and does not echo it, so it stays out of your shell history.</div>
+${commandLine("npx skills add celsoft-com/pages -g")}
+${commandLine(`~/.claude/skills/pages-api/scripts/pages-login ${origin}`)}
+<div class="small muted">That path is where Claude Code keeps skills. Another agent puts them somewhere else, and knows where.</div>
 ${
     minted
       ? `<div class="notice ok" style="margin-top:.8rem"><strong>${escapeHtml(minted.label)}</strong>
