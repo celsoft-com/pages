@@ -13,6 +13,8 @@ import {
   revOf,
   setRefs,
 } from "../data/service";
+import { geocodeQuery, parseProfile, parseStops, routeToAsset } from "../geo/service";
+import { PROFILES } from "../geo/providers";
 import { deriveTitle, editPage, getPage, listPages, noPageAt, savePage, slicePage } from "../pages/service";
 import {
   privacyChanges,
@@ -1416,5 +1418,72 @@ export const TOOLS: AnyTool[] = [
       return { title: settings.title, description: settings.description };
     },
     render: () => "Site info updated.",
+  }),
+  tool({
+    name: "geocode",
+    title: "Find coordinates for a place",
+    access: "read",
+    description:
+      "Turn a place name or address into candidate coordinates. It returns several candidates with the place around " +
+      "each one, never a single answer, because a geocoder is a guess and only the caller can tell which candidate is " +
+      "the place meant. Read them, choose one, and store its lat and lon on a collection item. " +
+      "Ask for the specific thing rather than the town when precision matters: Fürth is a whole city and Bahnhof Fürth " +
+      "is a point, and they are 2.5 km apart. An empty result means nothing matched, which is not a bad match but no " +
+      "match at all, and over-qualifying a query is the usual cause. " +
+      "Store the pair as separate numeric lat and lon fields, never as a two-element array: GeoJSON writes [lon, lat] " +
+      "and most map libraries take [lat, lon], so a transposed pair validates, renders and is silently wrong. " +
+      "Show the attribution in the reply on any page built from these coordinates.",
+    inputSchema: object(
+      {
+        query: { type: "string", description: "A place name or address, for example 'Bahnhof Fürth, Bavaria'" },
+        limit: { type: "number", description: "How many candidates to return, 1 to 10. Default 5." },
+      },
+      ["query"],
+    ),
+    handler: async (args) => geocodeQuery(args.query, args.limit),
+    render: asJson,
+  }),
+  tool({
+    name: "route",
+    title: "Route between stops and store the line",
+    access: "write",
+    description:
+      "Route through stops in the order given and write the geometry to an asset as a GeoJSON LineString, returning " +
+      "only a summary. The line itself is never returned: a road route runs to thousands of points, and sending it out " +
+      "so that it can be sent back spends the whole thing twice. " +
+      "Routing happens once, here, and the page fetches the stored asset. Never route when a visitor opens a page: the " +
+      "answer cannot change, and it would put a third party in front of every reader. " +
+      "profile is cycling, walking or driving, cycling by default. Cycling and walking are routed by BRouter, whose " +
+      "lines carry elevation and whose reply reports ascent; driving by OSRM. Setting ORS_API_KEY routes everything " +
+      "through openrouteservice instead. " +
+      "The full line is stored unless simplify_m is passed, because how much detail a line needs depends on the zoom it " +
+      "will be drawn at, and that is the page's decision rather than storage's. " +
+      "Keep the stops themselves in a collection so the owner can edit them, and put the attribution from the reply on " +
+      "any page that draws the line.",
+    inputSchema: object(
+      {
+        stops: {
+          type: "array",
+          description: "Ordered stops, two to 50, each an object with numeric lat and lon.",
+          items: object({ lat: { type: "number" }, lon: { type: "number" } }, ["lat", "lon"]),
+        },
+        to: { type: "string", description: "Asset path to write, for example /trip/route.geojson" },
+        profile: { type: "string", enum: PROFILES, description: "cycling, walking or driving. Default cycling." },
+        simplify_m: {
+          type: "number",
+          description: "Optional. Drop points that move the line by less than this many metres.",
+        },
+      },
+      ["stops", "to"],
+    ),
+    handler: async (args, ctx) =>
+      routeToAsset({
+        stops: parseStops(args.stops),
+        profile: parseProfile(args.profile),
+        to: typeof args.to === "string" ? args.to : "",
+        simplifyMetres: Number(args.simplify_m) || 0,
+        siteUrl: ctx.siteUrl,
+      }),
+    render: asJson,
   }),
 ];

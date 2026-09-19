@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { putAsset } from "../assets/service";
 import { saveCollection, setRefs } from "../data/service";
 import { savePage } from "../pages/service";
 import { setPrivate } from "../private/service";
 import { resetBlobs } from "../test/blobs";
+import { clearGeoFetch, stubGeoFetch } from "../test/http";
 import { TOOLS, type ToolContext } from "./tools";
 
 // What a handler returns is the REST body, byte for byte, so its keys are published API: a service
@@ -289,6 +290,42 @@ describe("transfer results", () => {
   });
 });
 
+describe("geo results", () => {
+  beforeEach(() => stubGeoFetch());
+  afterEach(clearGeoFetch);
+
+  it("geocode", async () => {
+    const r = await raw("geocode", { query: "Bamberg" });
+    expect(keys(r)).toEqual(["attribution", "candidates", "count", "provider", "query"]);
+    expect(keys(r.candidates[0])).toEqual(["confidence", "context", "kind", "lat", "lon", "name"]);
+  });
+
+  it("route", async () => {
+    const r = await raw("route", {
+      stops: [
+        { lat: 50.2612, lon: 10.9627 },
+        { lat: 49.8917, lon: 10.8917 },
+      ],
+      to: "/trip/route.geojson",
+    });
+    expect(keys(r)).toEqual([
+      "ascent_m",
+      "attribution",
+      "bytes",
+      "descent_m",
+      "distance_m",
+      "duration_s",
+      "has_elevation",
+      "legs",
+      "path",
+      "points",
+      "profile",
+      "provider",
+      "url",
+    ]);
+  });
+});
+
 describe("coverage of the registry", () => {
   // A tool added without a shape test would otherwise be published API nobody pinned.
   it("pins a result shape for every tool", () => {
@@ -303,6 +340,7 @@ describe("coverage of the registry", () => {
         "copy_collection", "move_collection", "delete_collection",
         "copy_asset", "move_asset", "delete_asset",
         "copy_bundle", "move_bundle", "delete_bundle",
+        "geocode", "route",
       ],
     );
     expect([...TOOLS.map((t) => t.name)].filter((n) => !pinned.has(n))).toEqual([]);

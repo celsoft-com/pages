@@ -54,7 +54,6 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 
 ## Rules
 
-- **No API tokens, ever.** The site never asks for, stores, or uses a provider API token in any form.
 - **Custom domains are the user's job.** They add the domain in Netlify. The app does nothing and says nothing about it.
 - **No local tooling for users.** Deploy is the button. Never add a step needing a CLI or a checkout.
 - **One path normalizer, two kinds of path.** [path.ts](src/pages/path.ts) is the only place any path is
@@ -333,5 +332,21 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 - **The build stamp is baked in, not looked up.** Netlify exposes no deploy timestamp and no API call is allowed,
   so [build-info.mjs](scripts/build-info.mjs) writes [build-info.ts](src/build-info.ts) during `build:deploy`. The
   committed copy is blank on purpose; a local `npm run build` must never overwrite it.
+- **Geo runs at authoring time and stores its answer.** [geo/](src/geo) holds the site's only outbound calls:
+  `geocode` turns a name into candidates, `route` writes a GeoJSON line to an asset. Both run while a page is being
+  written and never when one is read. That is the whole line, and it is what keeps this from becoming an integration
+  platform: the site may do authoring-time work whose output it stores, and may never fetch at request time. A
+  coordinate passes that test; a weather feed fails it, and putting one behind a tool would place a provider in front
+  of every visitor and make a response that cannot be cached at the edge. Result shapes are the intersection of what
+  every provider can produce, never the union: no vendor id, no vendor score scale, no label composed for display, no
+  styling, SI units, and `null` rather than zero where a provider reports nothing, because no answer and no climb are
+  different facts. A vendor id in a published result marries the API to that vendor for the life of the API.
+  `geocode` returns candidates and never one answer: a geocoder is a guess, the caller is the only thing that can
+  judge it, and a wrong Springfield is silent on every axis. `route` never returns the line, because 3330 points out
+  and back spends the whole thing twice; the asset is written here and the reply is a summary. Simplification is off
+  by default and takes metres, since how much detail a line needs is a question about the zoom it is drawn at and that
+  belongs to the page; surviving points come back exactly as the router sent them, elevation included. Cycling and
+  walking never go to the public OSRM server: it is a car-only deployment that accepts any profile and answers
+  identically either way, so a walking route from it is a motorway that says nothing about being one.
 - **Tests gate the deploy.** `npm run build` is `tsc --noEmit && vitest run`, and Netlify runs it, so a failing test
   fails the deploy. Blobs are mocked in [test/blobs.ts](src/test/blobs.ts); tests never need a network.

@@ -110,6 +110,7 @@ describe("tool definitions", () => {
       [
         "check_refs",
         "count_items",
+        "geocode",
         "get_item",
         "get_page",
         "get_site",
