@@ -13,6 +13,7 @@ import { clearSessionCookie, createSessionCookie, getSessionOwner } from "../aut
 import { changePassword, completeSetup, getOwner, isSetupComplete } from "../auth/setup";
 import { completeAuthorize, parseAuthorize } from "../oauth/server";
 import { listGrants, revokeGrant } from "../oauth/store";
+import { listTokens, mintToken, revokeToken, type ApiToken } from "../auth/tokens";
 import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
 import { HOME_IS_GENERATED, isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
 import { bundleContents } from "../inventory";
@@ -806,8 +807,8 @@ async function uploadAsset(request: Request): Promise<Response> {
 
 // ---------- connections ----------
 
-async function connectionsScreen(url: URL): Promise<Response> {
-  const grants = await listGrants();
+async function connectionsScreen(url: URL, minted?: { label: string; secret: string }): Promise<Response> {
+  const [grants, tokens] = await Promise.all([listGrants(), listTokens()]);
   const armed = url.searchParams.get("confirm");
   const rows = grants.length
     ? grants
@@ -844,8 +845,79 @@ ${
     }
 <h2>Connected clients</h2>
 <div class="panel"><table>
-<thead><tr><th>Client</th><th>Connected</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`,
+<thead><tr><th>Client</th><th>Connected</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+${tokenPanel({ tokens, here: "/admin/connections", armed, origin, minted })}`,
   });
+}
+
+// Tokens sit beside connected clients because both answer one question: what has access right now.
+// A service has no browser to sign in with, so it cannot do the flow above; this is the other door.
+function tokenPanel(input: {
+  tokens: ApiToken[];
+  here: string;
+  armed: string | null;
+  origin: string;
+  minted?: { label: string; secret: string };
+}): string {
+  const { tokens, here, armed, origin, minted } = input;
+  const anchor = `${here}#tokens`;
+
+  const rows = tokens.length
+    ? tokens
+        .map(
+          (token) => `<tr>
+<td>${escapeHtml(token.label)}</td>
+<td><span class="pill">${token.access === "read" ? "Read only" : "Read and write"}</span></td>
+<td class="small muted">created ${when(token.createdAt)}</td>
+<td class="actions">${confirmAction({
+            here: anchor,
+            token: `token:${token.id}`,
+            armed,
+            action: "/admin/connections/tokens/revoke",
+            fields: { token_id: token.id },
+            label: "Revoke",
+            confirm: `Revoke ${token.label}, it stops working on its next request`,
+          })}</td></tr>`,
+        )
+        .join("")
+    : `<tr><td colspan="4" class="muted">No tokens yet.</td></tr>`;
+
+  return `<h2 id="tokens">API tokens</h2>
+<div class="panel">
+<div class="small muted">For a service that runs on its own: a cron job, a script, anything with no browser to sign in with. It sends the token and calls the same tools Claude does, over plain HTTP at <span class="mono">${escapeHtml(origin)}/api/v1</span>.</div>
+<div class="small muted" style="margin-top:.4rem">To teach a coding agent how to use it, install the skill once with <span class="mono">npx skills add celsoft-com/pages -g</span>, then give it this address and a token.</div>
+${
+    minted
+      ? `<div class="notice ok" style="margin-top:.8rem"><strong>${escapeHtml(minted.label)}</strong>
+<p class="mono" style="word-break:break-all;margin:.5rem 0">${escapeHtml(minted.secret)}</p>
+<div class="row"><button class="secondary" type="button" data-copy="${escapeHtml(minted.secret)}">Copy token</button>
+<span class="small muted">Copy it now. Only a hash is stored, so it cannot be shown again.</span></div>
+<div class="small muted" style="margin-top:.4rem">Send it as <code>Authorization: Bearer &lt;token&gt;</code>. Lose it and you revoke this one and make another.</div></div>
+<script>history.replaceState(null,"",${JSON.stringify(here)});</script>`
+      : ""
+  }
+<table style="margin-top:.8rem">
+<thead><tr><th>Token</th><th>Can</th><th>Created</th><th></th></tr></thead>
+<tbody>${rows}</tbody></table>
+<form method="post" action="/admin/connections/tokens" style="margin-top:.8rem">
+<div class="field">
+<label for="token_label">Name this token<span class="hint">Just for you, so you can tell them apart when you revoke one. For example backup job, or price feed.</span></label>
+<input id="token_label" name="label" required>
+</div>
+<div class="field">
+<label for="token_access">What it can do</label>
+<select id="token_access" name="access">
+<option value="read">Read only</option>
+<option value="write">Read and write</option>
+</select>
+<div class="hint">A read-only token cannot publish, edit or delete anything, and is not even shown the tools that would.</div>
+</div>
+<button type="submit">Create token</button>
+</form>
+</div>
+<script>document.addEventListener("click",function(e){var b=e.target.closest("[data-copy]");if(!b)return;
+navigator.clipboard.writeText(b.getAttribute("data-copy")).then(function(){var was=b.textContent;b.textContent="Copied";
+setTimeout(function(){b.textContent=was},1500)})});</script>`;
 }
 
 // ---------- settings ----------
@@ -1118,6 +1190,20 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
         const body = await form(request);
         await revokeGrant(body.grant_id ?? "");
         return back("/admin/connections", { ok: "Connection revoked." });
+      }
+      // Renders the secret rather than redirecting with it, for the same reason a share link does:
+      // it exists only in this response, and a query string is the one place it must never go.
+      case "/admin/connections/tokens": {
+        const body = await form(request);
+        const label = (body.label ?? "").trim();
+        if (!label) return back("/admin/connections", { error: "Name the token so you can tell them apart." });
+        const { secret } = await mintToken(label, body.access === "write" ? "write" : "read");
+        return connectionsScreen(url, { label, secret });
+      }
+      case "/admin/connections/tokens/revoke": {
+        const body = await form(request);
+        const gone = await revokeToken(body.token_id ?? "");
+        return back("/admin/connections", { ok: gone ? "Token revoked." : "That token is already gone." });
       }
       case "/admin/settings/site": {
         const body = await form(request);

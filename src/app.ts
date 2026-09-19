@@ -1,11 +1,13 @@
 import { handleAdmin } from "./admin/router";
+import { API_PREFIX, apiCallWrites, apiUnauthorized, handleApi } from "./api/handler";
+import { admit } from "./auth/principal";
 import { handleAsset } from "./assets/handler";
 import { changedContent, purgeContent } from "./cache";
 import { handleData } from "./data/handler";
 import { handleFavicon } from "./favicon";
 import { isSetupComplete } from "./auth/setup";
 import { handleMcp } from "./mcp/handler";
-import { authenticate, metadata, protectedResourceMetadata, register, token } from "./oauth/server";
+import { metadata, protectedResourceMetadata, register, token } from "./oauth/server";
 import { handlePage } from "./pages/handler";
 import { originOf, publicUrl } from "./origin";
 import { handleUnlock } from "./private/unlock";
@@ -23,6 +25,14 @@ function unauthorized(origin: string): Response {
   );
 }
 
+// Says nothing about whether any credential was close. Retry-After is the whole of the answer.
+function tooManyAttempts(): Response {
+  return Response.json(
+    { error: { message: "Too many failed attempts. Try again later." } },
+    { status: 429, headers: { "retry-after": "900", "cache-control": "private, no-store" } },
+  );
+}
+
 export async function handle(request: Request): Promise<Response> {
   const url = publicUrl(request);
   const path = url.pathname;
@@ -31,7 +41,7 @@ export async function handle(request: Request): Promise<Response> {
     const response = await route(request, url);
     // The only place anything is purged: a request that could have changed content clears the
     // cache as it finishes, whichever code did the writing.
-    if (changedContent(request, path, response)) await purgeContent();
+    if (changedContent(request, path, response) && apiCallWrites(path)) await purgeContent();
     return response;
   } catch (error) {
     const message = error instanceof Error ? `${error.message}\n\n${error.stack ?? ""}` : String(error);
@@ -53,9 +63,17 @@ async function route(request: Request, url: URL): Promise<Response> {
   if (path === "/oauth/token") return token(request);
 
   if (path === "/mcp") {
-    const ownerId = await authenticate(request);
-    if (!ownerId) return unauthorized(origin);
-    return handleMcp(request);
+    const seen = await admit(request);
+    if (!seen.ok) return seen.limited ? tooManyAttempts() : unauthorized(origin);
+    return handleMcp(request, seen.principal.access);
+  }
+
+  // Same registry, same credentials, presented as HTTP for a service with no browser to run an
+  // OAuth flow in.
+  if (path === API_PREFIX || path.startsWith(`${API_PREFIX}/`)) {
+    const seen = await admit(request);
+    if (!seen.ok) return seen.limited ? tooManyAttempts() : apiUnauthorized();
+    return handleApi(request, url, seen.principal);
   }
 
   // Redeems a share link. The token arrives in the body, never in the URL.

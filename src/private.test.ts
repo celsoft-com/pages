@@ -15,10 +15,11 @@ beforeEach(async () => {
   await completeSetup("correct horse battery");
 });
 
-function call(name: string, args: Record<string, unknown> = {}): Promise<string> {
+// Goes through the renderer, so every reply pinned in this file is still the text a client gets.
+async function call(name: string, args: Record<string, unknown> = {}): Promise<string> {
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool) throw new Error(`No tool named ${name}`);
-  return tool.handler(args, ctx);
+  return tool.render(await tool.handler(args, ctx));
 }
 
 async function json(name: string, args: Record<string, unknown> = {}): Promise<any> {

@@ -1,5 +1,6 @@
 import { originOf, publicUrl } from "../origin";
-import { TOOLS, type ToolContext } from "./tools";
+import type { Access } from "../types";
+import { allows, toolsFor, TOOLS, type ToolContext } from "./tools";
 
 const PROTOCOL_VERSION = "2025-06-18";
 
@@ -70,7 +71,7 @@ function failure(id: string | number | null | undefined, code: number, message: 
   return { jsonrpc: "2.0", id: id ?? null, error: { code, message } };
 }
 
-async function dispatch(message: JsonRpcRequest, ctx: ToolContext): Promise<unknown | null> {
+async function dispatch(message: JsonRpcRequest, ctx: ToolContext, access: Access): Promise<unknown | null> {
   switch (message.method) {
     case "initialize":
       return result(message.id, {
@@ -89,7 +90,7 @@ async function dispatch(message: JsonRpcRequest, ctx: ToolContext): Promise<unkn
 
     case "tools/list":
       return result(message.id, {
-        tools: TOOLS.map((tool) => ({
+        tools: toolsFor(access).map((tool) => ({
           name: tool.name,
           title: tool.title,
           description: tool.description,
@@ -100,9 +101,11 @@ async function dispatch(message: JsonRpcRequest, ctx: ToolContext): Promise<unkn
     case "tools/call": {
       const name = message.params?.name;
       const tool = TOOLS.find((t) => t.name === name);
-      if (!tool) return failure(message.id, -32602, `Unknown tool: ${name}`);
+      // A hidden tool is refused the same way an absent one is, so a read-only credential is told
+      // nothing about what a read-write one could have called.
+      if (!tool || !allows(access, tool)) return failure(message.id, -32602, `Unknown tool: ${name}`);
       try {
-        const text = await tool.handler(message.params?.arguments ?? {}, ctx);
+        const text = tool.render(await tool.handler(message.params?.arguments ?? {}, ctx));
         return result(message.id, { content: [{ type: "text", text }], isError: false });
       } catch (error) {
         const text = error instanceof Error ? error.message : String(error);
@@ -115,7 +118,7 @@ async function dispatch(message: JsonRpcRequest, ctx: ToolContext): Promise<unkn
   }
 }
 
-export async function handleMcp(request: Request): Promise<Response> {
+export async function handleMcp(request: Request, access: Access): Promise<Response> {
   if (request.method === "GET" || request.method === "DELETE") {
     return new Response(null, { status: 405, headers: { allow: "POST" } });
   }
@@ -136,7 +139,7 @@ export async function handleMcp(request: Request): Promise<Response> {
   const messages = Array.isArray(payload) ? payload : [payload];
   const responses: unknown[] = [];
   for (const message of messages) {
-    const response = await dispatch(message, ctx);
+    const response = await dispatch(message, ctx, access);
     if (response !== null) responses.push(response);
   }
 

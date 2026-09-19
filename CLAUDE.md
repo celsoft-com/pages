@@ -42,6 +42,7 @@ One function serves everything, routed in [app.ts](src/app.ts):
 - **Data** — `/data/<path>.json`, a collection served whole as JSON for a page to fetch and render.
   `/data/_collections.json` is the reserved index of every collection.
 - **MCP** — `/mcp`, JSON-RPC over Streamable HTTP.
+- **REST** at `/api/v1`, the same tool registry over plain HTTP for a service with no browser.
 - **OAuth** — hand-rolled in [oauth/](src/oauth), authorization code with PKCE and dynamic client registration.
 
 Storage is Netlify Blobs throughout: `site` (owner, settings, rate limits), `pages`, `assets`, `data`, `oauth`.
@@ -226,6 +227,58 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   measured 30% more characters for nothing a reader of it needs.
 - **Items change one at a time.** Every data tool reads or writes a single item, so editing one costs one small call.
   Never add a tool that makes a client send a whole collection back to change one field.
+- **One registry, two presentations.** `TOOLS` in [tools.ts](src/mcp/tools.ts) is the only definition of any
+  operation. A tool's `handler` returns a structured result and its `render` turns that result into the text MCP has
+  always returned; [handler.ts](src/mcp/handler.ts) calls the renderer and [api/handler.ts](src/api/handler.ts)
+  serializes the result. Neither door keeps a table of its own, so a tool cannot exist on one and not the other, and
+  a REST body cannot drift from the sentence describing it because both come from one value in one file. That makes
+  a handler's result shape published API: changing a field breaks every service calling it, exactly as changing the
+  `/data` array would. `access` is a required field rather than something derived from the verb in the name, because
+  a convention mislabels a tool silently and a missing field does not compile; `toolsFor` and `allows` are the one
+  gate, in front of the registry rather than inside either door. A handler that still returns its own string never
+  got split, and [tools.test.ts](src/mcp/tools.test.ts) fails on it. Never add an endpoint that does not come from
+  the registry, not even one.
+- **A service gets a token, never the OAuth flow.** A cron job has no browser to render a consent screen in and no
+  redirect URI to receive a code at, so the owner mints a bearer token in the admin and pastes it in
+  ([tokens.ts](src/auth/tokens.ts)). One resolver reads every credential off one header
+  ([principal.ts](src/auth/principal.ts)), which is why an OAuth token reaches `/api/v1` and a minted token reaches
+  `/mcp`: the access level rides on the credential, not on the door. The stored record is read on every request, so
+  revoking lands on the holder's next call rather than whenever a token would have expired, and that is what the one
+  extra read buys. Tokens never expire; revocation is the control. The plaintext exists only in the response that
+  mints it, which renders it rather than redirecting with it and rewrites its own history entry, for the same reason
+  a share link does. A read-only token is not shown the write tools at either door, because a client that cannot see
+  one never builds a call it was never going to be allowed to make.
+- **A result shape is pinned, because rendering hides a broken one.** Every other suite asserts the sentence a
+  tool renders, and a renderer will happily build the right words out of the wrong object, so those tests pass
+  while the REST body changes underneath. [results.test.ts](src/mcp/results.test.ts) asserts the exact key set of
+  all 37 results, both branches of the ones that have two, and that a tool with no entry there fails the suite.
+  Renaming a published field is then one failing test instead of a silent break in somebody's cron job.
+- **A bearer credential is rate limited; an interactive login is not the only guessable thing.** `admit` in
+  [principal.ts](src/auth/principal.ts) fronts both doors: it reads the bucket before the credential lookup, so a
+  limited address is refused without the site doing the work, and records a failure only when one is rejected, so
+  a service polling every minute never accumulates. It uses the counter the admin login uses under an `api:` key of
+  its own, because a cron with a stale token must not lock its owner out of their own admin. A limited caller gets
+  429 and `Retry-After` and is told nothing about how close it got, including when its token was in fact valid.
+- **The API says what kind of failure it was.** A thrown tool error is 400, a missing or revoked credential 401, a
+  read-only credential attempting a write 403, an unknown tool 404, and a revision conflict 409. That last one is why
+  `ConflictError` exists ([errors.ts](src/errors.ts)): a service retrying on a schedule has to tell a stale `if_rev`
+  from a dead token without reading the sentence, and the message is unchanged either way so MCP cannot tell the
+  difference. API responses use `privateHeaders()` and are never stored at the edge, because what they return varies
+  by credential. A call to a read tool does not fire the purge (`apiCallWrites`), since a service polling one every
+  minute would otherwise keep the whole site's cache cold; only a proven read opts out, so forgetting to teach that
+  about something is slow rather than wrong.
+- **The skill points at the site, it does not copy it.** [skills/pages-api](skills/pages-api) is an Agent Skills
+  collection shipped from this repo, installed with `npx skills add celsoft-com/pages -g` and named in the README
+  and on the Connections screen. It exists because every install is a different site at a different URL, so an agent
+  needs to be told how to find the address and the token, not what the tools are. It carries no tool list, no schema
+  and no copy of the instructions: `INSTRUCTIONS` is one string in [handler.ts](src/mcp/handler.ts) that MCP and the
+  API both serve, and the skill sends the agent to fetch it, so a site on a newer deploy teaches its own conventions
+  with nothing to update on anyone's laptop. That is the whole point, and it is pinned:
+  [skill.test.ts](src/skill.test.ts) fails if any twelve-word run of the instructions reappears in the skill, or if
+  the skill names a tool that no longer exists. A summary sentence is fine; a paragraph lifted across is the bug.
+  Its scripts keep the token out of argv by passing it through a curl config file, take arguments as a file rather
+  than a command line so page content never reaches the process list, and never block on stdin: an agent's stdin is
+  an open pipe nobody closes, so `pages-call` reads it only when passed `-` and `pages-login` reads it with a timeout.
 - **The served contract is public API.** Collection `/a/b` is served at `/data/a/b.json` as a bare array, each item
   carrying its `id`, in collection order, with nested values untouched. Pages are written against that with no MCP
   access, so it cannot drift: the tool text, the MCP instructions and the tests all state it. Changing any of it means

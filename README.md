@@ -24,6 +24,33 @@ Open **Connections** in your site, copy the URL, and add it as a custom connecto
 
 Then ask Claude to publish a page.
 
+## Connect a script, a cron job, or an agent
+
+Anything without a browser talks to the site over its REST API instead. Open **Connections**,
+create an API token under **API tokens**, and pick whether it may write or only read.
+
+There is a skill that teaches any agent how to use it. Install it once:
+
+```
+npx skills add celsoft-com/pages -g
+```
+
+Then tell your agent your site's address and give it the token, and it will work out the rest
+from the site itself. It reaches Claude Code, Cursor, Codex and anything else that reads the
+[Agent Skills](https://github.com/anthropics/skills) format.
+
+Calling it directly is two lines:
+
+```
+curl -H "Authorization: Bearer $TOKEN" https://your-site.example/api/v1
+curl -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"path":"/beers","fields":{"name":"Pilsner"}}' \
+  https://your-site.example/api/v1/put_item
+```
+
+`GET /api/v1` lists every tool the token may call, with its JSON Schema. That list is generated
+from the site, so it is never out of date.
+
 ## License
 
 MIT

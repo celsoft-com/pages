@@ -1,5 +1,6 @@
 import { assetKeyFor, getAsset, listAssets } from "./assets/service";
 import { contains, segmentsOf } from "./bundle";
+import { ConflictError } from "./errors";
 import {
   getCollection,
   listCollections,
@@ -161,7 +162,7 @@ export async function planTransfer(input: {
           `Name a single collection, or drop if_rev.`,
       );
     if (collection.rev !== input.ifRev)
-      throw new Error(
+      throw new ConflictError(
         `Collection ${from} has changed since you read it: you have rev ${input.ifRev}, it is now ` +
           `rev ${collection.rev}. Call list_items again before you ${verb} it.`,
       );

@@ -1,3 +1,4 @@
+import { ConflictError } from "../errors";
 import { similarity } from "./match";
 import { normalizePath } from "../pages/path";
 import { encodeKey, stores } from "../store";
@@ -187,7 +188,7 @@ export async function putItem(input: {
   const at = items.findIndex((i) => i.id === id);
 
   if (at === -1 && input.ifRev !== undefined)
-    throw new Error(
+    throw new ConflictError(
       `No item "${id}" in ${path} to match if_rev ${input.ifRev}. It may have been deleted. ` +
         `Call list_items to see what is there, then write without if_rev to create it.`,
     );
@@ -195,12 +196,12 @@ export async function putItem(input: {
   if (at !== -1) {
     const current = revOf(collection!, id);
     if (input.ifRev === undefined && input.overwrite !== true)
-      throw new Error(
+      throw new ConflictError(
         `Item "${id}" in ${path} already exists at rev ${current}. Read it with get_item and pass ` +
           `if_rev: ${current}, or pass overwrite: true to write without checking.`,
       );
     if (input.ifRev !== undefined && input.ifRev !== current)
-      throw new Error(
+      throw new ConflictError(
         `Item "${id}" in ${path} has changed since you read it: you have rev ${input.ifRev}, it is now ` +
           `rev ${current}. Read it again with get_item and reapply your change.`,
       );
@@ -238,7 +239,7 @@ export async function deleteItem(
 
   const current = revOf(collection, id);
   if (ifRev !== undefined && ifRev !== current)
-    throw new Error(
+    throw new ConflictError(
       `Item "${id}" in ${normalized} has changed since you read it: you have rev ${ifRev}, it is now ` +
         `rev ${current}. Read it again with get_item before deleting it.`,
     );
@@ -262,7 +263,7 @@ export async function reorderItems(path: string, ids: string[], ifRev?: number):
   if (!collection) throw new Error(`No collection exists at ${normalized}`);
 
   if (ifRev !== undefined && ifRev !== collection.rev)
-    throw new Error(
+    throw new ConflictError(
       `Collection ${normalized} has changed since you read it: you have rev ${ifRev}, it is now ` +
         `rev ${collection.rev}. Call list_items again before reordering.`,
     );

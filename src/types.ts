@@ -1,5 +1,9 @@
 export type ContentType = "markdown" | "html";
 
+// What a credential may do. It rides on the credential rather than on the surface, so the same
+// token is read-only at both doors.
+export type Access = "read" | "write";
+
 export interface Owner {
   id: string;
   passwordHash: string;

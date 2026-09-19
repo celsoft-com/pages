@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Read-only diagnosis. Prints one KEY: VALUE per line so a caller branches without parsing
+# prose, changes nothing, and never prints the token.
+set -uo pipefail
+
+self=$(cd "$(dirname "$0")" && pwd)
+
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/pages"
+config_file="$config_dir/config"
+
+echo "CONFIG: $([ -f "$config_file" ] && echo "$config_file" || echo none)"
+echo "ENV_SITE: $([ -n "${PAGES_SITE_URL-}" ] && echo set || echo unset)"
+echo "ENV_TOKEN: $([ -n "${PAGES_API_TOKEN-}" ] && echo set || echo unset)"
+
+# shellcheck source=pages-config
+if ! . "$self/pages-config" 2>/dev/null; then
+  echo "SITE: none"
+  echo "READY: no"
+  exit 0
+fi
+
+echo "SITE: $PAGES_SITE_URL"
+echo "TOKEN: present"
+
+cfg=$(mktemp)
+body=$(mktemp)
+trap 'rm -f "$cfg" "$body"' EXIT
+chmod 600 "$cfg"
+printf 'header = "Authorization: Bearer %s"\n' "$PAGES_API_TOKEN" > "$cfg"
+
+code=$(curl -sS --config "$cfg" -o "$body" -w '%{http_code}' -m 20 "$PAGES_SITE_URL/api/v1" 2>/dev/null) || code=000
+
+echo "HTTP: $code"
+
+case "$code" in
+  2*)
+    # The top-level access comes before the tool array, so the first match is the credential's.
+    access=$(grep -o '"access":"[a-z]*"' "$body" | head -1 | sed 's/.*:"//;s/"//')
+    # input_schema appears once per tool and never in the prose.
+    tools=$(grep -o '"input_schema"' "$body" | wc -l | tr -d ' ')
+    echo "ACCESS: ${access:-unknown}"
+    echo "TOOLS: $tools"
+    echo "READY: yes"
+    ;;
+  401)
+    echo "READY: no"
+    echo "FIX: the token is unknown or revoked. Mint another in the site admin under Connections, then run pages-login."
+    ;;
+  000)
+    echo "READY: no"
+    echo "FIX: the site did not answer. Check the URL is the site's own address and that it is deployed."
+    ;;
+  404)
+    echo "READY: no"
+    echo "FIX: no API at that address. Check the URL, and that the site is running a version with /api/v1."
+    ;;
+  *)
+    echo "READY: no"
+    ;;
+esac

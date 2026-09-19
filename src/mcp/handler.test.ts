@@ -12,6 +12,7 @@ async function rpc(method: string, params?: Record<string, unknown>): Promise<an
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
     }),
+    "write",
   );
   return response.json();
 }

@@ -1,0 +1,35 @@
+# Sourced by the other scripts, never run. It returns rather than exits, so a caller that
+# wants to carry on after a missing config (pages-doctor) can.
+#
+# Resolves which site to talk to and with what token.
+#
+# The environment wins, so a shell can point at a staging site without touching the saved
+# config, and CI can supply both without a file at all.
+#
+#   PAGES_SITE_URL, PAGES_API_TOKEN     environment
+#   ${XDG_CONFIG_HOME:-~/.config}/pages/config   saved by pages-login
+
+PAGES_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/pages"
+PAGES_CONFIG_FILE="$PAGES_CONFIG_DIR/config"
+
+if [ -z "${PAGES_SITE_URL-}" ] || [ -z "${PAGES_API_TOKEN-}" ]; then
+  if [ -f "$PAGES_CONFIG_FILE" ]; then
+    # Read as data, never sourced: a stray backtick in a saved value would otherwise run.
+    while IFS='=' read -r key value; do
+      case "$key" in
+        site) [ -n "${PAGES_SITE_URL-}" ] || PAGES_SITE_URL=$value ;;
+        token) [ -n "${PAGES_API_TOKEN-}" ] || PAGES_API_TOKEN=$value ;;
+      esac
+    done < "$PAGES_CONFIG_FILE"
+  fi
+fi
+
+# Trailing slashes double up when a path is appended.
+PAGES_SITE_URL=$(printf '%s' "${PAGES_SITE_URL-}" | sed 's#/*$##')
+
+if [ -z "$PAGES_SITE_URL" ] || [ -z "${PAGES_API_TOKEN-}" ]; then
+  echo "pages: no site configured. Run scripts/pages-login <site-url> with the token on stdin." >&2
+  return 2
+fi
+
+export PAGES_SITE_URL PAGES_API_TOKEN PAGES_CONFIG_DIR PAGES_CONFIG_FILE

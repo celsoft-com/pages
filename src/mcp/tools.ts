@@ -34,19 +34,57 @@ import {
   setPublic,
 } from "../private/service";
 import { getSettings, saveSettings } from "../settings";
-import type { Item } from "../types";
+import type { Access, Item } from "../types";
 
 export interface ToolContext {
   siteUrl: string;
 }
 
-export interface ToolDefinition {
+// One definition, two presentations. `handler` returns the result and nothing else; `render` turns
+// that result into the text MCP has always returned, and the REST surface serializes the result
+// itself. Neither door keeps a table of its own, so a tool cannot exist on one and not the other,
+// and a result shape cannot drift from the words describing it: they are produced from the same
+// value in the same file. `access` is required rather than derived from the name, because a naming
+// convention mislabels a tool silently and a missing field does not compile.
+export interface ToolDefinition<R = unknown> {
   name: string;
   title: string;
+  access: "read" | "write";
   description: string;
   inputSchema: Record<string, unknown>;
-  handler: (args: Record<string, any>, ctx: ToolContext) => Promise<string>;
+  handler: (args: Record<string, any>, ctx: ToolContext) => Promise<R>;
+  render: (result: R) => string;
 }
+
+export type AnyTool = ToolDefinition<any>;
+
+// The one gate, sitting in front of the registry rather than inside either door, so a read-only
+// credential behaves identically over MCP and over HTTP. A write tool is hidden as well as refused:
+// a client that cannot see it never builds a call it was never going to be allowed to make.
+export function toolsFor(access: Access): AnyTool[] {
+  return access === "write" ? TOOLS : TOOLS.filter((t) => t.access === "read");
+}
+
+export function allows(access: Access, tool: AnyTool): boolean {
+  return access === "write" || tool.access === "read";
+}
+
+// Infers each tool's own result type without it being written twice.
+function tool<R>(definition: ToolDefinition<R>): ToolDefinition<R> {
+  return definition;
+}
+
+// Every JSON reply is compact: indenting one page of list_items measured 30% more characters for
+// nothing a reader of it needs.
+function asJson(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+// A Netlify synchronous function caps the whole request, and base64 inflates a file by a third on
+// the way in. Well under that, and stated, so an upload fails with a sentence rather than at the
+// platform boundary with nothing to read.
+const MAX_ASSET_MB = 4;
+const MAX_ASSET_BYTES = MAX_ASSET_MB * 1024 * 1024;
 
 function object(properties: Record<string, unknown>, required: string[] = []) {
   return { type: "object", properties, required, additionalProperties: false };
@@ -167,7 +205,7 @@ function resourceUrl(ctx: ToolContext, kind: Kind, path: string): string {
   return `${ctx.siteUrl}/assets${path}`;
 }
 
-async function transferReply(ctx: ToolContext, transfer: Transfer): Promise<string> {
+async function transferResult(ctx: ToolContext, transfer: Transfer) {
   const [stale, rest, privacy] = await Promise.all([
     staleReferences(transfer),
     restOfBundle(transfer),
@@ -197,29 +235,27 @@ async function transferReply(ctx: ToolContext, transfer: Transfer): Promise<stri
     );
   else if (privacy.length > 0)
     notes.push("Something in privacy_changes moved into a private path and is now closed to the public.");
-  return JSON.stringify(
-    {
-      operation: transfer.verb,
-      scope: transfer.scope,
-      from: transfer.from,
-      ...(transfer.to === null ? {} : { to: transfer.to }),
-      applied: transfer.applied,
-      resources: transfer.resources.map((r) => ({
-        kind: r.kind,
-        from: r.from,
-        to: r.to,
-        ...(r.to === null ? {} : { url: resourceUrl(ctx, r.kind, r.to), replaced: r.replaced }),
-        ...(r.title === undefined ? {} : { title: r.title }),
-        ...(r.items === undefined ? {} : { items: r.items, rev: r.rev, refs: r.refs }),
-        ...(r.bytes === undefined ? {} : { bytes: r.bytes }),
-      })),
-      breaks: transfer.breaks,
-      pages_to_update: stale,
-      ...(privacy.length === 0 ? {} : { privacy_changes: privacy }),
-      ...(rest.length === 0 ? {} : { rest_of_bundle: rest }),
-      notes,
-    }
-  );
+  return {
+    operation: transfer.verb,
+    scope: transfer.scope,
+    from: transfer.from,
+    ...(transfer.to === null ? {} : { to: transfer.to }),
+    applied: transfer.applied,
+    resources: transfer.resources.map((r) => ({
+      kind: r.kind,
+      from: r.from,
+      to: r.to,
+      ...(r.to === null ? {} : { url: resourceUrl(ctx, r.kind, r.to), replaced: r.replaced }),
+      ...(r.title === undefined ? {} : { title: r.title }),
+      ...(r.items === undefined ? {} : { items: r.items, rev: r.rev, refs: r.refs }),
+      ...(r.bytes === undefined ? {} : { bytes: r.bytes }),
+    })),
+    breaks: transfer.breaks,
+    pages_to_update: stale,
+    ...(privacy.length === 0 ? {} : { privacy_changes: privacy }),
+    ...(rest.length === 0 ? {} : { rest_of_bundle: rest }),
+    notes,
+  };
 }
 
 function transferArgs(args: Record<string, any>, scope: Scope, verb: Verb) {
@@ -264,31 +300,42 @@ function transferSchema(scope: Scope, verb: Verb, what: string) {
   );
 }
 
-function transferTool(scope: Scope, verb: Verb, spec: { title: string; what: string; lead: string }): ToolDefinition {
-  return {
+function transferTool(scope: Scope, verb: Verb, spec: { title: string; what: string; lead: string }) {
+  return tool({
     name: `${verb}_${scope}`,
     title: spec.title,
+    access: "write" as const,
     description: `${spec.lead} ${TRANSFER}${scope === "bundle" ? ` ${BUNDLES}` : ""}`,
     inputSchema: transferSchema(scope, verb, spec.what),
-    handler: async (args, ctx) => transferReply(ctx, await runTransfer(transferArgs(args, scope, verb))),
-  };
+    handler: async (args, ctx) => transferResult(ctx, await runTransfer(transferArgs(args, scope, verb))),
+    render: asJson,
+  });
 }
 
-export const TOOLS: ToolDefinition[] = [
-  {
+export const TOOLS: AnyTool[] = [
+  tool({
     name: "list_pages",
     title: "List pages",
+    access: "read",
     description: "List every page published on this site. " + BUNDLES,
     inputSchema: object({}),
-    handler: async (_args, ctx) => {
-      const pages = await listPages();
-      if (pages.length === 0) return "No pages published yet.";
-      return pages.map((p) => `${p.path}  ${p.title}  (${p.contentType})  ${urlFor(ctx, p.path)}`).join("\n");
-    },
-  },
-  {
+    handler: async (_args, ctx) => ({
+      pages: (await listPages()).map((p) => ({
+        path: p.path,
+        title: p.title,
+        format: p.contentType,
+        url: urlFor(ctx, p.path),
+      })),
+    }),
+    render: (r) =>
+      r.pages.length === 0
+        ? "No pages published yet."
+        : r.pages.map((p) => `${p.path}  ${p.title}  (${p.format})  ${p.url}`).join("\n"),
+  }),
+  tool({
     name: "get_page",
     title: "Read a page",
+    access: "read",
     description:
       "Return the stored source of one page so it can be edited. Pass find, or offset and limit, to read only the " +
       "part you are working on: the reply is then numbered lines rather than the whole document, which is what " +
@@ -309,27 +356,28 @@ export const TOOLS: ToolDefinition[] = [
       if (!page) throw new Error(noPageAt(path));
 
       const whole = args.find === undefined && args.offset === undefined && args.limit === undefined;
-      if (whole)
-        return JSON.stringify({ path: page.path, title: page.title, format: page.contentType, content: page.body });
+      if (whole) return { path: page.path, title: page.title, format: page.contentType, content: page.body };
 
       const slice = slicePage(page, {
         find: args.find === undefined ? undefined : String(args.find),
         offset: args.offset === undefined ? undefined : Number(args.offset),
         limit: args.limit === undefined ? undefined : Number(args.limit),
       });
-      return JSON.stringify({
+      return {
         path: page.path,
         title: page.title,
         format: page.contentType,
         total: slice.total,
         more: slice.more,
         lines: slice.lines,
-      });
+      };
     },
-  },
-  {
+    render: asJson,
+  }),
+  tool({
     name: "edit_page",
     title: "Edit part of a page",
+    access: "write",
     description:
       "Replace an exact string in a published page and leave every other byte of it alone. Read the part you are " +
       "changing with get_page first, passing find or offset and limit, and copy the snippet from what it returns. " +
@@ -358,13 +406,18 @@ export const TOOLS: ToolDefinition[] = [
         replace: args.replace,
         all: args.all === true,
       });
-      const where = lines.length > 3 ? `${lines.slice(0, 3).join(", ")} and ${lines.length - 3} more` : lines.join(", ");
-      return `Replaced ${replaced} occurrence${replaced === 1 ? "" : "s"} at line ${where} in ${urlFor(ctx, page.path)}`;
+      return { path: page.path, url: urlFor(ctx, page.path), replaced, lines };
     },
-  },
-  {
+    render: (r) => {
+      const where =
+        r.lines.length > 3 ? `${r.lines.slice(0, 3).join(", ")} and ${r.lines.length - 3} more` : r.lines.join(", ");
+      return `Replaced ${r.replaced} occurrence${r.replaced === 1 ? "" : "s"} at line ${where} in ${r.url}`;
+    },
+  }),
+  tool({
     name: "publish_page",
     title: "Publish a page",
+    access: "write",
     description:
       "Create a page at a path. Markdown is rendered into the site theme; HTML is served exactly as written. Fails if the path is taken unless overwrite is true. " +
       "If the page lists repeating things, offer the owner a data collection first: keep the items in one with put_item and have the page fetch /data/<path>.json, so editing one of them later does not mean rewriting the page. " +
@@ -397,12 +450,14 @@ export const TOOLS: ToolDefinition[] = [
         title: typeof args.title === "string" && args.title ? args.title : deriveTitle(args.content, path),
         body: args.content,
       });
-      return `Published ${page.title} at ${urlFor(ctx, page.path)}`;
+      return { path: page.path, url: urlFor(ctx, page.path), title: page.title, format: page.contentType };
     },
-  },
-  {
+    render: (r) => `Published ${r.title} at ${r.url}`,
+  }),
+  tool({
     name: "update_page",
     title: "Update a page",
+    access: "write",
     description:
       "Replace the content of an existing page. If you are rewriting the page only to change items in a list, move that list into a data collection instead and let the page fetch it. " +
       BUNDLES,
@@ -423,9 +478,10 @@ export const TOOLS: ToolDefinition[] = [
         title: typeof args.title === "string" && args.title ? args.title : existing.title,
         body: args.content,
       });
-      return `Updated ${urlFor(ctx, page.path)}`;
+      return { path: page.path, url: urlFor(ctx, page.path), title: page.title, format: page.contentType };
     },
-  },
+    render: (r) => `Updated ${r.url}`,
+  }),
   transferTool("page", "copy", {
     title: "Copy a page",
     what: "page",
@@ -448,14 +504,16 @@ export const TOOLS: ToolDefinition[] = [
       "Remove one page. Collections and assets under its path are untouched and stay exactly where they are, and " +
       "the reply names every one of them. To delete a page together with everything under it, use delete_bundle.",
   }),
-  {
+  tool({
     name: "upload_asset",
     title: "Upload an asset",
+    access: "write",
     description:
       "Store an image or file and return its public URL for use on any page. Pass path to file it into a bundle; " +
       "without one it is stored under a content hash, which keeps working forever but sits in no bundle. " +
       "An image uploaded to /root/favicon.ico, .svg, .png, .webp or .jpg becomes the site icon, served at " +
       "/favicon.ico; until one is uploaded the site serves a built-in default. " +
+      `A file is at most ${MAX_ASSET_MB} MB once decoded, and one over that is refused before it is read. ` +
       BUNDLES,
     inputSchema: object(
       {
@@ -473,6 +531,13 @@ export const TOOLS: ToolDefinition[] = [
     ),
     handler: async (args, ctx) => {
       if (typeof args.content_base64 !== "string") throw new Error("content_base64 is required");
+      // Checked from the encoded length, before decoding: the point is to refuse an oversized file
+      // in this API's own words rather than let the platform truncate the request with nothing to read.
+      const declared = Math.floor((args.content_base64.length * 3) / 4);
+      if (declared > MAX_ASSET_BYTES)
+        throw new Error(
+          `That file is about ${Math.round(declared / (1024 * 1024))} MB; ${MAX_ASSET_MB} MB is the most that can be uploaded.`,
+        );
       const binary = atob(args.content_base64);
       const bytes = new Uint8Array(new ArrayBuffer(binary.length));
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -483,30 +548,44 @@ export const TOOLS: ToolDefinition[] = [
         bytes: bytes.buffer,
         path: args.path === undefined ? undefined : String(args.path),
       });
-      const url = `${ctx.siteUrl}${assetUrlFor(asset)}`;
-      return asset.path ? `${url}\npath ${asset.path}` : url;
+      return {
+        url: `${ctx.siteUrl}${assetUrlFor(asset)}`,
+        path: asset.path ?? null,
+        filename: asset.filename,
+        content_type: asset.contentType,
+        bytes: asset.size,
+      };
     },
-  },
-  {
+    render: (r) => (r.path ? `${r.url}\npath ${r.path}` : r.url),
+  }),
+  tool({
     name: "list_assets",
     title: "List assets",
+    access: "read",
     description:
       "List uploaded images and files with their public URLs and, where they have one, their path. An asset " +
       "uploaded before paths existed is named by a hash of its bytes instead and sits in no bundle. " +
       BUNDLES,
     inputSchema: object({}),
-    handler: async (_args, ctx) => {
-      const assets = await assetEntries();
-      if (assets.length === 0) return "No assets uploaded yet.";
-      return assets
-        .map(
-          (a) =>
-            `${a.filename}  ${ctx.siteUrl}/assets/${a.path ? a.path.replace(/^\//, "") : a.key}  (${a.size} bytes)` +
-            `${a.path ? `  in ${a.path}` : "  stored under a content hash, in no bundle"}`,
-        )
-        .join("\n");
-    },
-  },
+    handler: async (_args, ctx) => ({
+      assets: (await assetEntries()).map((a) => ({
+        filename: a.filename,
+        path: a.path,
+        url: `${ctx.siteUrl}/assets/${a.path ? a.path.replace(/^\//, "") : a.key}`,
+        bytes: a.size,
+      })),
+    }),
+    render: (r) =>
+      r.assets.length === 0
+        ? "No assets uploaded yet."
+        : r.assets
+            .map(
+              (a) =>
+                `${a.filename}  ${a.url}  (${a.bytes} bytes)` +
+                `${a.path ? `  in ${a.path}` : "  stored under a content hash, in no bundle"}`,
+            )
+            .join("\n"),
+  }),
   transferTool("asset", "copy", {
     title: "Copy an asset",
     what: "asset path",
@@ -527,9 +606,10 @@ export const TOOLS: ToolDefinition[] = [
     what: "asset path, or hash key for an older upload",
     lead: "Remove one stored file, by its path or, for one uploaded before paths existed, by its content hash key.",
   }),
-  {
+  tool({
     name: "list_bundle",
     title: "List a bundle",
+    access: "read",
     description:
       "List every page, collection and asset at or under one path, including deeper pages and everything under " +
       "them. Use it to see everything one page's content is made of. " +
@@ -543,35 +623,45 @@ export const TOOLS: ToolDefinition[] = [
       if (path === "/") throw new Error(ROOT_IS_NOT_A_BUNDLE);
       const [contents, page] = await Promise.all([bundleContents(path), getPage(path)]);
 
-      const pages: string[] = [];
-      for (const entry of contents.pages)
-        pages.push(`page ${entry.path}  ${entry.title}  ${urlFor(ctx, entry.path)}`);
-
-      const resources: string[] = [];
-      for (const c of contents.collections)
-        resources.push(
-          `collection ${c.path}  ${c.count} items  rev ${c.rev}${refsOf(c.refs)}  ${dataUrl(ctx, c.path)}`,
-        );
-      for (const a of contents.assets)
-        resources.push(
-          `asset ${a.path}  ${a.size} bytes  ${ctx.siteUrl}/assets/${a.path!.replace(/^\//, "")}`,
-        );
+      const pages = contents.pages.map((entry) => ({
+        path: entry.path,
+        title: entry.title,
+        url: urlFor(ctx, entry.path),
+      }));
+      const collections = contents.collections.map((c) => ({
+        path: c.path,
+        items: c.count,
+        rev: c.rev,
+        refs: c.refs,
+        url: dataUrl(ctx, c.path),
+      }));
+      const assets = contents.assets.map((a) => ({
+        path: a.path!,
+        bytes: a.size,
+        url: `${ctx.siteUrl}/assets/${a.path!.replace(/^\//, "")}`,
+      }));
 
       // A bundle holding a page and nothing else, and a path where nothing exists, are different situations.
-      if (!page && pages.length === 0 && resources.length === 0)
+      if (!page && pages.length === 0 && collections.length === 0 && assets.length === 0)
         throw new Error(
           `Nothing is published at ${path}: no page there, and no collection or asset under it. ` +
             `Call list_pages or list_collections to see what does exist.`,
         );
 
+      return { path, has_page: Boolean(page), pages, collections, assets };
+    },
+    render: (r) => {
       const out: string[] = [];
-      if (!page) out.push(`No page is published at ${path}. These are grouped under it by path alone.`);
-
-      out.push(...pages, ...resources);
-      if (page && resources.length === 0) out.push(`Nothing else is in ${path} yet.`);
+      if (!r.has_page) out.push(`No page is published at ${r.path}. These are grouped under it by path alone.`);
+      for (const entry of r.pages) out.push(`page ${entry.path}  ${entry.title}  ${entry.url}`);
+      for (const c of r.collections)
+        out.push(`collection ${c.path}  ${c.items} items  rev ${c.rev}${refsOf(c.refs)}  ${c.url}`);
+      for (const a of r.assets) out.push(`asset ${a.path}  ${a.bytes} bytes  ${a.url}`);
+      if (r.has_page && r.collections.length === 0 && r.assets.length === 0)
+        out.push(`Nothing else is in ${r.path} yet.`);
       return out.join("\n");
     },
-  },
+  }),
   transferTool("bundle", "copy", {
     title: "Copy a bundle",
     what: "bundle path",
@@ -601,9 +691,10 @@ export const TOOLS: ToolDefinition[] = [
       "bundles that reference ids it would remove; read that before confirming. To remove only the page and leave " +
       "its data alone, use delete_page.",
   }),
-  {
+  tool({
     name: "list_collections",
     title: "List data collections",
+    access: "read",
     description:
       "List every JSON data collection on this site with its item count and public URL. " +
       "A collection is an ordered array of items a page fetches and renders. " +
@@ -611,23 +702,26 @@ export const TOOLS: ToolDefinition[] = [
       " " +
       SERVING,
     inputSchema: object({}),
-    handler: async (_args, ctx) => {
-      const collections = await collectionEntries();
-      if (collections.length === 0) return "No data collections yet. Use put_item to create one.";
-      return collections
-        .map((c) => {
-          const refs = Object.entries(c.refs);
-          const declared = refs.length > 0 ? `  refs ${refs.map(([f, t]) => `${f}->${t}`).join(", ")}` : "";
-          return (
-            `${c.path}  ${c.count} items  rev ${c.rev}${declared}  served at ${dataUrl(ctx, c.path)}`
-          );
-        })
-        .join("\n");
-    },
-  },
-  {
+    handler: async (_args, ctx) => ({
+      collections: (await collectionEntries()).map((c) => ({
+        path: c.path,
+        items: c.count,
+        rev: c.rev,
+        refs: c.refs,
+        url: dataUrl(ctx, c.path),
+      })),
+    }),
+    render: (r) =>
+      r.collections.length === 0
+        ? "No data collections yet. Use put_item to create one."
+        : r.collections
+            .map((c) => `${c.path}  ${c.items} items  rev ${c.rev}${refsOf(c.refs)}  served at ${c.url}`)
+            .join("\n"),
+  }),
+  tool({
     name: "list_items",
     title: "List items in a collection",
+    access: "read",
     description:
       "Return items from a collection in order. Ask for only the fields you need and page with limit and offset; the whole collection is rarely worth reading. " +
       "The reply wraps the items in an envelope with the collection total, its public url and a rev for each item; the url itself serves the bare array. " +
@@ -656,21 +750,22 @@ export const TOOLS: ToolDefinition[] = [
       const limit = Math.max(1, Number(args.limit) || 50);
       const page = collection.items.slice(offset, offset + limit);
 
-      return JSON.stringify(
-        {
-          path: collection.path,
-          url: dataUrl(ctx, collection.path),
-          served: ENVELOPE,
-          rev: collection.rev,
-          total: collection.items.length,
-          offset,
-          items: page.map((item) => ({ id: item.id, rev: revOf(collection, item.id), item: project(item, args.fields) })),
-        });
+      return {
+        path: collection.path,
+        url: dataUrl(ctx, collection.path),
+        served: ENVELOPE,
+        rev: collection.rev,
+        total: collection.items.length,
+        offset,
+        items: page.map((item) => ({ id: item.id, rev: revOf(collection, item.id), item: project(item, args.fields) })),
+      };
     },
-  },
-  {
+    render: asJson,
+  }),
+  tool({
     name: "count_items",
     title: "Count items by field",
+    access: "read",
     description:
       "Count records grouped by one or more fields, without reading them. " +
       "Use this when the question is about the shape of a collection rather than its contents: what is missing, what is thin, where coverage is uneven, how many of each kind there are. " +
@@ -751,18 +846,20 @@ export const TOOLS: ToolDefinition[] = [
           count,
         }));
 
-      return JSON.stringify({
+      return {
         path: collection.path,
         total: inScope.length,
         group_by: fields,
         ...(filter.length > 0 ? { filter: Object.fromEntries(filter) } : {}),
         rows,
-      });
+      };
     },
-  },
-  {
+    render: asJson,
+  }),
+  tool({
     name: "get_item",
     title: "Read one item",
+    access: "read",
     description: "Return a single item from a collection by its id, with the rev to pass back as if_rev when you write. " + REVS,
     inputSchema: object({ path: { type: "string" }, id: { type: "string" } }, ["path", "id"]),
     handler: async (args, ctx) => {
@@ -770,14 +867,14 @@ export const TOOLS: ToolDefinition[] = [
       const collection = await getCollection(path);
       const item = collection?.items.find((i) => i.id === String(args.id));
       if (!item) throw new Error(`No item ${args.id} in ${path}`);
-      return JSON.stringify(
-        { path, url: dataUrl(ctx, path), id: item.id, rev: revOf(collection!, item.id), item },
-      );
+      return { path, url: dataUrl(ctx, path), id: item.id, rev: revOf(collection!, item.id), item };
     },
-  },
-  {
+    render: asJson,
+  }),
+  tool({
     name: "put_item",
     title: "Create or update an item",
+    access: "write",
     description:
       "Write one item without rewriting the collection. By default the given fields are merged into the existing item and everything else is left alone; pass merge false to replace it outright. Creates the collection when it does not exist. Omit id to append a new item with a generated id. " +
       "Updating an item needs the if_rev you read from get_item, list_items or search_items, so a write from a stale read is refused rather than clobbering a newer one; pass overwrite true only when you mean to discard whatever is there. " +
@@ -818,12 +915,15 @@ export const TOOLS: ToolDefinition[] = [
         ifRev: args.if_rev === undefined ? undefined : Number(args.if_rev),
         overwrite: args.overwrite === true,
       });
-      return `${created ? "Created" : "Updated"} ${item.id} at rev ${rev} in collection ${path}, served at ${dataUrl(ctx, path)}`;
+      return { path, url: dataUrl(ctx, path), id: item.id, rev, created };
     },
-  },
-  {
+    render: (r) =>
+      `${r.created ? "Created" : "Updated"} ${r.id} at rev ${r.rev} in collection ${r.path}, served at ${r.url}`,
+  }),
+  tool({
     name: "delete_item",
     title: "Delete an item",
+    access: "write",
     description:
       "Remove one item from a collection by its id. The rest of the collection is untouched. Pass the rev you read as if_rev and the delete is refused if the item changed since. " +
       "If other records reference this id through a declared collection reference, the delete is refused and names how many; repoint those records first, or pass force true to orphan them deliberately. " +
@@ -846,13 +946,16 @@ export const TOOLS: ToolDefinition[] = [
       const id = String(args.id);
       const { deleted, orphaned } = await deleteItem(path, id, ifRev, args.force === true);
       if (!deleted) throw new Error(`No item ${id} in ${path}`);
-      if (orphaned.length === 0) return `Deleted ${id} from ${path}`;
-      return JSON.stringify({ deleted: id, path, orphaned });
+      return { deleted: id, path, orphaned };
     },
-  },
-  {
+    // A clean delete says so in one line; one that orphaned records owes the caller the list, and the
+    // caller who reached for force is the least likely to go looking for it afterwards.
+    render: (r) => (r.orphaned.length === 0 ? `Deleted ${r.deleted} from ${r.path}` : asJson(r)),
+  }),
+  tool({
     name: "reorder_items",
     title: "Reorder a collection",
+    access: "write",
     description:
       "Move the given ids to the front of the collection, in the order listed. Items left out keep their relative order behind them, so moving one item to the top only needs one id. " +
       "Pass the collection rev as if_rev and the reorder is refused if the collection changed since you read it.",
@@ -873,16 +976,18 @@ export const TOOLS: ToolDefinition[] = [
       const ifRev = args.if_rev === undefined ? undefined : Number(args.if_rev);
       const moved = args.ids.map(String);
       const items = await reorderItems(path, moved, ifRev);
-      const rest = items.length - moved.length;
       // Naming the ids that did not move would return the whole collection to answer a call that named one item.
-      return `Order in ${path}: ${moved.join(", ")}${
-        rest > 0 ? `, then the other ${rest} item${rest === 1 ? "" : "s"} in their previous order` : ""
-      }.`;
+      return { path, moved, rest: items.length - moved.length };
     },
-  },
-  {
+    render: (r) =>
+      `Order in ${r.path}: ${r.moved.join(", ")}${
+        r.rest > 0 ? `, then the other ${r.rest} item${r.rest === 1 ? "" : "s"} in their previous order` : ""
+      }.`,
+  }),
+  tool({
     name: "search_items",
     title: "Search items",
+    access: "read",
     description:
       "Find items across one collection or all of them. Returns each match with its collection path, id and rev so it can be edited straight away with put_item or delete_item. " +
       "Query syntax: bare words match any field; field:value matches part of a field; field=value matches it exactly; field>10, field<10, field>=10 and field<=10 compare numbers; " +
@@ -922,13 +1027,14 @@ export const TOOLS: ToolDefinition[] = [
         });
       }
 
-      if (matches.length === 0) return `No items match ${args.query}`;
-      return JSON.stringify({ total: matches.length, matches: matches.slice(0, limit) });
+      return { query: args.query, total: matches.length, matches: matches.slice(0, limit) };
     },
-  },
-  {
+    render: (r) => (r.total === 0 ? `No items match ${r.query}` : asJson({ total: r.total, matches: r.matches })),
+  }),
+  tool({
     name: "match_names",
     title: "Find existing items by name",
+    access: "read",
     description:
       "Check a batch of candidate names against a collection before creating anything, so the same entity is not added twice under a different spelling. " +
       "Matching ignores case, diacritics, punctuation and word order, and tolerates trailing qualifiers and abbreviations that prefix the full word, " +
@@ -995,21 +1101,22 @@ export const TOOLS: ToolDefinition[] = [
         return { name, matches };
       });
 
-      return JSON.stringify(
-        {
-          path: collection.path,
-          field,
-          ...(filter.length > 0 ? { filter: Object.fromEntries(filter) } : {}),
-          threshold,
-          compared: candidates.length,
-          skipped: inScope.length - candidates.length,
-          results,
-        });
+      return {
+        path: collection.path,
+        field,
+        ...(filter.length > 0 ? { filter: Object.fromEntries(filter) } : {}),
+        threshold,
+        compared: candidates.length,
+        skipped: inScope.length - candidates.length,
+        results,
+      };
     },
-  },
-  {
+    render: asJson,
+  }),
+  tool({
     name: "set_collection_refs",
     title: "Constrain a field to ids in another collection",
+    access: "write",
     description:
       "Declare that a field on this collection holds ids from another collection, so writes with a mistyped or stale value are rejected instead of stored. " +
       "Use this whenever records carry a value that must line up with something else: a category, a section, a status, an owner. " +
@@ -1034,26 +1141,31 @@ export const TOOLS: ToolDefinition[] = [
         throw new Error("refs must be an object of field name to collection path");
 
       const { refs, violations, missing } = await setRefs(path, args.refs as Record<string, string>);
-      const declared = Object.entries(refs);
-
-      if (declared.length === 0) return `Cleared every reference constraint on ${path}.`;
+      return { path, refs, violations, missing };
+    },
+    render: (r) => {
+      const declared = Object.entries(r.refs);
+      if (declared.length === 0) return `Cleared every reference constraint on ${r.path}.`;
 
       const lines = [
-        `${path}: ${declared.map(([field, target]) => `${field} references ids in ${target}`).join(", ")}.`,
-        violations === 0
+        `${r.path}: ${declared.map(([field, target]) => `${field} references ids in ${target}`).join(", ")}.`,
+        r.violations === 0
           ? "No existing record violates that."
-          : violations === 1
+          : r.violations === 1
             ? "1 existing record already violates it; run check_refs to see it."
-            : `${violations} existing records already violate it; run check_refs to see them.`,
+            : `${r.violations} existing records already violate it; run check_refs to see them.`,
       ];
-      if (missing.length > 0)
-        lines.push(`Note that ${missing.join(" and ")} does not exist yet, so every value will be rejected until it does.`);
+      if (r.missing.length > 0)
+        lines.push(
+          `Note that ${r.missing.join(" and ")} does not exist yet, so every value will be rejected until it does.`,
+        );
       return lines.join(" ");
     },
-  },
-  {
+  }),
+  tool({
     name: "check_refs",
     title: "Find broken references",
+    access: "read",
     description:
       "Find records whose reference fields point at ids that do not exist. " +
       "This only checks fields declared with set_collection_refs; if a collection has none declared, nothing is checked and the reply says so rather than reporting a clean bill of health. " +
@@ -1070,9 +1182,10 @@ export const TOOLS: ToolDefinition[] = [
     handler: async (args) => {
       const path = requirePath(args.path);
       const field = args.field === undefined ? undefined : String(args.field);
-      return JSON.stringify(await brokenRefs(path, field));
+      return brokenRefs(path, field);
     },
-  },
+    render: asJson,
+  }),
   transferTool("collection", "copy", {
     title: "Copy a collection",
     what: "collection",
@@ -1097,26 +1210,29 @@ export const TOOLS: ToolDefinition[] = [
       "Remove a whole collection and every item in it. Records in other collections that reference its ids are " +
       "listed in the reply, because they are about to point at nothing.",
   }),
-  {
+  tool({
     name: "get_site",
     title: "Get site info",
+    access: "read",
     description:
       "Return the site title, description, address, page count and every private path with its live share count.",
     inputSchema: object({}),
     handler: async (_args, ctx) => {
       const [settings, pages, privacy] = await Promise.all([getSettings(), listPages(), getPrivacy()]);
-      return JSON.stringify({
+      return {
         title: settings.title,
         description: settings.description,
         url: ctx.siteUrl,
         pages: pages.length,
         private: privacy.scopes.map((scope) => ({ path: scope.path, shares: scope.shares.length })),
-      });
+      };
     },
-  },
-  {
+    render: asJson,
+  }),
+  tool({
     name: "set_privacy",
     title: "Make a path private or public",
+    access: "write",
     description:
       "Close a path to the public, or reopen it. " +
       PRIVACY +
@@ -1141,29 +1257,31 @@ export const TOOLS: ToolDefinition[] = [
       if (args.private) {
         await setPrivate(path);
         const held = await bundleContents(path);
-        return JSON.stringify({
+        return {
           path,
           private: true,
           url: urlFor(ctx, path),
           closed: { pages: held.pages.length, collections: held.collections.length, assets: held.assets.length },
           next: "Nobody can reach any of it until you call share_path to mint a link.",
-        });
+        };
       }
 
       const scope = await setPublic(path);
-      if (!scope) return JSON.stringify({ path, private: false, note: `${path} was already public.` });
-      return JSON.stringify({
+      if (!scope) return { path, private: false, note: `${path} was already public.` };
+      return {
         path,
         private: false,
         url: urlFor(ctx, path),
         revoked: scope.shares.map((share) => share.label),
         note: "Everything at or under this path is public again, and every share link on it is dead.",
-      });
+      };
     },
-  },
-  {
+    render: asJson,
+  }),
+  tool({
     name: "share_path",
     title: "Mint a share link",
+    access: "write",
     description:
       "Return a link that opens a private path, and make the path private if it is not already. " +
       PRIVACY +
@@ -1188,19 +1306,21 @@ export const TOOLS: ToolDefinition[] = [
       if (path === "/") throw new Error(`/ cannot be private. ${ROOT_IS_NOT_A_BUNDLE}`);
 
       const label = args.label.trim();
-      const { token, share } = await mintShare(path, label);
-      return JSON.stringify({
+      const { token: secret, share } = await mintShare(path, label);
+      return {
         path,
         label,
-        link: `${urlFor(ctx, path)}#${token}`,
+        link: `${urlFor(ctx, path)}#${secret}`,
         created: share.createdAt,
         note: "Shown once. Only a hash is stored, so this link cannot be printed again.",
-      });
+      };
     },
-  },
-  {
+    render: asJson,
+  }),
+  tool({
     name: "list_shares",
     title: "List private paths and their share links",
+    access: "read",
     description:
       "List every private path with its share links: label, when it was minted and when it was last " +
       "redeemed. Pass a path for just that one. The links themselves are not stored and cannot be " +
@@ -1214,17 +1334,17 @@ export const TOOLS: ToolDefinition[] = [
 
       if (wanted && scopes.length === 0) {
         const covering = privateScope(privacy, wanted);
-        return JSON.stringify({
+        return {
           path: wanted,
           private: Boolean(covering),
           ...(covering ? { closed_by: covering.path } : {}),
           note: covering
             ? `${wanted} is private because ${covering.path} is. Its shares are listed under that path.`
             : `${wanted} is public.`,
-        });
+        };
       }
 
-      return JSON.stringify({
+      return {
         private: scopes.map((scope) => ({
           path: scope.path,
           url: urlFor(ctx, scope.path),
@@ -1234,12 +1354,14 @@ export const TOOLS: ToolDefinition[] = [
             last_used: share.lastUsedAt ?? null,
           })),
         })),
-      });
+      };
     },
-  },
-  {
+    render: asJson,
+  }),
+  tool({
     name: "revoke_share",
     title: "Revoke a share link",
+    access: "write",
     description:
       "Kill a share link. Pass a label to revoke that one recipient's link, or omit it to revoke " +
       "every link on the path. Effective on the holder's next request, not whenever their browser " +
@@ -1259,15 +1381,15 @@ export const TOOLS: ToolDefinition[] = [
       const gone = await revokeShares(path, label);
 
       if (gone.length === 0)
-        return JSON.stringify({
+        return {
           path,
           revoked: [],
           note: label ? `${path} has no share labelled "${label}".` : `${path} has no share links to revoke.`,
-        });
+        };
 
       const privacy = await getPrivacy();
       const left = privacy.scopes.find((scope) => scope.path === path)?.shares.length ?? 0;
-      return JSON.stringify({
+      return {
         path,
         revoked: gone.map((share) => share.label),
         remaining: left,
@@ -1275,20 +1397,23 @@ export const TOOLS: ToolDefinition[] = [
           left === 0
             ? `${path} is still private and now has no working links, so nobody can reach it.`
             : `${left} other link${left === 1 ? "" : "s"} still open ${path}.`,
-      });
+      };
     },
-  },
-  {
+    render: asJson,
+  }),
+  tool({
     name: "set_site_info",
     title: "Set site title and description",
+    access: "write",
     description: "Update the site title and description shown in the header of every themed page.",
     inputSchema: object({ title: { type: "string" }, description: { type: "string" } }),
     handler: async (args) => {
-      await saveSettings({
+      const settings = await saveSettings({
         ...(typeof args.title === "string" ? { title: args.title } : {}),
         ...(typeof args.description === "string" ? { description: args.description } : {}),
       });
-      return "Site info updated.";
+      return { title: settings.title, description: settings.description };
     },
-  },
+    render: () => "Site info updated.",
+  }),
 ];

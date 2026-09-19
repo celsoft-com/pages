@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Save the site and token this machine will use.
+#
+#   pages-login https://my-site.netlify.app      # token read from stdin
+#
+# The token arrives on stdin and never as an argument, so it stays out of argv and out of
+# shell history. Nothing here ever prints it back.
+set -euo pipefail
+
+site=${1-}
+if [ -z "$site" ]; then
+  echo "usage: pages-login <site-url>   (token on stdin)" >&2
+  exit 64
+fi
+
+case "$site" in
+  https://*|http://localhost*|http://127.0.0.1*) ;;
+  *) echo "pages: the site must be an https:// URL." >&2; exit 64 ;;
+esac
+
+site=$(printf '%s' "$site" | sed 's#/*$##')
+
+if [ -t 0 ]; then
+  echo "pages: pipe the token in, for example: pbpaste | pages-login $site" >&2
+  exit 64
+fi
+
+# Timed, because an agent's stdin is often an open pipe nobody is going to close, and a
+# setup step that hangs forever is worse than one that tells you how to feed it.
+if ! read -r -t 10 token; then
+  echo "pages: nothing arrived on stdin. Pipe the token in, for example: pbpaste | pages-login $site" >&2
+  exit 64
+fi
+if [ -z "$token" ]; then
+  echo "pages: no token on stdin." >&2
+  exit 64
+fi
+
+dir="${XDG_CONFIG_HOME:-$HOME/.config}/pages"
+file="$dir/config"
+
+mkdir -p "$dir"
+chmod 700 "$dir"
+
+umask 177
+printf 'site=%s\ntoken=%s\n' "$site" "$token" > "$file"
+chmod 600 "$file"
+
+echo "SAVED: $file"
+echo "SITE: $site"

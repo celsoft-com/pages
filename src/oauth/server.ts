@@ -194,10 +194,3 @@ export async function token(request: Request): Promise<Response> {
     scope: "pages",
   });
 }
-
-export async function authenticate(request: Request): Promise<string | null> {
-  const header = request.headers.get("authorization");
-  if (!header?.toLowerCase().startsWith("bearer ")) return null;
-  const record = await readToken(header.slice(7).trim());
-  return record && record.kind === "access" ? record.ownerId : null;
-}

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Call a pages site's REST API. With no arguments it fetches the tool list.
+#
+#   pages-call                          # GET /api/v1, the tool list and instructions
+#   pages-call list_pages               # a tool that takes no arguments
+#   pages-call get_page args.json       # arguments from a file
+#   pages-call get_page -               # arguments from stdin
+#
+# Arguments come from a file rather than the command line so a page of HTML never has to
+# survive shell quoting or land in the process list, and stdin is read only when asked for
+# with `-`, so this can never sit waiting on a pipe nobody is going to close.
+#
+# The token goes through a curl config file, so it never appears in argv either.
+set -euo pipefail
+
+self=$(cd "$(dirname "$0")" && pwd)
+
+# shellcheck source=pages-config
+. "$self/pages-config"
+
+tool=${1-}
+source=${2-}
+
+cfg=$(mktemp)
+body=$(mktemp)
+trap 'rm -f "$cfg" "$body"' EXIT
+chmod 600 "$cfg"
+printf 'header = "Authorization: Bearer %s"\n' "$PAGES_API_TOKEN" > "$cfg"
+
+if [ -z "$tool" ]; then
+  code=$(curl -sS --config "$cfg" -o "$body" -w '%{http_code}' "$PAGES_SITE_URL/api/v1")
+else
+  payload='{}'
+  if [ "$source" = "-" ]; then
+    payload=$(cat)
+  elif [ -n "$source" ]; then
+    if [ ! -f "$source" ]; then
+      echo "pages: no such file: $source" >&2
+      exit 64
+    fi
+    payload=$(cat "$source")
+  fi
+  [ -n "$payload" ] || payload='{}'
+
+  code=$(curl -sS --config "$cfg" -o "$body" -w '%{http_code}' \
+    -H 'content-type: application/json' \
+    --data-binary "$payload" \
+    "$PAGES_SITE_URL/api/v1/$tool")
+fi
+
+# Newline appended to the file rather than echoed after it, so the body leaves through one
+# write and piping this into head does not report a broken pipe on the second.
+if [ -s "$body" ] && [ "$(tail -c 1 "$body" | wc -l | tr -d ' ')" = "0" ]; then printf '\n' >> "$body"; fi
+cat "$body"
+
+# Distinct exit codes so the caller branches on the failure instead of reading the sentence.
+case "$code" in
+  2*) exit 0 ;;
+  401) echo "pages: 401, the token is unknown or revoked. Run scripts/pages-doctor." >&2; exit 3 ;;
+  403) echo "pages: 403, this token is read-only." >&2; exit 4 ;;
+  404) echo "pages: 404, no such tool. Run pages-call with no arguments for the list." >&2; exit 5 ;;
+  409) echo "pages: 409, something changed since you read it. Re-read and reapply." >&2; exit 6 ;;
+  *) echo "pages: HTTP $code" >&2; exit 1 ;;
+esac

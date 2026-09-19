@@ -10,7 +10,15 @@ const ctx: ToolContext = { siteUrl: "https://example.com" };
 
 beforeEach(resetBlobs);
 
-function call(name: string, args: Record<string, unknown> = {}): Promise<string> {
+// Goes through the renderer, so every reply pinned in this file is still the text a client gets.
+async function call(name: string, args: Record<string, unknown> = {}): Promise<string> {
+  const tool = TOOLS.find((t) => t.name === name);
+  if (!tool) throw new Error(`No tool named ${name}`);
+  return tool.render(await tool.handler(args, ctx));
+}
+
+// The same call as the REST surface makes: the structured result, before any rendering.
+async function raw(name: string, args: Record<string, unknown> = {}): Promise<any> {
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool) throw new Error(`No tool named ${name}`);
   return tool.handler(args, ctx);
@@ -80,9 +88,53 @@ describe("tool definitions", () => {
     expect(required("search_items")).toEqual(["query"]);
   });
 
+  it("renders the one reply that says nothing about what it wrote", async () => {
+    expect(await call("set_site_info", { title: "T", description: "D" })).toBe("Site info updated.");
+  });
+
   it("points page tools at collections so data does not get baked into html", () => {
     const publish = TOOLS.find((t) => t.name === "publish_page")!;
     expect(publish.description).toMatch(/collection/i);
+  });
+
+  // The whole list, so adding a tool is a decision about what a read-only credential may do rather
+  // than something that happens by default. A new name here has to be put on one side on purpose.
+  it("classifies every tool as a read or a write, and pins which are reads", () => {
+    for (const tool of TOOLS) expect(["read", "write"], tool.name).toContain(tool.access);
+
+    expect(
+      TOOLS.filter((t) => t.access === "read")
+        .map((t) => t.name)
+        .sort(),
+    ).toEqual(
+      [
+        "check_refs",
+        "count_items",
+        "get_item",
+        "get_page",
+        "get_site",
+        "list_assets",
+        "list_bundle",
+        "list_collections",
+        "list_items",
+        "list_pages",
+        "list_shares",
+        "match_names",
+        "search_items",
+      ].sort(),
+    );
+  });
+
+  // A handler that still returns its own string never got split, and the REST surface would serve
+  // that string as the whole body.
+  it("returns a structured result from every handler, never rendered text", async () => {
+    await seed();
+    await savePage({ path: "/about", contentType: "markdown", title: "About", body: "# About" });
+
+    for (const name of ["list_pages", "get_page", "list_collections", "list_items", "get_site", "list_shares"]) {
+      const result = await raw(name, name === "get_page" ? { path: "/about" } : name === "list_items" ? { path: "/products" } : {});
+      expect(typeof result, name).toBe("object");
+    }
   });
 });
 

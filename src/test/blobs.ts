@@ -39,8 +39,13 @@ function fakeStore(name: string) {
     async delete(key: string) {
       bucket(name).delete(key);
     },
-    async list() {
-      return { blobs: [...bucket(name).keys()].map((key) => ({ key })) };
+    // Honours the prefix, as the real store does. Ignoring it let one caller's keys come back to
+    // another, which reads as a record with every field undefined rather than as a wrong query.
+    async list(options?: { prefix?: string }) {
+      const prefix = options?.prefix ?? "";
+      return {
+        blobs: [...bucket(name).keys()].filter((key) => key.startsWith(prefix)).map((key) => ({ key })),
+      };
     },
   };
 }
