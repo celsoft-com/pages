@@ -517,6 +517,8 @@ export const TOOLS: AnyTool[] = [
       "An image uploaded to /root/favicon.ico, .svg, .png, .webp or .jpg becomes the site icon, served at " +
       "/favicon.ico; until one is uploaded the site serves a built-in default. " +
       `A file is at most ${MAX_ASSET_MB} MB once decoded, and one over that is refused before it is read. ` +
+      "That ceiling is the host's own request limit rather than a setting, so there is no larger endpoint " +
+      "and no way to send a file in pieces. Something bigger has to be made smaller before it is uploaded. " +
       BUNDLES,
     inputSchema: object(
       {

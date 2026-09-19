@@ -1,3 +1,4 @@
+import { bearerOf, admit } from "../auth/principal";
 import { readCookie } from "../auth/session";
 import { getOwner } from "../auth/setup";
 import { sha256Hex, sign, verify } from "../crypto/hmac";
@@ -62,9 +63,16 @@ export async function accessToScope(request: Request, scope: PrivateScope | null
   if (!scope) return PUBLIC;
 
   const shareId = await validGrant(request, scope);
-  if (!shareId) return { scope, open: false };
+  if (shareId) return { scope, open: true, cookie: (await grantCookie(scope.path, shareId)) ?? undefined };
 
-  return { scope, open: true, cookie: (await grantCookie(scope.path, shareId)) ?? undefined };
+  // The other way in, and the reason it exists: an asset is bytes, so the only way to read one back
+  // is an HTTP GET that writes them to a file, and a client holding the owner's token has to be able
+  // to prove that on a private path. Tried only after the cookie fails, so an ordinary visitor pays
+  // nothing for it, and through admit rather than resolve, so guessing a token here is rate limited
+  // exactly as it is at the two API doors.
+  if (bearerOf(request) && (await admit(request)).ok) return { scope, open: true };
+
+  return { scope, open: false };
 }
 
 export async function accessTo(request: Request, path: string): Promise<Access> {
