@@ -76,6 +76,12 @@ req = urllib.request.Request(
 print(json.load(urllib.request.urlopen(req)))
 ```
 
+## Documentation
+
+Every deploy serves its own reference at `/docs`: this README, the connector, the REST API, and
+every tool with its arguments and its reply. It is generated from the code that deploy is running,
+so it describes your site rather than a version of it somebody wrote down once.
+
 ## License
 
-MIT
+[MIT](LICENSE.md)

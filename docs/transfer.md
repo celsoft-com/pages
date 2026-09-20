@@ -1,9 +1,14 @@
-# Requirements: copy, move and delete at every level
+---
+title: Copy, move and delete
+order: 80
+---
 
-Status: implemented. Written 2026-09-06, superseding the earlier server-side move and copy draft, which
-predated [bundles](bundles.md).
+# Copy, move and delete
 
-## 1. Goal
+Twelve tools, one engine, one reply. Reorganizing a site runs on the server, so nothing is read out
+and written back, and nothing is lost on the way.
+
+## Why it runs on the server
 
 Reorganizing a site must never mean reading records out through a client and writing them back. That round
 trip is slow, and it is lossy in a way a server-side operation is not: ids, array order, revs and declared
@@ -13,7 +18,7 @@ or drop a nested field.
 Moving the six collections on the live site by hand costs roughly 500 tool calls and passes every stored
 byte through a language model twice.
 
-## 2. One service, three verbs, four levels
+## Three verbs, four levels
 
 Twelve tools, one engine, one reply shape.
 
@@ -32,7 +37,7 @@ Twelve tools, one engine, one reply shape.
 
 Item-level operations stay out of scope: `put_item` and `delete_item` already change one item at a time.
 
-## 3. What is preserved
+## What is preserved
 
 - **Item ids and array order, exactly.** Order is the collection order and pages rely on it.
 - **Every field value byte for byte**, including nested objects and arrays of objects.
@@ -44,7 +49,7 @@ Item-level operations stay out of scope: `put_item` and `delete_item` already ch
 Replacing an occupied target always bumps the rev past what that target held, so no rev a client is holding
 is ever reused for different content.
 
-## 4. Declared references
+## Declared references
 
 - **Carried to the target.** A copy or move never silently drops a declaration.
 - **Rewritten inside the operation.** A ref pointing at a collection moving in the same call follows it, so
@@ -53,7 +58,7 @@ is ever reused for different content.
 - **Reported when broken.** A move takes the source path away just as a delete does, so refs from outside
   the operation are listed in `breaks` rather than being refused or silently repointed.
 
-## 5. Collisions, validation, atomicity
+## Collisions, and what happens when one fails
 
 - **Refuses an occupied target**, naming what is there, unless `overwrite: true`.
 - **Refuses a no-op** where `from` and `to` normalize to the same path.
@@ -68,7 +73,7 @@ is ever reused for different content.
 - **A bundle verb always asks twice.** Without `confirm: true` it changes nothing and returns the inventory
   it would write or remove.
 
-## 6. Page content is never rewritten
+## Page content is never rewritten
 
 Pages hardcode the URLs they fetch. There is no reliable way to tell which strings in arbitrary HTML are a
 URL, so no operation edits a page.
@@ -82,7 +87,7 @@ A URL a page assembles from pieces cannot be found at all. That is why the reply
 rather than promising a clean result, and why a client that cannot break a page even briefly should copy,
 repoint the page, confirm it renders, then delete the source.
 
-## 7. The reply
+## The reply
 
 Every tool returns the same envelope: `operation`, `scope`, `from`, `to`, `applied`, `resources`, `breaks`,
 `pages_to_update`, `notes`, and `rest_of_bundle` on a page verb. Each resource carries its kind, both paths,
@@ -92,28 +97,8 @@ that would carry one there are both refused before anything is written.
 
 That is enough to verify the result without a follow-up call.
 
-## 8. Non-goals
+## What it does not do
 
-- Item-level copy or move between collections, and merging two collections into one.
-- Transforming, renaming or reshaping fields during a copy.
-- Rewriting page content, under any flag.
-- Any automatic or scheduled reorganization. These run only when a client calls them.
-- Changing the `/data/<path>.json` serving scheme or existing `/assets/<hash>.<ext>` URLs.
-
-## 9. Acceptance criteria
-
-- A copy leaves the source with the same items and produces a target with the same ids in the same order.
-- A round trip out and back is byte-identical, nested objects and arrays of objects included.
-- `move_bundle('/trip', '/gf')` yields `/gf/items` declaring `group` against `/gf/filters`; moving
-  `/trip/items` alone leaves it declaring `group` against `/trip/filters`.
-- Copying onto an occupied path fails and changes nothing; with `overwrite` it succeeds.
-- A copy interrupted by an induced failure leaves nothing at the target, and a failed delete puts every
-  source back.
-- After `move_collection('/trip/items', '/gf/items')`, `/data/trip/items.json` 404s and
-  `/data/gf/items.json` serves every item as a bare array.
-- That reply names the page holding `/data/trip/` and gives the line with `const BASE`.
-- A move where source and target normalize to the same path is refused.
-- `move_bundle('/trip', ...)` does not touch `/tripwire/items`, and `/` is refused at either end.
-- A hash-keyed asset cannot be moved to a path, and can still be deleted by its key.
-- `delete_page` leaves every collection and asset under its path intact and names them in `rest_of_bundle`.
-- No operation modifies any page's stored content.
+It never edits a page, under any flag. It does not move or merge individual items between
+collections, since those already change one at a time, and it does not rename or reshape fields on
+the way past. Nothing here runs on a schedule: a transfer happens because somebody asked for one.

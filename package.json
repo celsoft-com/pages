@@ -6,10 +6,11 @@
   "scripts": {
     "build": "tsc --noEmit && vitest run",
     "dev": "netlify dev",
+    "docs": "node scripts/docs-content.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:deploy": "node scripts/build-info.mjs && npm run build"
+    "build:deploy": "node scripts/build-info.mjs && node scripts/docs-content.mjs && npm run build"
   },
   "devDependencies": {
     "@netlify/functions": "^6.0.0",

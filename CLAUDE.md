@@ -257,6 +257,59 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   gate, in front of the registry rather than inside either door. A handler that still returns its own string never
   got split, and [tools.test.ts](src/mcp/tools.test.ts) fails on it. Never add an endpoint that does not come from
   the registry, not even one.
+- **Documentation has four sources and no fifth.** `/docs` is the README, the licence, the markdown in
+  [docs/](docs), and the tool registry drawn as tables. [docs/handler.ts](src/docs/handler.ts) names no tool, no
+  argument and no reply, and contains no prose: a paragraph written into it would be a fifth source, in the one
+  place nobody looks when the behaviour it describes changes. So the rule cuts both ways. **Code that this system
+  documents has to carry its own documentation**: a tool's `description`, and a `description` on every field of
+  its `inputSchema` and `outputSchema`, because those *are* the reference, drawn straight onto the page. And
+  **narrative belongs in [docs/](docs) as markdown**, one file per topic, with frontmatter giving it a `title` and
+  an `order` for the sidebar; [topics.ts](src/docs/topics.ts) reads both and nothing else decides either.
+  [docs/tools.md](docs/tools.md) is the one topic that is not a page of its own: it introduces the generated
+  reference at `/docs/tools` and takes that sidebar entry, which is how the reference gets prose without any
+  being written into the handler. The set of topics is one per subsystem and is meant to stay that way: getting
+  started and working with Claude for somebody who just pressed the button, connecting a client, then pages,
+  collections, assets, private paths, bundles, transfers and maps, each answering to a rule in this file. A new
+  subsystem earns a topic; a new feature inside one belongs in the topic that already covers it. A topic is
+  reader-facing prose, so it carries no status line, no acceptance criteria and no non-goals list: the reasoning
+  that explains behaviour stays, the project bookkeeping lives here instead. A link out of a topic goes to
+  another topic as a file (`bundles.md`) or to `/docs/...`, never into `src/`, and
+  [docs.test.ts](src/docs/docs.test.ts) fails on one that would 404 for a reader. Changing
+  how something works means changing the topic in the same commit, exactly as it means changing a tool's
+  description: the topic is the only place the reasoning lives, and a stale one is worse than a missing one.
+  Markdown links between topics are written as files (`[bundles](bundles.md)`), because the folder is read on
+  GitHub and in an editor too, and `linkToPage` turns them into pages when they are served.
+- **One tool, one entry, and the transport is a tab.** MCP and the REST API are two services in front of one
+  API, so the reference documents a tool once: the description, the arguments and the result are the same value
+  whichever door the call came through, and the only thing that differs is the envelope.
+  [example.ts](src/docs/example.ts) builds both envelopes from the tool's own input schema, required arguments
+  only, so a new argument appears in both at once and neither example is written down anywhere. The tabs are
+  radio inputs and work with no script; the script in [layout.ts](src/docs/layout.ts) only keeps every set on a
+  page in step, so choosing REST once does not have to be chosen fourteen times on the way down. If a tool ever
+  is offered at one door and not the other, that belongs in the registry and in the tab, never in a second page
+  documenting one service's tools apart from the other's. The same goes for connecting:
+  [docs/api.md](docs/api.md) is one topic covering both doors, because signing in over each is a difference
+  between two services of one API, not two APIs to describe in turn.
+- **A topic may take a value from the code, never a sentence.** `fills` in [topics.ts](src/docs/topics.ts) is the
+  whole list: the site's own URLs, the MCP protocol version, and the `INSTRUCTIONS` string. A placeholder outside
+  that table fails [docs.test.ts](src/docs/docs.test.ts) rather than printing `{{whatever}}` on a page, and the
+  same test fails on any `{{` surviving into the HTML. That table is how prose states a fact the code decides
+  without restating it: never write the connector URL, the protocol version or a copy of the instructions into
+  markdown.
+- **`outputSchema` is required for the same reason `access` is.** A handler's result is the REST body byte for
+  byte, so its shape is published API, and it is now published documentation as well.
+  [results.test.ts](src/mcp/results.test.ts) holds every reply against the declaration through
+  [shapes.ts](src/test/shapes.ts) and fails on a key returned and not declared, a declared key not returned, or one
+  of the wrong type. `group` is required for the same reason again: the reference's navigation comes from the
+  registry, so no screen keeps a list of tools.
+- **The markdown is carried into the bundle, not read from disk.** esbuild bundles source, not the files beside
+  it, so [docs-content.mjs](scripts/docs-content.mjs) copies README.md, LICENSE.md and every `docs/*.md` into
+  [content.ts](src/docs/content.ts). It runs in `build:deploy` ahead of the tests, so a deploy ships the markdown
+  it was built from and there is no step to remember; the copy is committed too, because `mise run dev` and the
+  suite read it rather than running a build, and [content.test.ts](src/docs/content.test.ts) fails when it is
+  stale. `mise run docs` refreshes it. `/docs` is a reserved prefix matched on a segment boundary, and it is
+  served before the setup check, because a site with no owner yet is exactly where somebody reads the
+  documentation.
 - **A service gets a token, never the OAuth flow.** A cron job has no browser to render a consent screen in and no
   redirect URI to receive a code at, so the owner mints a bearer token in the admin and pastes it in
   ([tokens.ts](src/auth/tokens.ts)). One resolver reads every credential off one header

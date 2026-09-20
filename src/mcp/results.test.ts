@@ -4,6 +4,7 @@ import { saveCollection, setRefs } from "../data/service";
 import { savePage } from "../pages/service";
 import { setPrivate } from "../private/service";
 import { resetBlobs } from "../test/blobs";
+import { schemaProblems } from "../test/shapes";
 import { clearGeoFetch, stubGeoFetch } from "../test/http";
 import { TOOLS, type ToolContext } from "./tools";
 
@@ -18,7 +19,12 @@ beforeEach(resetBlobs);
 async function raw(name: string, args: Record<string, unknown> = {}): Promise<any> {
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool) throw new Error(`No tool named ${name}`);
-  return tool.handler(args, ctx);
+  const result = await tool.handler(args, ctx);
+  // The shape is declared on the tool as well as asserted here, because /docs publishes that
+  // declaration as the documented reply. Checking it on every call in this file means the
+  // declaration is exercised by the tests that already cover each branch.
+  expect(schemaProblems(tool.outputSchema, result), name).toEqual([]);
+  return result;
 }
 
 function keys(value: unknown): string[] {
@@ -332,6 +338,29 @@ describe("geo results", () => {
       "surface_m",
       "warnings",
       "way_type_m",
+    ]);
+  });
+});
+
+describe("the shape check itself", () => {
+  // A vacuous checker would let every declaration above pass while documenting nothing, so it is
+  // held against both failures it exists to catch.
+  const schema = { type: "object", properties: { path: { type: "string" } }, required: ["path"] };
+
+  it("catches a key that is returned and not declared", () => {
+    expect(schemaProblems(schema, { path: "/a", extra: 1 })).toEqual([
+      "result.extra is returned and not declared",
+    ]);
+  });
+
+  it("catches a key that is declared and not returned", () => {
+    expect(schemaProblems(schema, {})).toEqual(["result.path is declared and not returned"]);
+  });
+
+  it("catches a declared key of the wrong type, however deep", () => {
+    const nested = { type: "object", properties: { rows: { type: "array", items: schema } }, required: ["rows"] };
+    expect(schemaProblems(nested, { rows: [{ path: 3 }] })).toEqual([
+      "result.rows[0].path is number, declared string",
     ]);
   });
 });
