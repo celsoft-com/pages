@@ -1,5 +1,5 @@
 // A bundle is a path plus everything at or under it. Matching is on segment boundaries,
-// never string prefixes: /bavaria does not contain /bavaria-lessons/lessons.
+// never string prefixes: /photos does not contain /photos-archive/lessons.
 export function segmentsOf(path: string): string[] {
   return path.split("/").filter((s) => s.length > 0);
 }

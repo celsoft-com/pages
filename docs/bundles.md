@@ -17,7 +17,7 @@ A path is a **bundle**. It holds every page, collection and asset at or under it
 /trip/items            collection, in /trip
 /trip/day1             page, in /trip
 /trip/day1/items       collection, in /trip/day1 and in /trip
-/trip/images/coburg.jpg  asset, in /trip
+/trip/images/photo.jpg  asset, in /trip
 ```
 
 Pages, collections and assets are all just things at paths. None of them owns any other. Bundles nest,
@@ -29,8 +29,8 @@ Nothing is stored. The rule is computed from paths on every request.
 
 This is the one place the implementation goes wrong, and the bug is silent.
 
-`"/bavaria-lessons/lessons".startsWith("/bavaria")` is true, but `bavaria` and `bavaria-lessons` are
-different segments, so `/bavaria` does not hold it. That pair exists on the live site. Compare segment
+`"/photos-archive/lessons".startsWith("/photos")` is true, but `photos` and `photos-archive` are
+different segments, so `/photos` does not hold it. Near-miss neighbours like that are common. Compare segment
 arrays, not strings.
 
 | Bundle | Path | Held |
@@ -39,8 +39,8 @@ arrays, not strings.
 | `/trip` | `/trip/items` | yes |
 | `/trip` | `/trip/day1/items` | yes |
 | `/trip` | `/tripwire/items` | **no** |
-| `/bavaria` | `/bavaria-lessons/lessons` | **no** |
-| `/bavaria-lessons` | `/bavaria-lessons/lessons` | yes |
+| `/photos` | `/photos-archive/lessons` | **no** |
+| `/photos-archive` | `/photos-archive/lessons` | yes |
 
 In `delete_bundle` this is the difference between a wrong listing and permanent data loss.
 

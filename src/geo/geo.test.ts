@@ -89,17 +89,17 @@ describe("geocode", () => {
   beforeEach(() => stubGeoFetch());
 
   it("returns candidates rather than an answer", async () => {
-    const result = await geocodeQuery("Bamberg", 5);
+    const result = await geocodeQuery("Springfield", 5);
     expect(result.count).toBe(2);
-    expect(result.candidates.map((c) => c.name)).toEqual(["Bamberg", "Bamberg Hauptbahnhof"]);
+    expect(result.candidates.map((c) => c.name)).toEqual(["Springfield", "Springfield Union Station"]);
     expect(result.provider).toBe("nominatim");
     expect(result.attribution).toMatch(/OpenStreetMap/);
   });
 
   it("separates the name from the place around it", async () => {
-    const [first] = (await geocodeQuery("Bamberg", 5)).candidates;
-    expect(first.name).toBe("Bamberg");
-    expect(first.context).toBe("Oberfranken, Bayern, Deutschland");
+    const [first] = (await geocodeQuery("Springfield", 5)).candidates;
+    expect(first.name).toBe("Springfield");
+    expect(first.context).toBe("Greenfield County, Illinois, United States");
     expect(first.kind).toBe("town");
   });
 
@@ -109,7 +109,7 @@ describe("geocode", () => {
 
   it("switches provider when a key is set, without changing the shape", async () => {
     process.env.ORS_API_KEY = "test-key";
-    const result = await geocodeQuery("Bamberg", 5);
+    const result = await geocodeQuery("Springfield", 5);
     expect(result.provider).toBe("openrouteservice");
     expect(Object.keys(result.candidates[0]).sort()).toEqual(
       ["confidence", "context", "kind", "lat", "lon", "name"].sort(),

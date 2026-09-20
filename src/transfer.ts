@@ -137,7 +137,7 @@ export async function planTransfer(input: {
     if (scope === "collection" && to === MANIFEST_PATH)
       throw new Error(`${MANIFEST_PATH} is reserved for the index of collections. Pick another path.`);
     if (scope === "asset" && to === "/")
-      throw new Error("to must name a file, for example /germanfunstuff/images/coburg.jpg");
+      throw new Error("to must name a file, for example /gallery/images/photo.jpg");
   }
 
   const sources = await gather(scope, verb, from);

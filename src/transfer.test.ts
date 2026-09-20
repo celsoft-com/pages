@@ -34,7 +34,7 @@ function upload(filename: string, path: string): Promise<string> {
 
 const NESTED = {
   id: "muc",
-  name: "München",
+  name: "Zürich",
   group: "food",
   section: "day-1",
   detail: { hours: { open: "09:00", close: "17:00" }, tags: ["bier", "brezn"] },
@@ -43,18 +43,18 @@ const NESTED = {
 
 const BODY =
   '<!doctype html>\n<script>\nconst BASE = "/data/trip/";\nfetch(BASE + "items.json");\n' +
-  '</script>\n<img src="/assets/trip/images/coburg.jpg">\n';
+  '</script>\n<img src="/assets/trip/images/photo.jpg">\n';
 
 async function seedTrip(): Promise<void> {
   await savePage({ path: "/trip", contentType: "html", title: "Trip", body: BODY });
   await saveCollection("/trip/filters", [{ id: "food" }, { id: "sights" }]);
   await saveCollection("/trip/sections", [{ id: "day-1" }, { id: "day-2" }]);
-  await saveCollection("/trip/items", [NESTED, { id: "nue", name: "Nürnberg", group: "sights", section: "day-2" }]);
+  await saveCollection("/trip/items", [NESTED, { id: "nue", name: "Örebro", group: "sights", section: "day-2" }]);
   await call("set_collection_refs", {
     path: "/trip/items",
     refs: { group: "/trip/filters", section: "/trip/sections" },
   });
-  await upload("coburg.jpg", "/trip/images/coburg.jpg");
+  await upload("photo.jpg", "/trip/images/photo.jpg");
 }
 
 describe("one shape for every level", () => {
@@ -78,11 +78,11 @@ describe("one shape for every level", () => {
     const replies = [
       await json("copy_page", { from: "/trip", to: "/a" }),
       await json("copy_collection", { from: "/trip/items", to: "/b/items" }),
-      await json("copy_asset", { from: "/trip/images/coburg.jpg", to: "/c/coburg.jpg" }),
+      await json("copy_asset", { from: "/trip/images/photo.jpg", to: "/c/photo.jpg" }),
       await json("copy_bundle", { from: "/trip", to: "/d", confirm: true }),
       await json("delete_page", { path: "/a" }),
       await json("delete_collection", { path: "/b/items" }),
-      await json("delete_asset", { path: "/c/coburg.jpg" }),
+      await json("delete_asset", { path: "/c/photo.jpg" }),
       await json("delete_bundle", { path: "/d", confirm: true }),
     ];
     for (const reply of replies)
@@ -216,7 +216,7 @@ describe("pages", () => {
       { kind: "collection", path: "/trip/filters" },
       { kind: "collection", path: "/trip/items" },
       { kind: "collection", path: "/trip/sections" },
-      { kind: "asset", path: "/trip/images/coburg.jpg" },
+      { kind: "asset", path: "/trip/images/photo.jpg" },
     ]);
   });
 });
@@ -224,23 +224,23 @@ describe("pages", () => {
 describe("assets", () => {
   it("moves a file, keeping its bytes and dropping the old url", async () => {
     await seedTrip();
-    const before = await handleAsset(new Request("https://example.com/assets/trip/images/coburg.jpg"));
+    const before = await handleAsset(new Request("https://example.com/assets/trip/images/photo.jpg"));
     const bytes = await before.text();
 
-    const reply = await json("move_asset", { from: "/trip/images/coburg.jpg", to: "/gf/pics/coburg.jpg" });
-    expect(reply.resources[0].url).toBe("https://example.com/assets/gf/pics/coburg.jpg");
+    const reply = await json("move_asset", { from: "/trip/images/photo.jpg", to: "/gf/pics/photo.jpg" });
+    expect(reply.resources[0].url).toBe("https://example.com/assets/gf/pics/photo.jpg");
 
-    expect((await handleAsset(new Request("https://example.com/assets/trip/images/coburg.jpg"))).status).toBe(404);
-    const after = await handleAsset(new Request("https://example.com/assets/gf/pics/coburg.jpg"));
+    expect((await handleAsset(new Request("https://example.com/assets/trip/images/photo.jpg"))).status).toBe(404);
+    const after = await handleAsset(new Request("https://example.com/assets/gf/pics/photo.jpg"));
     expect(after.status).toBe(200);
     expect(await after.text()).toBe(bytes);
   });
 
   it("copies a file and leaves the original", async () => {
     await seedTrip();
-    await call("copy_asset", { from: "/trip/images/coburg.jpg", to: "/gf/coburg.jpg" });
-    expect((await handleAsset(new Request("https://example.com/assets/trip/images/coburg.jpg"))).status).toBe(200);
-    expect((await handleAsset(new Request("https://example.com/assets/gf/coburg.jpg"))).status).toBe(200);
+    await call("copy_asset", { from: "/trip/images/photo.jpg", to: "/gf/photo.jpg" });
+    expect((await handleAsset(new Request("https://example.com/assets/trip/images/photo.jpg"))).status).toBe(200);
+    expect((await handleAsset(new Request("https://example.com/assets/gf/photo.jpg"))).status).toBe(200);
   });
 
   it("refuses to move one stored under a content hash, and still deletes it by key", async () => {
@@ -270,7 +270,7 @@ describe("bundles", () => {
       "collection /trip/filters -> /gf/filters",
       "collection /trip/items -> /gf/items",
       "collection /trip/sections -> /gf/sections",
-      "asset /trip/images/coburg.jpg -> /gf/images/coburg.jpg",
+      "asset /trip/images/photo.jpg -> /gf/images/photo.jpg",
     ]);
     expect(await getPage("/trip")).not.toBeNull();
     expect(await getCollection("/trip/items")).not.toBeNull();
@@ -287,7 +287,7 @@ describe("bundles", () => {
     expect(await getPage("/trip")).toBeNull();
     expect((await getPage("/gf"))!.body).toBe(BODY);
     expect((await getCollection("/gf/items"))!.items.map((i) => i.id)).toEqual(["muc", "nue"]);
-    expect((await handleAsset(new Request("https://example.com/assets/gf/images/coburg.jpg"))).status).toBe(200);
+    expect((await handleAsset(new Request("https://example.com/assets/gf/images/photo.jpg"))).status).toBe(200);
     expect((await handleData(new Request("https://example.com/data/trip/items.json"))).status).toBe(404);
   });
 
@@ -299,7 +299,7 @@ describe("bundles", () => {
         path: "/gf",
         lines: [
           { line: 3, text: 'const BASE = "/data/trip/";' },
-          { line: 6, text: '<img src="/assets/trip/images/coburg.jpg">' },
+          { line: 6, text: '<img src="/assets/trip/images/photo.jpg">' },
         ],
         more: 0,
       },
@@ -412,7 +412,7 @@ describe("a page stored at /", () => {
       title: "Styles",
       body: "/* ---------- HEADER ---------- */\nvar span = (h - 5) / 16;\nconst esc = /[&<>\"]/g;\n",
     });
-    await saveCollection("/germanfunstuff/items", [{ id: "one" }]);
+    await saveCollection("/gallery/items", [{ id: "one" }]);
   });
 
   it("reports no stale lines, because / names no resource", async () => {

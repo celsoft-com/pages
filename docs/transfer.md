@@ -15,7 +15,7 @@ trip is slow, and it is lossy in a way a server-side operation is not: ids, arra
 refs survive only if the client reproduces them exactly, and every string is a chance to mistype an umlaut
 or drop a nested field.
 
-Moving the six collections on the live site by hand costs roughly 500 tool calls and passes every stored
+Moving six collections by hand costs roughly 500 tool calls and passes every stored
 byte through a language model twice.
 
 ## Three verbs, four levels

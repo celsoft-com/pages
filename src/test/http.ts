@@ -10,16 +10,16 @@ const NOMINATIM = [
   {
     lat: "49.8916",
     lon: "10.8868",
-    name: "Bamberg",
-    display_name: "Bamberg, Oberfranken, Bayern, Deutschland",
+    name: "Springfield",
+    display_name: "Springfield, Greenfield County, Illinois, United States",
     type: "town",
     importance: 0.72,
   },
   {
     lat: "49.9010",
     lon: "10.9000",
-    name: "Bamberg Hauptbahnhof",
-    display_name: "Bamberg Hauptbahnhof, Bamberg, Bayern, Deutschland",
+    name: "Springfield Union Station",
+    display_name: "Springfield Union Station, Springfield, Illinois, United States",
     type: "station",
     importance: 0.41,
   },
@@ -29,7 +29,7 @@ const ORS_GEOCODE = {
   features: [
     {
       geometry: { coordinates: [10.8868, 49.8916] },
-      properties: { name: "Bamberg", label: "Bamberg, Bayern, Germany", layer: "locality", confidence: 0.9 },
+      properties: { name: "Springfield", label: "Springfield, Illinois, United States", layer: "locality", confidence: 0.9 },
     },
   ],
 };

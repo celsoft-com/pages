@@ -46,7 +46,7 @@ See [connecting a client](api.md).
 
 Then talk to Claude:
 
-> Publish a page at /about that says who I am. I'm a cabinetmaker in Coburg, I've been doing it for
+> Publish a page at /about that says who I am. I'm a cabinetmaker in Ashford, I've been doing it for
 > twenty years, and I mostly build kitchens.
 
 Claude writes it and publishes it. It is live at `{{site_url}}/about` immediately: nothing is built,

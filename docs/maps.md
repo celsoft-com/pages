@@ -62,10 +62,10 @@ validates, the page renders, and the pin is simply in the wrong place.
 
 Two failures are worth naming because both look like success:
 
-- **Nothing matched** is not a bad match. Over-qualifying is the usual cause; `Forchheim,
-  Oberfranken, Bavaria, Germany` returns nothing where `Forchheim, Bavaria` returns the town.
-- **The wrong granularity.** A town is an area and a station is a point. Asking for `Fürth` and
-  asking for `Bahnhof Fürth` give answers 2.5 km apart, and both are correct.
+- **Nothing matched** is not a bad match. Over-qualifying is the usual cause: adding a
+  district, a region and a country to a town name can return nothing where the town alone is found.
+- **The wrong granularity.** A town is an area and a station is a point. Asking for `Zürich` and
+  asking for `Bahnhof Zürich` give answers 2.5 km apart, and both are correct.
 
 Coordinates are stored as separate numeric `lat` and `lon` fields, never a two-element array.
 GeoJSON orders them `[lon, lat]` and most map libraries take `[lat, lon]`, so a transposed pair
@@ -88,7 +88,7 @@ also edit the points it keeps.
 Two different jobs, and a bike page needs both.
 
 **Choosing** is `prefer`: `safety`, `balanced` or `speed`, cycling only. A real trade, measured on one
-67 km Bamberg–Nürnberg ride:
+67 km ride:
 
 | prefer | distance | main roads | on a signed cycle route |
 | --- | --- | --- | --- |
@@ -105,13 +105,14 @@ a safer line and silently got the ordinary one believes something untrue about t
 cycle route, and `warnings` for explicit prohibitions. Only unambiguous ones — `bicycle=no`,
 `bicycle=dismount`, `access=private`, `access=no`. "Busy road" is an opinion; `bicycle=no` is a fact
 somebody went and wrote down. That ride has 96 m of it, at both ends, which no profile avoids because
-it is the way in and out of Bamberg's old town.
+it is the way in and out of Springfield's old town.
 
 **`analyzed_m` is the honesty field.** It is how much of the route carried tags at all, and it is `0`
 when the router reports none, which is the `check_refs` rule again: a summary
 that checked nothing must not read like a summary that passed. Untagged ground is counted under
-`untagged` in the breakdowns for the same reason. OSM coverage is near total in Bavaria and thin
-elsewhere, and a route that is 40% untagged must not look like a route that is 40% asphalt.
+`untagged` in the breakdowns for the same reason. OSM coverage varies widely by region, near
+total in some places and thin in others, and a route that is 40% untagged must not look like a
+route that is 40% asphalt.
 
 **None of it is a safety score**, and nothing here will add one. Safe depends on whether it is you or
 a seven-year-old, a score cannot survive a provider change, and the moment one exists people stop

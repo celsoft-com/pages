@@ -219,11 +219,11 @@ const SERVING =
 
 export const BUNDLES =
   "Organization is a folder tree and nothing more. A path is a bundle and holds everything at or under it: /trip " +
-  "holds /trip/items, /trip/images/coburg.jpg and /trip/day1/items alike, and /trip/day1 holds that last one too. " +
+  "holds /trip/items, /trip/images/photo.jpg and /trip/day1/items alike, and /trip/day1 holds that last one too. " +
   "Pages, collections and assets are all just resources at paths. None of them owns or belongs to another, there " +
   "is no owner and no owning page, and nothing is ever unfiled or ungrouped: a resource's own path already says " +
   "which bundles hold it, so publishing a page at /trip changes nothing about what is under /trip. Matching is on " +
-  "whole path segments, so /bavaria does not hold /bavaria-lessons/lessons. One exception: / is not a bundle, " +
+  "whole path segments, so /photos does not hold /photos-archive/lessons. One exception: / is not a bundle, " +
   "because it would hold the entire site. A resource may still sit at /, and what a browser gets at / is the site " +
   "contents, a generated list of every public page that no tool writes or deletes. The /root bundle is an ordinary " +
   "folder holding the favicon and whatever else is filed there. This is organization only, never a boundary: " +
@@ -718,7 +718,7 @@ export const TOOLS: AnyTool[] = [
         path: {
           type: "string",
           description:
-            "Optional path to file this asset under, for example /germanfunstuff/images/coburg.jpg. It is served " +
+            "Optional path to file this asset under, for example /gallery/images/photo.jpg. It is served " +
             "at /assets plus that path, and sits in the bundle that path names.",
         },
       },
@@ -835,7 +835,7 @@ export const TOOLS: AnyTool[] = [
       "them. Use it to see everything one page's content is made of. " +
       BUNDLES,
     inputSchema: object(
-      { path: { type: "string", description: "Bundle path, for example /germanfunstuff. It need not have a page." } },
+      { path: { type: "string", description: "Bundle path, for example /gallery. It need not have a page." } },
       ["path"],
     ),
     outputSchema: shape({
@@ -1346,7 +1346,7 @@ export const TOOLS: AnyTool[] = [
       "Matching ignores case, diacritics, punctuation and word order, and tolerates trailing qualifiers and abbreviations that prefix the full word, " +
       "so \"Acme Corp.\" finds \"ACME Corporation\" and \"Cafe Rouge\" finds \"Café Rouge\". " +
       "It compares one short field, by default name, and does not read descriptions or other long text, which mention other entities and generate false matches. " +
-      "When a collection is partitioned by another field, pass filter to compare only within one partition, for example filter {\"section\": \"coburg\"} so Coburg candidates are never matched against Bamberg records. " +
+      "When a collection is partitioned by another field, pass filter to compare only within one partition, for example filter {\"section\": \"north\"} so north candidates are never matched against south records. " +
       "The same name legitimately recurs once per partition, and without a filter those come back as duplicates. " +
       "Returns a result for every candidate in the order given, each with its matches sorted best first and an empty list where nothing was close enough. " +
       "A match carries the id and rev, so a duplicate can be updated with put_item instead of created. " +
@@ -1861,15 +1861,15 @@ export const TOOLS: AnyTool[] = [
       "Turn a place name or address into candidate coordinates. It returns several candidates with the place around " +
       "each one, never a single answer, because a geocoder is a guess and only the caller can tell which candidate is " +
       "the place meant. Read them, choose one, and store its lat and lon on a collection item. " +
-      "Ask for the specific thing rather than the town when precision matters: Fürth is a whole city and Bahnhof Fürth " +
-      "is a point, and they are 2.5 km apart. An empty result means nothing matched, which is not a bad match but no " +
+      "Ask for the specific thing rather than the town when precision matters: a town is an area and its station " +
+      "is a point, and they can be kilometres apart. An empty result means nothing matched, which is not a bad match but no " +
       "match at all, and over-qualifying a query is the usual cause. " +
       "Store the pair as separate numeric lat and lon fields, never as a two-element array: GeoJSON writes [lon, lat] " +
       "and most map libraries take [lat, lon], so a transposed pair validates, renders and is silently wrong. " +
       "Show the attribution in the reply on any page built from these coordinates.",
     inputSchema: object(
       {
-        query: { type: "string", description: "A place name or address, for example 'Bahnhof Fürth, Bavaria'" },
+        query: { type: "string", description: "A place name or address, for example 'Union Station, Springfield'" },
         limit: { type: "number", description: "How many candidates to return, 1 to 10. Default 5." },
       },
       ["query"],
