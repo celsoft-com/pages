@@ -27,6 +27,15 @@ describe("instructions", () => {
     expect(INSTRUCTIONS).toMatch(/collection/i);
   });
 
+  // A chat client reads this text and nothing else. Without it, an agent that can see list_assets
+  // and upload_asset has no way to learn that reading a file back is an HTTP fetch, and concludes
+  // from the tool list that assets are write-only.
+  it("says how an asset is read back, since no tool returns one", () => {
+    expect(INSTRUCTIONS).toMatch(/No tool hands back the contents of a file/);
+    expect(INSTRUCTIONS).toMatch(/fetch the url/);
+    expect(INSTRUCTIONS).toMatch(/API token/);
+  });
+
   it("spells out the exact address a collection is served at", () => {
     expect(INSTRUCTIONS).toContain("/products is served at /data/products.json");
     expect(INSTRUCTIONS).toContain("/shop/items at /data/shop/items.json");

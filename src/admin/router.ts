@@ -346,7 +346,7 @@ function accessPanel(input: {
 <input type="hidden" name="path" value="${escapeHtml(path)}">
 <input type="hidden" name="return" value="${escapeHtml(`${here}#access`)}">
 <button class="secondary" type="submit">Make private</button></form>
-<div class="small muted" style="margin-top:.5rem">Closes this path and everything under it: the pages, the data served under <code>/data</code> and the assets. Only a link you send will open it.</div></div>`;
+<div class="small muted" style="margin-top:.5rem">Closes this path and everything under it: the pages, the data served under <code>/data</code> and the assets. Only a link you send opens it for anyone else. You stay able to open it while signed in here, and an API token can still read it.</div></div>`;
 
   const rows = own.shares.length
     ? own.shares
@@ -438,7 +438,7 @@ async function pathAccessScreen(url: URL, minted?: { label: string; link: string
 <a class="button secondary" href="/admin">Back to pages</a></div>
 <p class="lede">${
       home
-        ? "The site contents is closed, so only a link opens it. Every page stays reachable at its own path unless it is private too."
+        ? "The site contents is closed, so only a link opens it for anyone else. Every page stays reachable at its own path unless it is private too."
         : "No page is published at this path, but it is private, so whatever is under it needs a link."
     }</p>
 ${accessPanel({

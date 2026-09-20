@@ -223,6 +223,35 @@ describe("a token opens it", () => {
   });
 });
 
+// The admin lists every private page and asset and offers to open them, so the owner being the one
+// person locked out of their own closed page is a bug that reads as a lost file.
+describe("the owner's own session opens it", () => {
+  beforeEach(() => call("set_privacy", { path: "/trip", private: true }));
+
+  async function session(): Promise<string> {
+    return (await createSessionCookie((await getOwner())!)).split(";")[0];
+  }
+
+  it("serves the page and the asset the Assets screen links to", async () => {
+    const cookie = await session();
+
+    expect(await (await get("/trip", cookie)).text()).toBe("TRIP PAGE");
+    expect(await (await get("/assets/trip/map.png", cookie)).text()).toBe("MAPBYTES");
+  });
+
+  it("is stored nowhere, since it is not what the public gets", async () => {
+    const response = await get("/trip", await session());
+
+    expect(response.headers.get("netlify-cdn-cache-control")).toBeNull();
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("leaves a logged-out visitor exactly where they were", async () => {
+    expect((await get("/trip", "pages_session=nonsense")).status).toBe(404);
+    expect((await get("/trip")).status).toBe(404);
+  });
+});
+
 describe("revocation", () => {
   it("takes effect on the next request", async () => {
     const cookie = await redeem(await share("/trip"));

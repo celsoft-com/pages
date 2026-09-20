@@ -173,9 +173,13 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   context, so an asset's bytes can never come back that way: a three megabyte image fetched through
   a tool is spent there, a third larger for the encoding, to produce something the agent cannot look
   at. `/assets/<path>` is the only way to read one, which is why `accessToScope`
-  ([gate.ts](src/private/gate.ts)) opens a private scope for a bearer credential as well as a share
-  cookie. It is tried only after the cookie fails, so an ordinary visitor pays nothing for it, and it
-  goes through `admit` so guessing a token there is rate limited like every other door. Nothing about
+  ([gate.ts](src/private/gate.ts)) opens a private scope for a bearer credential, and for the owner's
+  own session, as well as for a share cookie. Both are tried only after the share cookie fails, so an
+  ordinary visitor pays nothing for either, and the credential goes through `admit` so guessing a
+  token there is rate limited like every other door. The session belongs there because the admin
+  lists every private page and asset and offers to open them: without it the owner is the one person
+  who cannot see their own closed page, and the Assets screen's Open button answers 404, which reads
+  as a lost file rather than a closed one. Nothing about
   the response to a request carrying no credential changes, which is what keeps a private path
   indistinguishable from a missing one. The registry stays metadata only: `list_assets` hands out the
   URLs, and `upload_asset` is the single capped exception, base64 in because JSON-RPC carries no

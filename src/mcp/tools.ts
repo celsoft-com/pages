@@ -568,8 +568,11 @@ export const TOOLS: AnyTool[] = [
     title: "List assets",
     access: "read",
     description:
-      "List uploaded images and files with their public URLs and, where they have one, their path. An asset " +
+      "List uploaded images and files with their URLs and, where they have one, their path. An asset " +
       "uploaded before paths existed is named by a hash of its bytes instead and sits in no bundle. " +
+      "The url is also how a file is read back: no tool returns the contents of one, so fetch that address " +
+      "over HTTP and save it where you are working. One under a private path needs an API token on the " +
+      "request and otherwise answers as though nothing were there. " +
       BUNDLES,
     inputSchema: object({}),
     handler: async (_args, ctx) => ({
