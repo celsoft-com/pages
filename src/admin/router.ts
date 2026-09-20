@@ -837,6 +837,7 @@ async function connectionsScreen(url: URL, minted?: { label: string; secret: str
 <h1>Connect Claude</h1>
 <p class="lede">Add this URL as a custom connector in Claude. You will be asked to sign in with your admin password.</p>
 <div class="panel"><p class="mono" style="font-size:1rem">${escapeHtml(origin)}/mcp</p></div>
+<p class="small muted">This site documents itself at <a href="/docs" target="_blank" rel="noopener">/docs</a>: the connector, the REST API, and every tool with its arguments and its reply, generated from the code this deploy is running.</p>
 ${
       url.host.endsWith(".netlify.app")
         ? `<div class="notice warn"><strong>If Chrome says "Dangerous site" while signing in</strong>

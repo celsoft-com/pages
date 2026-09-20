@@ -4,6 +4,7 @@ import { admit } from "./auth/principal";
 import { handleAsset } from "./assets/handler";
 import { changedContent, purgeContent } from "./cache";
 import { handleData } from "./data/handler";
+import { DOCS_PREFIX, handleDocs } from "./docs/handler";
 import { handleFavicon } from "./favicon";
 import { isSetupComplete } from "./auth/setup";
 import { handleMcp } from "./mcp/handler";
@@ -82,6 +83,12 @@ async function route(request: Request, url: URL): Promise<Response> {
   // Segment boundary, not a string prefix: a page may be published at /admin-notes.
   if (path === "/admin" || path.startsWith("/admin/") || path === "/oauth/authorize")
     return handleAdmin(request, url);
+  // This software's own reference, drawn from the registry serving /mcp and /api/v1, so it describes
+  // the deploy it is served from. Before the setup check, because a site with no owner yet is
+  // exactly where someone reads the documentation. It reserves the prefix: a page published at
+  // /docs is not reachable, which is the cost of the site documenting itself.
+  if (path === DOCS_PREFIX || path.startsWith(`${DOCS_PREFIX}/`)) return handleDocs(request, url, origin);
+
   if (path.startsWith("/assets/")) return handleAsset(request);
   if (path.startsWith("/data/")) return handleData(request);
 

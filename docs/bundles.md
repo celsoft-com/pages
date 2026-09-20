@@ -1,3 +1,8 @@
+---
+title: Path bundles
+order: 70
+---
+
 # Path bundles
 
 Everything on the site is organized by path, exactly like a folder tree. Nothing else.
@@ -62,30 +67,12 @@ A bundle says where something lives. It says nothing about who may read or write
 - `set_collection_refs` may point at a collection in another bundle.
 - No write is ever rejected, and nothing is ever moved, renamed or deleted as a side effect.
 
-## Operations
+## The tools that work on a bundle
 
-- **`list_bundle <path>`** — every page, collection and asset at or under the path, with item counts,
-  revs, declared refs, sizes and public URLs. Errors where nothing is published at the path at all,
-  which is a different situation from a bundle holding only its own page.
-- **`delete_bundle <path>`** — deletes everything at and under the path. The only tool that deletes more
-  than one thing. Without `confirm: true` it deletes nothing and returns the inventory it would delete,
-  plus every record in another bundle that references an id it would remove.
-- **`delete_page <path>`** — deletes one page and leaves the rest of its bundle untouched, naming it.
-- **`upload_asset`** — takes an optional `path` to file the asset into a bundle. Without one it is stored
-  under a content hash, which keeps working forever but sits in no bundle.
+`list_bundle` returns everything at or under a path, with item counts, revisions, declared references,
+sizes and public URLs, which is how you see what one page is made of. `copy_bundle`, `move_bundle` and
+`delete_bundle` take the whole thing together, and do nothing until you confirm. See
+[copy, move and delete](transfer.md), and the [tool reference](/docs/tools) for the calls themselves.
 
-Serving is unchanged. Collection `/a/b` is served at `/data/a/b.json` as a bare JSON array.
-
-## Acceptance
-
-- `/bavaria` does not hold `/bavaria-lessons/lessons`, in listing or in delete.
-- `list_bundle('/trip')` holds `/trip/day1/items`, and so does `list_bundle('/trip/day1')`.
-- Every bundle operation refuses `/`, while a page or collection may still sit there.
-- A collection at `/` still writes and still serves at `/data/index.json`.
-- `/` lists every public page and no private one; a page cannot be published, moved or copied onto `/root`.
-- An asset at `/trip/images/coburg.jpg` serves at `/assets/trip/images/coburg.jpg`; one uploaded before
-  paths keeps its exact hash URL.
-- An asset named `index.html` or `notes.md` keeps its filename.
-- `delete_bundle` without `confirm` deletes nothing and lists what it would remove.
-- Against the current site: zero bytes of stored data change, `GET /data/trip/items.json` still returns
-  all 195 items, and `put_item` to `/trip/items` still succeeds.
+Serving is unaffected by any of it: collection `/a/b` is served at `/data/a/b.json` as a bare JSON
+array, wherever the collection sits.

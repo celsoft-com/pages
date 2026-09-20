@@ -2,7 +2,9 @@ import { originOf, publicUrl } from "../origin";
 import type { Access } from "../types";
 import { allows, toolsFor, TOOLS, type ToolContext } from "./tools";
 
-const PROTOCOL_VERSION = "2025-06-18";
+// Stated on /docs as well as in every initialize reply, from here, so the documented version is
+// the one the server actually speaks.
+export const PROTOCOL_VERSION = "2025-06-18";
 
 export const INSTRUCTIONS = [
   "Publish and edit pages on this site. Markdown is rendered into the site theme; full HTML documents are served exactly as written.",

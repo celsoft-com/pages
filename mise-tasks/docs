@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+#MISE description="Regenerate the copies of README.md and LICENSE.md that /docs serves"
+#MISE depends=["install"]
+set -euo pipefail
+source "${0:A:h}/_lib.sh"
+
+exec npm run docs

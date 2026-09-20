@@ -51,9 +51,13 @@ export interface ToolContext {
 export interface ToolDefinition<R = unknown> {
   name: string;
   title: string;
+  // What this tool is about, which is how /docs groups the reference. One registry, so the
+  // documentation's own navigation cannot list a tool that does not exist or miss one that does.
+  group: string;
   access: "read" | "write";
   description: string;
   inputSchema: Record<string, unknown>;
+  outputSchema: Record<string, unknown>;
   handler: (args: Record<string, any>, ctx: ToolContext) => Promise<R>;
   render: (result: R) => string;
 }
@@ -91,6 +95,90 @@ const MAX_ASSET_BYTES = MAX_ASSET_MB * 1024 * 1024;
 function object(properties: Record<string, unknown>, required: string[] = []) {
   return { type: "object", properties, required, additionalProperties: false };
 }
+
+// A result shape, written in the same JSON Schema vocabulary as an input schema, so /docs draws
+// both with one renderer. A handler's result is the REST body byte for byte, so the shape is
+// published API: results.test.ts holds every reply against the one declared here and fails on a
+// key that is returned and not declared, which is what stops the documentation drifting from it.
+function described(schema: Record<string, unknown>, description?: string): Record<string, unknown> {
+  return description === undefined ? schema : { ...schema, description };
+}
+
+function str(description?: string) {
+  return described({ type: "string" }, description);
+}
+
+function num(description?: string) {
+  return described({ type: "number" }, description);
+}
+
+function bool(description?: string) {
+  return described({ type: "boolean" }, description);
+}
+
+function nullable(type: string, description?: string) {
+  return described({ type: [type, "null"] }, description);
+}
+
+// A JSON value of whatever type the caller stored.
+function anyValue(description?: string) {
+  return described({}, description);
+}
+
+function list(items: unknown, description?: string) {
+  return described({ type: "array", items }, description);
+}
+
+function map(values: unknown, description?: string) {
+  return described({ type: "object", additionalProperties: values }, description);
+}
+
+// Required unless named as optional, which is the right way round for a reply: a field the caller
+// cannot count on is the exception, and saying so is the whole value of writing the shape down.
+function shape(properties: Record<string, unknown>, optional: string[] = []) {
+  return object(
+    properties,
+    Object.keys(properties).filter((key) => !optional.includes(key)),
+  );
+}
+
+// A reply that has more than one shape: one branch per way the call can go, each titled with the
+// case it answers, because "sometimes there is a warning field" is not what the caller needs to know.
+function either(...branches: Record<string, unknown>[]) {
+  return { anyOf: branches };
+}
+
+function branch(title: string, properties: Record<string, unknown>, optional: string[] = []) {
+  return { title, ...shape(properties, optional) };
+}
+
+const COLLECTION_ENTRY = shape({
+  path: str(),
+  items: num("How many items it holds"),
+  rev: num("The collection rev, for reorder_items"),
+  refs: map(str(), "Field name to the collection its ids come from"),
+  url: str("Serves the items as a bare JSON array"),
+});
+
+const BROKEN_REFERENCE = shape({
+  path: str("The collection holding the records"),
+  field: str(),
+  references: str("The collection path they point into"),
+  count: num(),
+});
+
+const REFERRER = shape({
+  path: str(),
+  field: str(),
+  count: num(),
+  ids: list(str(), "Up to twenty of them"),
+});
+
+const PAGE_MATCH = shape({
+  path: str(),
+  lines: list(shape({ line: num("1 based"), text: str() })),
+  more: num("Matching lines beyond the ones listed"),
+});
 
 function requirePath(raw: unknown): string {
   if (typeof raw !== "string" || raw.trim() === "") throw new Error("path is required");
@@ -303,13 +391,65 @@ function transferSchema(scope: Scope, verb: Verb, what: string) {
   );
 }
 
+const SCOPE_GROUPS: Record<Scope, string> = {
+  page: "Pages",
+  collection: "Data",
+  asset: "Assets",
+  bundle: "Bundles",
+};
+
 function transferTool(scope: Scope, verb: Verb, spec: { title: string; what: string; lead: string }) {
   return tool({
     name: `${verb}_${scope}`,
     title: spec.title,
     access: "write" as const,
+    group: SCOPE_GROUPS[scope],
     description: `${spec.lead} ${TRANSFER}${scope === "bundle" ? ` ${BUNDLES}` : ""}`,
     inputSchema: transferSchema(scope, verb, spec.what),
+    outputSchema: shape(
+      {
+        operation: str("copy, move or delete"),
+        scope: str("page, collection, asset or bundle"),
+        from: str("The path it read"),
+        to: str("The path it wrote. Absent on a delete."),
+        applied: bool(
+          "False when a bundle verb was called without confirm: nothing was written and the rest of this reply is the inventory it would have written.",
+        ),
+        resources: list(
+          shape(
+            {
+              kind: str("page, collection or asset"),
+              from: str("Where it was"),
+              to: nullable("string", "Where it is now, null on a delete"),
+              url: str("Where it is served now. Absent on a delete."),
+              replaced: bool("It overwrote something already there. Absent on a delete."),
+              title: str("Pages only"),
+              items: num("Collections only: how many items travelled"),
+              rev: num("Collections only: the rev it now holds"),
+              refs: map(str(), "Collections only: the reference constraints that came with it"),
+              bytes: num("Assets only"),
+            },
+            ["url", "replaced", "title", "items", "rev", "refs", "bytes"],
+          ),
+          "Every resource the operation touched, one entry each",
+        ),
+        breaks: list(BROKEN_REFERENCE, "Records in other collections left pointing at ids this removed"),
+        pages_to_update: list(
+          PAGE_MATCH,
+          "Page lines still naming a path that has gone. No page content is ever edited, so these are yours to fix.",
+        ),
+        privacy_changes: list(
+          shape({ kind: str(), path: str(), was: str(), now: str() }),
+          "Resources that changed hands between public and private. Absent when none did.",
+        ),
+        rest_of_bundle: list(
+          shape({ kind: str(), path: str() }),
+          "What stayed exactly where it was. Page scope only, and absent when nothing else sits under the path.",
+        ),
+        notes: list(str(), "What to tell the owner, already in sentences"),
+      },
+      ["to", "privacy_changes", "rest_of_bundle"],
+    ),
     handler: async (args, ctx) => transferResult(ctx, await runTransfer(transferArgs(args, scope, verb))),
     render: asJson,
   });
@@ -320,8 +460,19 @@ export const TOOLS: AnyTool[] = [
     name: "list_pages",
     title: "List pages",
     access: "read",
+    group: "Pages",
     description: "List every page published on this site. " + BUNDLES,
     inputSchema: object({}),
+    outputSchema: shape({
+      pages: list(
+        shape({
+          path: str(),
+          title: str(),
+          format: str("markdown or html"),
+          url: str("Where a browser reads it"),
+        }),
+      ),
+    }),
     handler: async (_args, ctx) => ({
       pages: (await listPages()).map((p) => ({
         path: p.path,
@@ -339,6 +490,7 @@ export const TOOLS: AnyTool[] = [
     name: "get_page",
     title: "Read a page",
     access: "read",
+    group: "Pages",
     description:
       "Return the stored source of one page so it can be edited. Pass find, or offset and limit, to read only the " +
       "part you are working on: the reply is then numbered lines rather than the whole document, which is what " +
@@ -352,6 +504,22 @@ export const TOOLS: AnyTool[] = [
         limit: { type: "number", description: "Maximum lines to return. Defaults to 200, which is also the cap." },
       },
       ["path"],
+    ),
+    outputSchema: either(
+      branch("The whole page, when nothing narrowed the read", {
+        path: str(),
+        title: str(),
+        format: str("markdown or html"),
+        content: str("The stored source, byte for byte"),
+      }),
+      branch("Numbered lines, when find, offset or limit was passed", {
+        path: str(),
+        title: str(),
+        format: str("markdown or html"),
+        total: num("Lines in the whole page"),
+        more: num("Matching lines beyond the ones returned"),
+        lines: list(shape({ line: num("1 based"), text: str() })),
+      }),
     ),
     handler: async (args) => {
       const path = requirePath(args.path);
@@ -381,6 +549,7 @@ export const TOOLS: AnyTool[] = [
     name: "edit_page",
     title: "Edit part of a page",
     access: "write",
+    group: "Pages",
     description:
       "Replace an exact string in a published page and leave every other byte of it alone. Read the part you are " +
       "changing with get_page first, passing find or offset and limit, and copy the snippet from what it returns. " +
@@ -398,6 +567,12 @@ export const TOOLS: AnyTool[] = [
       },
       ["path", "find", "replace"],
     ),
+    outputSchema: shape({
+      path: str(),
+      url: str(),
+      replaced: num("Occurrences replaced"),
+      lines: list(num(), "Line numbers that changed"),
+    }),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       if (typeof args.find !== "string") throw new Error("find is required");
@@ -421,6 +596,7 @@ export const TOOLS: AnyTool[] = [
     name: "publish_page",
     title: "Publish a page",
     access: "write",
+    group: "Pages",
     description:
       "Create a page at a path. Markdown is rendered into the site theme; HTML is served exactly as written. Fails if the path is taken unless overwrite is true. " +
       "If the page lists repeating things, offer the owner a data collection first: keep the items in one with put_item and have the page fetch /data/<path>.json, so editing one of them later does not mean rewriting the page. " +
@@ -440,6 +616,12 @@ export const TOOLS: AnyTool[] = [
       },
       ["path", "content"],
     ),
+    outputSchema: shape({
+      path: str(),
+      url: str("Where a browser reads it"),
+      title: str(),
+      format: str("markdown or html"),
+    }),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       if (typeof args.content !== "string" || args.content.length === 0)
@@ -461,6 +643,7 @@ export const TOOLS: AnyTool[] = [
     name: "update_page",
     title: "Update a page",
     access: "write",
+    group: "Pages",
     description:
       "Replace the content of an existing page. If you are rewriting the page only to change items in a list, move that list into a data collection instead and let the page fetch it. " +
       BUNDLES,
@@ -468,6 +651,12 @@ export const TOOLS: AnyTool[] = [
       "path",
       "content",
     ]),
+    outputSchema: shape({
+      path: str(),
+      url: str("Where a browser reads it"),
+      title: str(),
+      format: str("markdown or html"),
+    }),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       const existing = await getPage(path);
@@ -511,6 +700,7 @@ export const TOOLS: AnyTool[] = [
     name: "upload_asset",
     title: "Upload an asset",
     access: "write",
+    group: "Assets",
     description:
       "Store an image or file and return its public URL for use on any page. Pass path to file it into a bundle; " +
       "without one it is stored under a content hash, which keeps working forever but sits in no bundle. " +
@@ -534,6 +724,13 @@ export const TOOLS: AnyTool[] = [
       },
       ["filename", "content_base64", "content_type"],
     ),
+    outputSchema: shape({
+      url: str("The only way to read the bytes back. No tool returns them."),
+      path: nullable("string", "Null when it was stored under a content hash instead"),
+      filename: str(),
+      content_type: str(),
+      bytes: num("Size once decoded"),
+    }),
     handler: async (args, ctx) => {
       if (typeof args.content_base64 !== "string") throw new Error("content_base64 is required");
       // Checked from the encoded length, before decoding: the point is to refuse an oversized file
@@ -567,6 +764,7 @@ export const TOOLS: AnyTool[] = [
     name: "list_assets",
     title: "List assets",
     access: "read",
+    group: "Assets",
     description:
       "List uploaded images and files with their URLs and, where they have one, their path. An asset " +
       "uploaded before paths existed is named by a hash of its bytes instead and sits in no bundle. " +
@@ -575,6 +773,19 @@ export const TOOLS: AnyTool[] = [
       "request and otherwise answers as though nothing were there. " +
       BUNDLES,
     inputSchema: object({}),
+    outputSchema: shape({
+      assets: list(
+        shape(
+          {
+            filename: str(),
+            path: str("Absent for an asset stored under a content hash, which sits in no bundle"),
+            url: str("Fetch this over HTTP to read the file"),
+            bytes: num(),
+          },
+          ["path"],
+        ),
+      ),
+    }),
     handler: async (_args, ctx) => ({
       assets: (await assetEntries()).map((a) => ({
         filename: a.filename,
@@ -618,6 +829,7 @@ export const TOOLS: AnyTool[] = [
     name: "list_bundle",
     title: "List a bundle",
     access: "read",
+    group: "Bundles",
     description:
       "List every page, collection and asset at or under one path, including deeper pages and everything under " +
       "them. Use it to see everything one page's content is made of. " +
@@ -626,6 +838,13 @@ export const TOOLS: AnyTool[] = [
       { path: { type: "string", description: "Bundle path, for example /germanfunstuff. It need not have a page." } },
       ["path"],
     ),
+    outputSchema: shape({
+      path: str(),
+      has_page: bool("False when things are filed under a path that has no page at it"),
+      pages: list(shape({ path: str(), title: str(), url: str() })),
+      collections: list(COLLECTION_ENTRY),
+      assets: list(shape({ path: str(), bytes: num(), url: str() })),
+    }),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       if (path === "/") throw new Error(ROOT_IS_NOT_A_BUNDLE);
@@ -703,6 +922,7 @@ export const TOOLS: AnyTool[] = [
     name: "list_collections",
     title: "List data collections",
     access: "read",
+    group: "Data",
     description:
       "List every JSON data collection on this site with its item count and public URL. " +
       "A collection is an ordered array of items a page fetches and renders. " +
@@ -710,6 +930,7 @@ export const TOOLS: AnyTool[] = [
       " " +
       SERVING,
     inputSchema: object({}),
+    outputSchema: shape({ collections: list(COLLECTION_ENTRY) }),
     handler: async (_args, ctx) => ({
       collections: (await collectionEntries()).map((c) => ({
         path: c.path,
@@ -730,6 +951,7 @@ export const TOOLS: AnyTool[] = [
     name: "list_items",
     title: "List items in a collection",
     access: "read",
+    group: "Data",
     description:
       "Return items from a collection in order. Ask for only the fields you need and page with limit and offset; the whole collection is rarely worth reading. " +
       "The reply wraps the items in an envelope with the collection total, its public url and a rev for each item; the url itself serves the bare array. " +
@@ -749,6 +971,21 @@ export const TOOLS: AnyTool[] = [
       },
       ["path"],
     ),
+    outputSchema: shape({
+      path: str(),
+      url: str("Serves the bare items array, without this envelope"),
+      served: str("Says so in the reply itself, because the two shapes are easy to confuse"),
+      rev: num("The collection rev, for reorder_items"),
+      total: num("Items in the whole collection, not in this page of them"),
+      offset: num(),
+      items: list(
+        shape({
+          id: str(),
+          rev: num("Pass back as if_rev when you write this item"),
+          item: map(true, "The item's fields, cut down to the ones you asked for"),
+        }),
+      ),
+    }),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       const collection = await getCollection(path);
@@ -774,6 +1011,7 @@ export const TOOLS: AnyTool[] = [
     name: "count_items",
     title: "Count items by field",
     access: "read",
+    group: "Data",
     description:
       "Count records grouped by one or more fields, without reading them. " +
       "Use this when the question is about the shape of a collection rather than its contents: what is missing, what is thin, where coverage is uneven, how many of each kind there are. " +
@@ -798,6 +1036,19 @@ export const TOOLS: AnyTool[] = [
         },
       },
       ["path", "group_by"],
+    ),
+    outputSchema: shape(
+      {
+        path: str(),
+        total: num("Records counted, after any filter"),
+        group_by: list(str()),
+        filter: map(true, "Echoed back when one was passed"),
+        rows: list(
+          map(true, "One row per combination: each grouped field, plus count"),
+          "Sorted by the grouped values. A combination with no records has no row.",
+        ),
+      },
+      ["filter"],
     ),
     handler: async (args) => {
       const path = requirePath(args.path);
@@ -868,8 +1119,16 @@ export const TOOLS: AnyTool[] = [
     name: "get_item",
     title: "Read one item",
     access: "read",
+    group: "Data",
     description: "Return a single item from a collection by its id, with the rev to pass back as if_rev when you write. " + REVS,
     inputSchema: object({ path: { type: "string" }, id: { type: "string" } }, ["path", "id"]),
+    outputSchema: shape({
+      path: str(),
+      url: str(),
+      id: str(),
+      rev: num("Pass back as if_rev when you write"),
+      item: map(true, "Every stored field, nested values unchanged"),
+    }),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       const collection = await getCollection(path);
@@ -883,6 +1142,7 @@ export const TOOLS: AnyTool[] = [
     name: "put_item",
     title: "Create or update an item",
     access: "write",
+    group: "Data",
     description:
       "Write one item without rewriting the collection. By default the given fields are merged into the existing item and everything else is left alone; pass merge false to replace it outright. Creates the collection when it does not exist. Omit id to append a new item with a generated id. " +
       "Updating an item needs the if_rev you read from get_item, list_items or search_items, so a write from a stale read is refused rather than clobbering a newer one; pass overwrite true only when you mean to discard whatever is there. " +
@@ -909,6 +1169,13 @@ export const TOOLS: AnyTool[] = [
       },
       ["path", "fields"],
     ),
+    outputSchema: shape({
+      path: str(),
+      url: str(),
+      id: str("Generated when you did not pass one"),
+      rev: num("The item's new rev"),
+      created: bool("False when an existing item was updated"),
+    }),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       if (typeof args.fields !== "object" || args.fields === null || Array.isArray(args.fields))
@@ -932,6 +1199,7 @@ export const TOOLS: AnyTool[] = [
     name: "delete_item",
     title: "Delete an item",
     access: "write",
+    group: "Data",
     description:
       "Remove one item from a collection by its id. The rest of the collection is untouched. Pass the rev you read as if_rev and the delete is refused if the item changed since. " +
       "If other records reference this id through a declared collection reference, the delete is refused and names how many; repoint those records first, or pass force true to orphan them deliberately. " +
@@ -948,6 +1216,14 @@ export const TOOLS: AnyTool[] = [
       },
       ["path", "id"],
     ),
+    outputSchema: shape({
+      deleted: str("The id that was removed"),
+      path: str(),
+      orphaned: list(
+        REFERRER,
+        "Records left pointing at nothing, which only happens when force was passed. Empty otherwise.",
+      ),
+    }),
     handler: async (args) => {
       const path = requirePath(args.path);
       const ifRev = args.if_rev === undefined ? undefined : Number(args.if_rev);
@@ -964,6 +1240,7 @@ export const TOOLS: AnyTool[] = [
     name: "reorder_items",
     title: "Reorder a collection",
     access: "write",
+    group: "Data",
     description:
       "Move the given ids to the front of the collection, in the order listed. Items left out keep their relative order behind them, so moving one item to the top only needs one id. " +
       "Pass the collection rev as if_rev and the reorder is refused if the collection changed since you read it.",
@@ -978,6 +1255,11 @@ export const TOOLS: AnyTool[] = [
       },
       ["path", "ids"],
     ),
+    outputSchema: shape({
+      path: str(),
+      moved: list(str(), "The ids now at the front, in this order"),
+      rest: num("Items behind them, keeping their previous order. They are counted, not listed."),
+    }),
     handler: async (args) => {
       const path = requirePath(args.path);
       if (!Array.isArray(args.ids) || args.ids.length === 0) throw new Error("ids must be a non-empty array");
@@ -996,6 +1278,7 @@ export const TOOLS: AnyTool[] = [
     name: "search_items",
     title: "Search items",
     access: "read",
+    group: "Data",
     description:
       "Find items across one collection or all of them. Returns each match with its collection path, id and rev so it can be edited straight away with put_item or delete_item. " +
       "Query syntax: bare words match any field; field:value matches part of a field; field=value matches it exactly; field>10, field<10, field>=10 and field<=10 compare numbers; " +
@@ -1009,6 +1292,20 @@ export const TOOLS: AnyTool[] = [
       },
       ["query"],
     ),
+    outputSchema: shape({
+      query: str("Echoed back"),
+      total: num("Matches found, which can exceed the number returned"),
+      matches: list(
+        shape({
+          path: str("The collection it was found in"),
+          url: str(),
+          id: str(),
+          rev: num("Pass back as if_rev when you write it"),
+          index: num("Its position in that collection"),
+          item: map(true, "The fields you asked for"),
+        }),
+      ),
+    }),
     handler: async (args, ctx) => {
       if (typeof args.query !== "string" || args.query.trim() === "") throw new Error("query is required");
       const terms = parseQuery(args.query);
@@ -1043,6 +1340,7 @@ export const TOOLS: AnyTool[] = [
     name: "match_names",
     title: "Find existing items by name",
     access: "read",
+    group: "Data",
     description:
       "Check a batch of candidate names against a collection before creating anything, so the same entity is not added twice under a different spelling. " +
       "Matching ignores case, diacritics, punctuation and word order, and tolerates trailing qualifiers and abbreviations that prefix the full word, " +
@@ -1073,6 +1371,32 @@ export const TOOLS: AnyTool[] = [
         limit_per_name: { type: "number", description: "Most matches to return per candidate. Defaults to 3." },
       },
       ["path", "names"],
+    ),
+    outputSchema: shape(
+      {
+        path: str(),
+        field: str("The field compared, name unless you said otherwise"),
+        filter: map(true, "Echoed back when one was passed"),
+        threshold: num(),
+        compared: num("Records that carried the field and were compared"),
+        skipped: num("Records in scope with no string in that field"),
+        results: list(
+          shape({
+            name: str("The candidate, exactly as given"),
+            matches: list(
+              shape({
+                id: str(),
+                value: str("The stored name it matched"),
+                rev: num(),
+                score: num("0 to 1. Judge it, rather than trusting it."),
+              }),
+              "Best first, and empty where nothing was close enough",
+            ),
+          }),
+          "One entry per candidate, in the order given",
+        ),
+      },
+      ["filter"],
     ),
     handler: async (args) => {
       const path = requirePath(args.path);
@@ -1125,6 +1449,7 @@ export const TOOLS: AnyTool[] = [
     name: "set_collection_refs",
     title: "Constrain a field to ids in another collection",
     access: "write",
+    group: "Data",
     description:
       "Declare that a field on this collection holds ids from another collection, so writes with a mistyped or stale value are rejected instead of stored. " +
       "Use this whenever records carry a value that must line up with something else: a category, a section, a status, an owner. " +
@@ -1143,6 +1468,12 @@ export const TOOLS: AnyTool[] = [
       },
       ["path", "refs"],
     ),
+    outputSchema: shape({
+      path: str(),
+      refs: map(str(), "Field name to the collection its ids come from, as now declared"),
+      violations: num("Records already holding a value the new constraint rejects. Run check_refs to see them."),
+      missing: list(str(), "Referenced collections that do not exist yet, so every value is rejected until they do"),
+    }),
     handler: async (args) => {
       const path = requirePath(args.path);
       if (typeof args.refs !== "object" || args.refs === null || Array.isArray(args.refs))
@@ -1174,6 +1505,7 @@ export const TOOLS: AnyTool[] = [
     name: "check_refs",
     title: "Find broken references",
     access: "read",
+    group: "Data",
     description:
       "Find records whose reference fields point at ids that do not exist. " +
       "This only checks fields declared with set_collection_refs; if a collection has none declared, nothing is checked and the reply says so rather than reporting a clean bill of health. " +
@@ -1186,6 +1518,28 @@ export const TOOLS: AnyTool[] = [
         field: { type: "string", description: "One reference field. Omit to check every declared reference." },
       },
       ["path"],
+    ),
+    outputSchema: either(
+      branch("References were declared, so something was checked", {
+        path: str(),
+        checked: num("Records examined"),
+        refs_declared: map(str(), "What was verified"),
+        broken: list(
+          shape({
+            id: str(),
+            field: str(),
+            value: anyValue("The stored value that matches no id"),
+            references: str("The collection it should have named"),
+          }),
+        ),
+      }),
+      branch("Nothing is declared, so nothing was checked", {
+        path: str(),
+        checked: num("0"),
+        refs_declared: map(str(), "Empty"),
+        broken: list(anyValue(), "Empty, and it means nothing was looked at"),
+        warning: str("Says so, so an empty broken list is not read as a clean bill of health"),
+      }),
     ),
     handler: async (args) => {
       const path = requirePath(args.path);
@@ -1222,9 +1576,17 @@ export const TOOLS: AnyTool[] = [
     name: "get_site",
     title: "Get site info",
     access: "read",
+    group: "Site",
     description:
       "Return the site title, description, address, page count and every private path with its live share count.",
     inputSchema: object({}),
+    outputSchema: shape({
+      title: str(),
+      description: str(),
+      url: str("The site's own address"),
+      pages: num("How many pages are published"),
+      private: list(shape({ path: str(), shares: num("Live share links on it") })),
+    }),
     handler: async (_args, ctx) => {
       const [settings, pages, privacy] = await Promise.all([getSettings(), listPages(), getPrivacy()]);
       return {
@@ -1241,6 +1603,7 @@ export const TOOLS: AnyTool[] = [
     name: "set_privacy",
     title: "Make a path private or public",
     access: "write",
+    group: "Privacy",
     description:
       "Close a path to the public, or reopen it. " +
       PRIVACY +
@@ -1256,6 +1619,23 @@ export const TOOLS: AnyTool[] = [
         private: { type: "boolean", description: "true closes the path, false reopens it" },
       },
       ["path", "private"],
+    ),
+    outputSchema: either(
+      branch("Closed", {
+        path: str(),
+        private: bool("true"),
+        url: str(),
+        closed: shape({ pages: num(), collections: num(), assets: num() }),
+        next: str("Nobody reaches any of it until share_path mints a link"),
+      }),
+      branch("Reopened", {
+        path: str(),
+        private: bool("false"),
+        url: str(),
+        revoked: list(str(), "Labels of the share links this killed, because reopening ends them"),
+        note: str(),
+      }),
+      branch("It was already public", { path: str(), private: bool("false"), note: str() }),
     ),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
@@ -1290,6 +1670,7 @@ export const TOOLS: AnyTool[] = [
     name: "share_path",
     title: "Mint a share link",
     access: "write",
+    group: "Privacy",
     description:
       "Return a link that opens a private path, and make the path private if it is not already. " +
       PRIVACY +
@@ -1308,6 +1689,13 @@ export const TOOLS: AnyTool[] = [
       },
       ["path", "label"],
     ),
+    outputSchema: shape({
+      path: str(),
+      label: str(),
+      link: str("The whole link, fragment included. Shown once: only a hash is stored."),
+      created: num("Epoch milliseconds"),
+      note: str(),
+    }),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       if (typeof args.label !== "string" || args.label.trim() === "") throw new Error("label is required");
@@ -1329,12 +1717,40 @@ export const TOOLS: AnyTool[] = [
     name: "list_shares",
     title: "List private paths and their share links",
     access: "read",
+    group: "Privacy",
     description:
       "List every private path with its share links: label, when it was minted and when it was last " +
       "redeemed. Pass a path for just that one. The links themselves are not stored and cannot be " +
       "listed, only their labels, so this answers who has access and not what to send them. A path " +
       "with no shares is closed to everyone, which is a normal state for something still being written.",
     inputSchema: object({ path: { type: "string", description: "Optional: one private path" } }),
+    outputSchema: either(
+      branch("Every private path, or the one you named", {
+        private: list(
+          shape({
+            path: str(),
+            url: str(),
+            shares: list(
+              shape({
+                label: str("Who it is for. The link itself is not stored and cannot be listed."),
+                created: num("Epoch milliseconds"),
+                last_used: nullable("number", "Null until somebody opens it"),
+              }),
+            ),
+          }),
+        ),
+      }),
+      branch(
+        "The path you named has no scope of its own",
+        {
+          path: str(),
+          private: bool("True when another path closes it"),
+          closed_by: str("The private path covering it, whose shares open this one. Absent when it is public."),
+          note: str(),
+        },
+        ["closed_by"],
+      ),
+    ),
     handler: async (args, ctx) => {
       const privacy = await getPrivacy();
       const wanted = args.path === undefined ? null : requirePath(args.path);
@@ -1370,6 +1786,7 @@ export const TOOLS: AnyTool[] = [
     name: "revoke_share",
     title: "Revoke a share link",
     access: "write",
+    group: "Privacy",
     description:
       "Kill a share link. Pass a label to revoke that one recipient's link, or omit it to revoke " +
       "every link on the path. Effective on the holder's next request, not whenever their browser " +
@@ -1382,6 +1799,15 @@ export const TOOLS: AnyTool[] = [
         label: { type: "string", description: "Optional: revoke only the link with this label" },
       },
       ["path"],
+    ),
+    outputSchema: shape(
+      {
+        path: str(),
+        revoked: list(str(), "Labels killed. Empty when there was nothing to revoke."),
+        remaining: num("Links still open on the path. Absent when nothing was revoked."),
+        note: str(),
+      },
+      ["remaining"],
     ),
     handler: async (args) => {
       const path = requirePath(args.path);
@@ -1413,8 +1839,10 @@ export const TOOLS: AnyTool[] = [
     name: "set_site_info",
     title: "Set site title and description",
     access: "write",
+    group: "Site",
     description: "Update the site title and description shown in the header of every themed page.",
     inputSchema: object({ title: { type: "string" }, description: { type: "string" } }),
+    outputSchema: shape({ title: str(), description: str() }),
     handler: async (args) => {
       const settings = await saveSettings({
         ...(typeof args.title === "string" ? { title: args.title } : {}),
@@ -1428,6 +1856,7 @@ export const TOOLS: AnyTool[] = [
     name: "geocode",
     title: "Find coordinates for a place",
     access: "read",
+    group: "Maps",
     description:
       "Turn a place name or address into candidate coordinates. It returns several candidates with the place around " +
       "each one, never a single answer, because a geocoder is a guess and only the caller can tell which candidate is " +
@@ -1445,6 +1874,23 @@ export const TOOLS: AnyTool[] = [
       },
       ["query"],
     ),
+    outputSchema: shape({
+      query: str("Echoed back, trimmed"),
+      provider: str(),
+      attribution: str("Show this on any page built from these coordinates. It is a licence condition."),
+      candidates: list(
+        shape({
+          lat: num(),
+          lon: num(),
+          name: str(),
+          context: nullable("string", "The place around the place, in components rather than a label"),
+          kind: nullable("string", "Provider supplied and advisory: city, locality, railway"),
+          confidence: nullable("number", "Comparable between candidates in one response and nowhere else"),
+        }),
+        "Candidates to judge, never an answer. Empty means nothing matched at all.",
+      ),
+      count: num(),
+    }),
     handler: async (args) => geocodeQuery(args.query, args.limit),
     render: asJson,
   }),
@@ -1452,6 +1898,7 @@ export const TOOLS: AnyTool[] = [
     name: "route",
     title: "Route between stops and store the line",
     access: "write",
+    group: "Maps",
     description:
       "Route through stops in the order given and write the geometry to an asset as a GeoJSON LineString, returning " +
       "only a summary. The line itself is never returned: a road route runs to thousands of points, and sending it out " +
@@ -1498,6 +1945,40 @@ export const TOOLS: AnyTool[] = [
       },
       ["stops", "to"],
     ),
+    outputSchema: shape({
+      path: str("The asset the GeoJSON was written to"),
+      url: str("Where the page fetches the line"),
+      provider: str(),
+      attribution: str("Put this on any page that draws the line"),
+      profile: str("cycling, walking or driving"),
+      prefer: str("safety, balanced or speed"),
+      distance_m: num(),
+      duration_s: num(),
+      ascent_m: nullable("number", "Null where the router reports none, which is not the same as no climb"),
+      descent_m: nullable("number"),
+      points: num("Coordinates in the stored line, after any simplification"),
+      has_elevation: bool("The stored coordinates carry a third number"),
+      bytes: num("Size of the stored GeoJSON"),
+      legs: list(
+        shape({ distance_m: num(), duration_s: num() }),
+        "One per pair of stops. Empty where the router does not break the line down.",
+      ),
+      ways: shape({
+        analyzed_m: num("How much of the route carried tags at all. 0 means nothing was examined, not that nothing is wrong."),
+        surface_m: map(num(), "Metres by surface. Untagged ground is counted under its own name."),
+        way_type_m: map(num(), "Metres by highway type"),
+        on_cycle_route_m: num("Metres on a signed cycle route"),
+        warnings: list(
+          shape({
+            kind: str("An explicit prohibition, for example bicycle=no"),
+            metres: num(),
+            where: list(list(num()), "Ranges of coordinate indices into the stored line"),
+          }),
+          "Prohibitions somebody wrote down, never opinions about traffic",
+        ),
+        segment_count: num("Rows in the per-way table stored in the asset"),
+      }),
+    }),
     handler: async (args, ctx) =>
       routeToAsset({
         stops: parseStops(args.stops),

@@ -135,6 +135,7 @@ describe("discovery", () => {
     const body = await (await api("", await token("read"))).json();
     const listItems = body.tools.find((t: any) => t.name === "list_items");
     expect(listItems.input_schema.properties.path).toBeDefined();
+    expect(listItems.output_schema.properties.items).toBeDefined();
     expect(listItems.url).toBe("https://example.com/api/v1/list_items");
   });
 });

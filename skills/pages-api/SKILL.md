@@ -30,7 +30,8 @@ scripts/pages-call
 ```
 
 That returns every tool the token may use, each with a JSON Schema for its arguments, and an
-`instructions` field.
+`instructions` field. The same site also draws that registry as a page at `$SITE/docs`, which adds
+the shape of each reply and needs no token: read it when a person asks what the site can do.
 
 **Read `instructions` in full before proposing or writing anything.** It is not a preamble. It is
 the site's own account of how it wants to be used: when repeating content belongs in a data

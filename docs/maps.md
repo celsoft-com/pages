@@ -1,8 +1,13 @@
+---
+title: Maps
+order: 90
+---
+
 # Maps
 
-Status: implemented. Two tools, `geocode` and `route`, and no map code anywhere in the site.
+Two tools, `geocode` and `route`, and no map code anywhere in the site.
 
-## 1. What the site does and does not do
+## What the site does and does not do
 
 A map is a page. The site stores the data behind one and serves it, exactly as it does for anything
 else: the stops are a collection, the route geometry is an asset, the map is a page that fetches
@@ -20,7 +25,7 @@ route    →  geometry  →   asset, GeoJSON           →    GET /assets/<path>
                                                         + tiles + library, from a CDN
 ```
 
-## 2. The rule that keeps this from becoming an integration platform
+## The rule that keeps this from becoming an integration platform
 
 > **The site may do authoring-time work whose output it stores. It may never fetch at request time.**
 
@@ -31,7 +36,7 @@ one that already separates a collection from a page that renders one.
 
 These are the first outbound calls the site makes. Before them, the function called nothing.
 
-## 3. Result shapes are provider-neutral on purpose
+## Result shapes are provider-neutral on purpose
 
 A handler's result is published API, so a vendor identifier in one would marry the API to that
 vendor for the life of the API. Every adapter maps its provider's answer onto the intersection of
@@ -49,7 +54,7 @@ what all of them can produce, and never passes anything through:
 `null` where a provider does not report something, never zero: no answer and no climb are different
 facts, and a cyclist reading the second as the first is being misled.
 
-## 4. geocode returns candidates, never an answer
+## geocode returns candidates, never an answer
 
 A geocoder is a guess, and the caller is the only thing that can judge it. Returning one row invites
 a service to take it, and a wrong Springfield is silent on every axis: the write succeeds, the JSON
@@ -64,9 +69,9 @@ Two failures are worth naming because both look like success:
 
 Coordinates are stored as separate numeric `lat` and `lon` fields, never a two-element array.
 GeoJSON orders them `[lon, lat]` and most map libraries take `[lat, lon]`, so a transposed pair
-validates, renders and is wrong. [parseStops](../src/geo/service.ts) refuses a bare pair outright.
+validates, renders and is wrong. `route` refuses a bare pair outright rather than guessing at it.
 
-## 5. route writes the asset and returns a summary
+## route writes the asset and returns a summary
 
 The line is never returned. A 126 km road route is 3330 points and 75 KB; handing that to a caller
 so the caller can hand it back spends the whole thing twice and asks every client to reimplement the
@@ -78,7 +83,7 @@ about the zoom it will be drawn at, and that is the page's decision, not storage
 survive are returned exactly as the router sent them, elevation included: thinning a line must never
 also edit the points it keeps.
 
-## 6. Bike routes: choosing, then checking
+## Bike routes: choosing, then checking
 
 Two different jobs, and a bike page needs both.
 
@@ -103,7 +108,7 @@ somebody went and wrote down. That ride has 96 m of it, at both ends, which no p
 it is the way in and out of Bamberg's old town.
 
 **`analyzed_m` is the honesty field.** It is how much of the route carried tags at all, and it is `0`
-when the router reports none, which is the [check_refs](../src/mcp/tools.ts) rule again: a summary
+when the router reports none, which is the `check_refs` rule again: a summary
 that checked nothing must not read like a summary that passed. Untagged ground is counted under
 `untagged` in the breakdowns for the same reason. OSM coverage is near total in Bavaria and thin
 elsewhere, and a route that is 40% untagged must not look like a route that is 40% asphalt.
@@ -117,7 +122,7 @@ the line by surface and point at the stretch it warns about. Simplification rema
 because thinning the line must never leave the table pointing at the wrong places while still looking
 valid.
 
-## 7. Providers
+## Providers
 
 | profile | keyless | with `ORS_API_KEY` |
 | --- | --- | --- |
@@ -143,17 +148,11 @@ approximated, and openrouteservice reports surface through a different encoding 
 been able to verify against a real key, so `analyzed_m` comes back `0`. Both are stated by the
 response rather than papered over. Wiring `extra_info` up is the obvious next job.
 
-## 8. The page side
+## Drawing the map
 
-The site steers it and does not implement it. The MCP instructions in
-[handler.ts](../src/mcp/handler.ts) tell a client to keep stops in a collection, fetch the asset for
-the line, route once rather than per visit, and carry the attribution string, which is a licence
-condition rather than a courtesy. That text is served by the site, so it updates when the site
-deploys and there is no second copy to go stale.
-
-The shipped skill is unchanged and needs no change: it names no tools and carries no instructions,
-it points an agent at the site to fetch both. A newer deploy teaches its own conventions with nothing
-to update on anyone's laptop.
+The site stores the data and does not draw the map. A client is told to keep the stops in a
+collection, fetch the asset for the line, route once rather than on every visit, and carry the
+attribution string, which is a licence condition rather than a courtesy.
 
 Renderer and tiles are page decisions the repo has no opinion about. Leaflet is small and takes
 raster tiles; MapLibre GL is larger, takes vector tiles and can be restyled in the browser. The

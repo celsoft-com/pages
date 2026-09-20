@@ -63,6 +63,10 @@ export async function handleApi(request: Request, url: URL, principal: Principal
         description: tool.description,
         url: `${ctx.siteUrl}${API_PREFIX}/${tool.name}`,
         input_schema: tool.inputSchema,
+        // The reply's shape as well as the call's. A service reads these keys by name, so it can
+        // see what it will get before it writes the code that reads it, from the same declaration
+        // /docs draws and results.test.ts holds every handler against.
+        output_schema: tool.outputSchema,
       })),
     });
   }
