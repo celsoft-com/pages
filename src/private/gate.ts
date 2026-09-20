@@ -1,5 +1,5 @@
 import { bearerOf, admit } from "../auth/principal";
-import { readCookie } from "../auth/session";
+import { getSessionOwner, readCookie } from "../auth/session";
 import { getOwner } from "../auth/setup";
 import { sha256Hex, sign, verify } from "../crypto/hmac";
 import type { PrivateScope } from "../types";
@@ -65,12 +65,19 @@ export async function accessToScope(request: Request, scope: PrivateScope | null
   const shareId = await validGrant(request, scope);
   if (shareId) return { scope, open: true, cookie: (await grantCookie(scope.path, shareId)) ?? undefined };
 
-  // The other way in, and the reason it exists: an asset is bytes, so the only way to read one back
-  // is an HTTP GET that writes them to a file, and a client holding the owner's token has to be able
-  // to prove that on a private path. Tried only after the cookie fails, so an ordinary visitor pays
-  // nothing for it, and through admit rather than resolve, so guessing a token here is rate limited
-  // exactly as it is at the two API doors.
+  // The other two ways in, tried only after the share cookie fails, so an ordinary visitor pays
+  // nothing for either. A credential, because an asset is bytes: the only way to read one back is an
+  // HTTP GET that writes them to a file, and a client holding the owner's token has to be able to
+  // prove that on a private path. It goes through admit rather than resolve, so guessing a token
+  // here is rate limited exactly as it is at the two API doors.
   if (bearerOf(request) && (await admit(request)).ok) return { scope, open: true };
+
+  // And the owner's own session, because the admin lists every private page and asset and offers to
+  // open them. Without this the owner is the one person who cannot look at their own closed page:
+  // the Open button on the Assets screen answered 404, which reads as a lost file.
+  // getSessionOwner returns on a missing cookie before it reads anything, so this costs a visitor
+  // without one nothing at all.
+  if (await getSessionOwner(request)) return { scope, open: true };
 
   return { scope, open: false };
 }
