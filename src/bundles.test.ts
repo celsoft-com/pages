@@ -66,12 +66,12 @@ describe("a bundle holds everything at or under its path", () => {
   it("holds pages, collections and assets alike", async () => {
     await page("/trip/day1");
     await saveCollection("/trip/items", [{ id: "one" }]);
-    await upload("coburg.jpg", "/trip/images/coburg.jpg");
+    await upload("photo.jpg", "/trip/images/photo.jpg");
 
     const listed = await call("list_bundle", { path: "/trip" });
     expect(listed).toContain("page /trip/day1");
     expect(listed).toContain("collection /trip/items");
-    expect(listed).toContain("asset /trip/images/coburg.jpg");
+    expect(listed).toContain("asset /trip/images/photo.jpg");
   });
 
   it("shows declared refs on a collection", async () => {
@@ -96,22 +96,22 @@ describe("a bundle holds everything at or under its path", () => {
 // Section 4.1 of the spec: string-prefix matching is the likely implementation error, and in
 // delete_bundle the same bug destroys a bundle nobody named.
 describe("segment boundaries", () => {
-  it("/bavaria does not hold /bavaria-lessons/lessons", async () => {
-    await saveCollection("/bavaria/lessons", [{ id: "mine" }]);
-    await saveCollection("/bavaria-lessons/lessons", [{ id: "theirs" }]);
+  it("/photos does not hold /photos-archive/lessons", async () => {
+    await saveCollection("/photos/lessons", [{ id: "mine" }]);
+    await saveCollection("/photos-archive/lessons", [{ id: "theirs" }]);
 
-    const listed = await call("list_bundle", { path: "/bavaria" });
-    expect(listed).toContain("collection /bavaria/lessons");
-    expect(listed).not.toContain("/bavaria-lessons/lessons");
+    const listed = await call("list_bundle", { path: "/photos" });
+    expect(listed).toContain("collection /photos/lessons");
+    expect(listed).not.toContain("/photos-archive/lessons");
   });
 
-  it("/bavaria-lessons holds its own", async () => {
-    await saveCollection("/bavaria/lessons", [{ id: "mine" }]);
-    await saveCollection("/bavaria-lessons/lessons", [{ id: "theirs" }]);
+  it("/photos-archive holds its own", async () => {
+    await saveCollection("/photos/lessons", [{ id: "mine" }]);
+    await saveCollection("/photos-archive/lessons", [{ id: "theirs" }]);
 
-    const listed = await call("list_bundle", { path: "/bavaria-lessons" });
-    expect(listed).toContain("collection /bavaria-lessons/lessons");
-    expect(listed).not.toContain("collection /bavaria/lessons");
+    const listed = await call("list_bundle", { path: "/photos-archive" });
+    expect(listed).toContain("collection /photos-archive/lessons");
+    expect(listed).not.toContain("collection /photos/lessons");
   });
 
   it("/trip does not hold /tripwire/items", async () => {
@@ -203,29 +203,29 @@ describe("the site root is the contents of the site", () => {
 
 describe("assets", () => {
   it("files a rooted asset into its bundle", async () => {
-    const reply = await upload("coburg.jpg", "/germanfunstuff/images/coburg.jpg");
-    expect(reply).toContain("https://example.com/assets/germanfunstuff/images/coburg.jpg");
-    expect(reply).toContain("path /germanfunstuff/images/coburg.jpg");
+    const reply = await upload("photo.jpg", "/gallery/images/photo.jpg");
+    expect(reply).toContain("https://example.com/assets/gallery/images/photo.jpg");
+    expect(reply).toContain("path /gallery/images/photo.jpg");
   });
 
   it("addresses a rooted asset by its path, never by its blob key", async () => {
-    await upload("coburg.jpg", "/germanfunstuff/images/coburg.jpg");
+    await upload("photo.jpg", "/gallery/images/photo.jpg");
     const [asset] = await listAssets();
-    expect(asset.key).toBe("germanfunstuff~images~coburg.jpg");
-    expect(assetUrlFor(asset)).toBe("/assets/germanfunstuff/images/coburg.jpg");
+    expect(asset.key).toBe("gallery~images~photo.jpg");
+    expect(assetUrlFor(asset)).toBe("/assets/gallery/images/photo.jpg");
   });
 
   it("serves a rooted asset at its path", async () => {
-    await upload("coburg.jpg", "/germanfunstuff/images/coburg.jpg");
+    await upload("photo.jpg", "/gallery/images/photo.jpg");
     const response = await handleAsset(
-      new Request("https://example.com/assets/germanfunstuff/images/coburg.jpg"),
+      new Request("https://example.com/assets/gallery/images/photo.jpg"),
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
   });
 
   it("keeps serving an asset uploaded before paths existed", async () => {
-    const url = await upload("coburg.png");
+    const url = await upload("photo.png");
     const key = url.split("/assets/")[1];
     expect(key).toMatch(/^[0-9a-f]{32}\.png$/);
     expect((await handleAsset(new Request(`https://example.com/assets/${key}`))).status).toBe(200);
@@ -240,9 +240,9 @@ describe("assets", () => {
   });
 
   it("deletes a rooted asset by its path", async () => {
-    await upload("coburg.jpg", "/germanfunstuff/images/coburg.jpg");
-    expect((await json("delete_asset", { path: "/germanfunstuff/images/coburg.jpg" })).applied).toBe(true);
-    expect((await handleAsset(new Request("https://example.com/assets/germanfunstuff/images/coburg.jpg"))).status).toBe(
+    await upload("photo.jpg", "/gallery/images/photo.jpg");
+    expect((await json("delete_asset", { path: "/gallery/images/photo.jpg" })).applied).toBe(true);
+    expect((await handleAsset(new Request("https://example.com/assets/gallery/images/photo.jpg"))).status).toBe(
       404,
     );
   });
@@ -252,13 +252,13 @@ describe("delete_page", () => {
   it("deletes one page and leaves the rest of the bundle", async () => {
     await page("/trip");
     await saveCollection("/trip/items", [{ id: "one" }, { id: "two" }]);
-    await upload("coburg.jpg", "/trip/images/coburg.jpg");
+    await upload("photo.jpg", "/trip/images/photo.jpg");
 
     const reply = await json("delete_page", { path: "/trip" });
     expect(reply.resources).toEqual([{ kind: "page", from: "/trip", to: null, title: "/trip" }]);
     expect(reply.rest_of_bundle).toEqual([
       { kind: "collection", path: "/trip/items" },
-      { kind: "asset", path: "/trip/images/coburg.jpg" },
+      { kind: "asset", path: "/trip/images/photo.jpg" },
     ]);
     expect((await getCollection("/trip/items"))?.items).toHaveLength(2);
   });
@@ -278,7 +278,7 @@ describe("delete_bundle", () => {
     await page("/trip/day1");
     await saveCollection("/trip/items", [{ id: "one" }]);
     await saveCollection("/trip/day1/items", [{ id: "two" }]);
-    await upload("coburg.jpg", "/trip/images/coburg.jpg");
+    await upload("photo.jpg", "/trip/images/photo.jpg");
   });
 
   it("deletes nothing without confirm and shows what it would take", async () => {
@@ -289,7 +289,7 @@ describe("delete_bundle", () => {
       "page /trip/day1",
       "collection /trip/day1/items",
       "collection /trip/items",
-      "asset /trip/images/coburg.jpg",
+      "asset /trip/images/photo.jpg",
     ]);
     expect(reply.notes.join(" ")).toContain("Nothing was changed");
     expect(await getPage("/trip")).not.toBeNull();
@@ -301,7 +301,7 @@ describe("delete_bundle", () => {
     expect(await getPage("/trip/day1")).toBeNull();
     expect(await getCollection("/trip/items")).toBeNull();
     expect(await getCollection("/trip/day1/items")).toBeNull();
-    expect((await handleAsset(new Request("https://example.com/assets/trip/images/coburg.jpg"))).status).toBe(404);
+    expect((await handleAsset(new Request("https://example.com/assets/trip/images/photo.jpg"))).status).toBe(404);
   });
 
   it("spares a neighbour whose name merely starts the same", async () => {
@@ -328,10 +328,10 @@ describe("delete_bundle", () => {
 describe("bundles are organization, never a boundary", () => {
   it("accepts a reference that crosses bundles", async () => {
     await saveCollection("/trip/items", [{ id: "one" }]);
-    await saveCollection("/bavaria-lessons/meta", [{ id: "m1", trip: "one" }]);
+    await saveCollection("/photos-archive/meta", [{ id: "m1", trip: "one" }]);
 
     const reply = await call("set_collection_refs", {
-      path: "/bavaria-lessons/meta",
+      path: "/photos-archive/meta",
       refs: { trip: "/trip/items" },
     });
     expect(reply).not.toContain("violation");

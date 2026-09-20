@@ -20,7 +20,7 @@ beforeEach(async () => {
   await savePage({ path: "/notes", contentType: "markdown", title: "Notes", body: "# Notes" });
   await saveCollection("/trip/items", [{ id: "muc" }, { id: "ber" }, { id: "cob" }]);
   await putAsset({
-    filename: "coburg.jpg",
+    filename: "photo.jpg",
     contentType: "image/jpeg",
     bytes: new TextEncoder().encode("PICTURE").buffer,
   });
@@ -113,7 +113,7 @@ describe("the admin asks its own questions", () => {
   });
 
   it("names the file and the client it would take away", async () => {
-    expect(await screen("/admin/assets")).toContain("Delete coburg.jpg for good");
+    expect(await screen("/admin/assets")).toContain("Delete photo.jpg for good");
     expect(await screen("/admin/connections")).toContain("Revoke Claude, it has to connect again");
   });
 

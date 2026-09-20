@@ -648,12 +648,12 @@ describe("match_names", () => {
 describe("match_names scope filter", () => {
   beforeEach(async () => {
     await saveCollection("/trip/items", [
-      { id: "bamberg-old-town", name: "The old town", section: "bamberg" },
-      { id: "forchheim-old-town", name: "Old town and Saltorturm", section: "forchheim" },
-      { id: "coburg-castle", name: "Veste Coburg", section: "coburg" },
-      { id: "erlangen-market", name: "Wochenmarkt", section: "erlangen" },
-      { id: "nurnberg-market", name: "Wochenmarkt am Hauptmarkt", section: "nurnberg" },
-      { id: "furth-park", name: "Stadtpark", section: "furth" },
+      { id: "north-old-town", name: "The old town", section: "north" },
+      { id: "west-old-town", name: "Old town and the gatehouse", section: "west" },
+      { id: "east-castle", name: "Hilltop fortress", section: "east" },
+      { id: "south-market", name: "Market square", section: "south" },
+      { id: "harbor-market", name: "Market square by the harbour", section: "harbor" },
+      { id: "riverside-park", name: "City park", section: "riverside" },
     ]);
   });
 
@@ -661,7 +661,7 @@ describe("match_names scope filter", () => {
     const result = await json("match_names", {
       path: "/trip/items",
       names: ["Old Town"],
-      filter: { section: "coburg" },
+      filter: { section: "east" },
     });
     expect(result.results[0].matches).toEqual([]);
   });
@@ -669,8 +669,8 @@ describe("match_names scope filter", () => {
   it("returns two for the same candidate unfiltered", async () => {
     const result = await json("match_names", { path: "/trip/items", names: ["Old Town"] });
     expect(result.results[0].matches.map((m: any) => m.id).sort()).toEqual([
-      "bamberg-old-town",
-      "forchheim-old-town",
+      "north-old-town",
+      "west-old-town",
     ]);
   });
 
@@ -678,13 +678,13 @@ describe("match_names scope filter", () => {
     const result = await json("match_names", {
       path: "/trip/items",
       names: ["Old Town"],
-      filter: { section: "bamberg" },
+      filter: { section: "north" },
     });
-    expect(result.results[0].matches.map((m: any) => m.id)).toEqual(["bamberg-old-town"]);
+    expect(result.results[0].matches.map((m: any) => m.id)).toEqual(["north-old-town"]);
   });
 
   it("leaves unfiltered behaviour exactly as it was", async () => {
-    const names = ["Old Town", "Wochenmarkt", "Stadtpark"];
+    const names = ["Old Town", "Market square", "City park"];
     const before = await json("match_names", { path: "/trip/items", names });
     const withEmpty = await json("match_names", { path: "/trip/items", names, filter: {} });
     expect(withEmpty.results).toEqual(before.results);
@@ -694,7 +694,7 @@ describe("match_names scope filter", () => {
   it("reports compared 0 and no matches for a partition that does not exist", async () => {
     const result = await json("match_names", {
       path: "/trip/items",
-      names: ["Old Town", "Stadtpark"],
+      names: ["Old Town", "City park"],
       filter: { section: "atlantis" },
     });
     expect(result.compared).toBe(0);
@@ -713,28 +713,28 @@ describe("match_names scope filter", () => {
 
   it("combines several fields with and", async () => {
     await saveCollection("/trip/items", [
-      { id: "a", name: "Stadtpark", section: "furth", day: 1 },
-      { id: "b", name: "Stadtpark", section: "furth", day: 2 },
+      { id: "a", name: "City park", section: "riverside", day: 1 },
+      { id: "b", name: "City park", section: "riverside", day: 2 },
     ]);
     const result = await json("match_names", {
       path: "/trip/items",
-      names: ["Stadtpark"],
-      filter: { section: "furth", day: 2 },
+      names: ["City park"],
+      filter: { section: "riverside", day: 2 },
     });
     expect(result.results[0].matches.map((m: any) => m.id)).toEqual(["b"]);
   });
 
   it("compares filter values exactly, without the folding used on names", async () => {
-    await saveCollection("/trip/items", [{ id: "a", name: "Stadtpark", section: "Fürth" }]);
+    await saveCollection("/trip/items", [{ id: "a", name: "City park", section: "Zürich" }]);
     const folded = await json("match_names", {
       path: "/trip/items",
-      names: ["Stadtpark"],
-      filter: { section: "furth" },
+      names: ["City park"],
+      filter: { section: "riverside" },
     });
     const exact = await json("match_names", {
       path: "/trip/items",
-      names: ["Stadtpark"],
-      filter: { section: "Fürth" },
+      names: ["City park"],
+      filter: { section: "Zürich" },
     });
     expect(folded.compared).toBe(0);
     expect(exact.results[0].matches.map((m: any) => m.id)).toEqual(["a"]);
@@ -744,15 +744,15 @@ describe("match_names scope filter", () => {
     const result = await json("match_names", {
       path: "/trip/items",
       names: ["Old Town"],
-      filter: { section: "bamberg" },
+      filter: { section: "north" },
     });
     expect(result.compared).toBe(1);
-    expect(result.filter).toEqual({ section: "bamberg" });
+    expect(result.filter).toEqual({ section: "north" });
   });
 
   it("rejects a filter that is not an object", async () => {
     await expect(
-      call("match_names", { path: "/trip/items", names: ["x"], filter: ["section", "bamberg"] }),
+      call("match_names", { path: "/trip/items", names: ["x"], filter: ["section", "north"] }),
     ).rejects.toThrow(/object of field\/value pairs/);
   });
 });
@@ -760,9 +760,9 @@ describe("match_names scope filter", () => {
 describe("match_names scoring regressions", () => {
   beforeEach(async () => {
     await saveCollection("/places", [
-      { id: "keesmann", name: "Brauerei Keesmann" },
-      { id: "fassla", name: "Fässla Keller" },
-      { id: "schlenkerla", name: "Schlenkerla" },
+      { id: "hoffmann", name: "Brauerei Hoffmann" },
+      { id: "kassla", name: "Kässla Keller" },
+      { id: "schwenkerla", name: "Schwenkerla" },
       { id: "hirsch", name: "Hirsch" },
       { id: "haus45", name: "Haus 45" },
     ]);
@@ -774,15 +774,15 @@ describe("match_names scoring regressions", () => {
   }
 
   it("ignores word order", async () => {
-    expect(await best("Keesmann Brauerei")).toMatchObject({ id: "keesmann", score: 1 });
+    expect(await best("Hoffmann Brauerei")).toMatchObject({ id: "hoffmann", score: 1 });
   });
 
   it("folds diacritics", async () => {
-    expect(await best("Fassla Keller")).toMatchObject({ id: "fassla", score: 1 });
+    expect(await best("Kassla Keller")).toMatchObject({ id: "kassla", score: 1 });
   });
 
   it("tolerates a trailing qualifier", async () => {
-    expect(await best("Schlenkerla, Rauchbierbrauerei")).toMatchObject({ id: "schlenkerla", score: 0.833 });
+    expect(await best("Schwenkerla, Rauchbierbrauerei")).toMatchObject({ id: "schwenkerla", score: 0.833 });
   });
 
   it("does not match on a shared frequent token alone", async () => {
@@ -799,7 +799,7 @@ describe("match_names scoring regressions", () => {
 });
 
 describe("count_items", () => {
-  const sections = ["bamberg", "coburg", "erlangen", "forchheim", "fuerth", "nurnberg", "wuerzburg", "zeil"];
+  const sections = ["north", "east", "south", "west", "riverside", "harbor", "hillside", "lakeside"];
   const groups = ["sights", "drink", "food", "walk", "museum", "market", "stay"];
 
   async function seedTrip(): Promise<void> {
@@ -831,8 +831,8 @@ describe("count_items", () => {
 
   it("omits combinations that do not occur rather than reporting them as zero", async () => {
     await saveCollection("/trip/items", [
-      { id: "a", section: "coburg", group: "sights" },
-      { id: "b", section: "bamberg", group: "drink" },
+      { id: "a", section: "east", group: "sights" },
+      { id: "b", section: "north", group: "drink" },
     ]);
     const result = await json("count_items", { path: "/trip/items", group_by: ["section", "group"] });
     expect(result.rows).toHaveLength(2);
@@ -842,18 +842,18 @@ describe("count_items", () => {
     const result = await json("count_items", {
       path: "/trip/items",
       group_by: ["group"],
-      filter: { section: "fuerth" },
+      filter: { section: "riverside" },
     });
-    const fuerth = result.rows.reduce((sum: number, r: any) => sum + r.count, 0);
-    expect(result.total).toBe(fuerth);
+    const total = result.rows.reduce((sum: number, r: any) => sum + r.count, 0);
+    expect(result.total).toBe(total);
     expect(result.total).toBeLessThan(195);
-    expect(result.filter).toEqual({ section: "fuerth" });
+    expect(result.filter).toEqual({ section: "riverside" });
   });
 
   it("keeps records missing the field visible under null", async () => {
     await saveCollection("/trip/items", [
-      { id: "a", section: "coburg", group: "sights" },
-      { id: "b", section: "coburg" },
+      { id: "a", section: "east", group: "sights" },
+      { id: "b", section: "east" },
     ]);
     const result = await json("count_items", { path: "/trip/items", group_by: ["group"] });
     expect(result.rows).toContainEqual({ group: null, count: 1 });
@@ -937,7 +937,7 @@ describe("referential integrity", () => {
       { id: "odd", label: "Odd" },
       { id: "drink", label: "Drink" },
     ]);
-    await saveCollection("/trip/items", [{ id: "castle", name: "Veste Coburg", group: "outdoors" }]);
+    await saveCollection("/trip/items", [{ id: "castle", name: "Hilltop fortress", group: "outdoors" }]);
   });
 
   it("declares a constraint on a clean collection with no violations", async () => {
@@ -1086,14 +1086,14 @@ describe("referential integrity", () => {
 describe("check_refs states its own scope", () => {
   async function seed195(): Promise<void> {
     await saveCollection("/trip/filters", [{ id: "outdoors" }, { id: "drink" }]);
-    await saveCollection("/trip/sections", [{ id: "coburg" }, { id: "bamberg" }]);
+    await saveCollection("/trip/sections", [{ id: "east" }, { id: "north" }]);
     await saveCollection(
       "/trip/items",
       Array.from({ length: 195 }, (_, n) => ({
         id: `i${n}`,
         name: `Place ${n}`,
         group: n % 2 ? "outdoors" : "drink",
-        section: n % 3 ? "coburg" : "bamberg",
+        section: n % 3 ? "east" : "north",
       })),
     );
   }
@@ -1218,9 +1218,9 @@ describe("delete_item reports what force broke", () => {
   beforeEach(async () => {
     await saveCollection("/trip/filters", [{ id: "odd" }, { id: "outdoors" }, { id: "spare" }]);
     await saveCollection("/trip/items", [
-      { id: "bamberg-witch-trials", group: "odd" },
-      { id: "lochgefaengnisse", group: "odd" },
-      { id: "norisring", group: "odd" },
+      { id: "north-museum", group: "odd" },
+      { id: "east-museum", group: "odd" },
+      { id: "south-circuit", group: "odd" },
       { id: "castle", group: "outdoors" },
     ]);
     await call("set_collection_refs", { path: "/trip/items", refs: { group: "/trip/filters" } });
@@ -1236,7 +1236,7 @@ describe("delete_item reports what force broke", () => {
           path: "/trip/items",
           field: "group",
           count: 3,
-          ids: ["bamberg-witch-trials", "lochgefaengnisse", "norisring"],
+          ids: ["north-museum", "east-museum", "south-circuit"],
         },
       ],
     });
@@ -1344,14 +1344,14 @@ describe("list_collections", () => {
 
 describe("reading and editing part of a page", () => {
   const body = [
-    "<h1>Coburg</h1>",
+    "<h1>Ashford</h1>",
     "<p>The Veste sits above the town.</p>",
     "<p>Open from 9am.</p>",
     "<p>Closed on Mondays.</p>",
   ].join("\n");
 
   beforeEach(async () => {
-    await savePage({ path: "/trip", contentType: "html", title: "Coburg", body });
+    await savePage({ path: "/trip", contentType: "html", title: "Ashford", body });
   });
 
   it("returns the whole page when asked for nothing in particular", async () => {
@@ -1382,11 +1382,11 @@ describe("reading and editing part of a page", () => {
     const page = (await getPage("/trip"))!;
     expect(page.body).toBe(body.replace("9am", "10am"));
     expect(page.contentType).toBe("html");
-    expect(page.title).toBe("Coburg");
+    expect(page.title).toBe("Ashford");
   });
 
   it("refuses a snippet that matches nothing", async () => {
-    await expect(call("edit_page", { path: "/trip", find: "Bamberg", replace: "Coburg" })).rejects.toThrow(
+    await expect(call("edit_page", { path: "/trip", find: "Springfield", replace: "Ashford" })).rejects.toThrow(
       /matches that text exactly/,
     );
   });

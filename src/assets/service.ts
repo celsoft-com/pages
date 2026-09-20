@@ -40,7 +40,7 @@ export async function putAsset(input: {
   path?: string;
 }): Promise<Asset> {
   const rooted = input.path === undefined ? null : normalizeAssetPath(input.path);
-  if (rooted === "/") throw new Error("path must name a file, for example /germanfunstuff/images/coburg.jpg");
+  if (rooted === "/") throw new Error("path must name a file, for example /gallery/images/photo.jpg");
 
   const key = rooted
     ? assetKeyFor(rooted)

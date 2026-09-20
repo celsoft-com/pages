@@ -34,15 +34,15 @@ function keys(value: unknown): string[] {
 async function seed(): Promise<void> {
   await savePage({ path: "/trip", contentType: "markdown", title: "Trip", body: "# Trip\n\nA line.\n" });
   await saveCollection("/trip/items", [
-    { id: "muc", name: "Munich", group: "south" },
-    { id: "cob", name: "Coburg", group: "north" },
+    { id: "muc", name: "Riverton", group: "south" },
+    { id: "cob", name: "Ashford", group: "north" },
   ]);
   await saveCollection("/trip/groups", [{ id: "south" }, { id: "north" }]);
   await putAsset({
-    filename: "coburg.jpg",
+    filename: "photo.jpg",
     contentType: "image/jpeg",
     bytes: new TextEncoder().encode("PICTURE").buffer,
-    path: "/trip/coburg.jpg",
+    path: "/trip/photo.jpg",
   });
 }
 
@@ -143,7 +143,7 @@ describe("data results", () => {
   });
 
   it("put_item", async () => {
-    const r = await raw("put_item", { path: "/trip/items", fields: { name: "Bamberg" } });
+    const r = await raw("put_item", { path: "/trip/items", fields: { name: "Springfield" } });
     expect(keys(r)).toEqual(["created", "id", "path", "rev", "url"]);
   });
 
@@ -162,7 +162,7 @@ describe("data results", () => {
   });
 
   it("search_items, including when nothing matched", async () => {
-    const hit = await raw("search_items", { query: "Munich" });
+    const hit = await raw("search_items", { query: "Riverton" });
     expect(keys(hit)).toEqual(["matches", "query", "total"]);
     expect(keys(hit.matches[0])).toEqual(["id", "index", "item", "path", "rev", "url"]);
 
@@ -268,9 +268,9 @@ describe("transfer results", () => {
       ["copy_collection", { from: "/trip/items", to: "/trip/items-copy" }],
       ["move_collection", { from: "/trip/items-copy", to: "/trip/items-moved" }],
       ["delete_collection", { path: "/trip/items-moved" }],
-      ["copy_asset", { from: "/trip/coburg.jpg", to: "/trip/coburg2.jpg" }],
-      ["move_asset", { from: "/trip/coburg2.jpg", to: "/trip/coburg3.jpg" }],
-      ["delete_asset", { path: "/trip/coburg3.jpg" }],
+      ["copy_asset", { from: "/trip/photo.jpg", to: "/trip/photo2.jpg" }],
+      ["move_asset", { from: "/trip/photo2.jpg", to: "/trip/photo3.jpg" }],
+      ["delete_asset", { path: "/trip/photo3.jpg" }],
       ["copy_bundle", { from: "/trip", to: "/trip-b", confirm: true }],
       ["move_bundle", { from: "/trip-b", to: "/trip-c", confirm: true }],
       ["delete_bundle", { path: "/trip-c", confirm: true }],
@@ -301,7 +301,7 @@ describe("geo results", () => {
   afterEach(clearGeoFetch);
 
   it("geocode", async () => {
-    const r = await raw("geocode", { query: "Bamberg" });
+    const r = await raw("geocode", { query: "Springfield" });
     expect(keys(r)).toEqual(["attribution", "candidates", "count", "provider", "query"]);
     expect(keys(r.candidates[0])).toEqual(["confidence", "context", "kind", "lat", "lon", "name"]);
   });

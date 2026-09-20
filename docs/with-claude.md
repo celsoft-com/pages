@@ -29,8 +29,8 @@ as it was, including anything you had it write earlier.
 
 Claude can research first and publish second, and the second half is one instruction:
 
-> Find the opening times and ticket prices for the three museums in Coburg, check them against the
-> official sites, and publish a page at /coburg/museums with a table.
+> Find the opening times and ticket prices for the three museums in Ashford, check them against the
+> official sites, and publish a page at /ashford/museums with a table.
 
 Ask it to say where the facts came from. It will put the sources on the page if you ask, and leave
 them off if you do not.
@@ -45,7 +45,7 @@ say so.
 Claude puts each one in a [collection](collections.md) and writes a page that fetches it. Then
 adding the fourth museum is one sentence, and the page itself never changes:
 
-> Add the Naturkunde-Museum to the museums, opens at 9, adults €5.
+> Add the Natural History Museum to the museums, opens at 9, adults €5.
 
 Without that, changing an opening time means rewriting the page. It is the difference between a site
 you keep and a site you rebuild.

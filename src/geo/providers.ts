@@ -34,7 +34,7 @@ export interface GeocodeCandidate {
   lat: number;
   lon: number;
   name: string;
-  // The place around the place: "Bavaria, Germany". Components, never a label composed for display,
+  // The place around the place: "region, country". Components, never a label composed for display,
   // because a caller renders it and a renderer wants the pieces.
   context: string | null;
   // Provider supplied and advisory: "city", "locality", "railway". Not an enumeration, because

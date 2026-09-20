@@ -37,7 +37,7 @@ One function serves everything, routed in [app.ts](src/app.ts):
 - **Public pages** — anything not claimed by another prefix.
 - **Admin UI** — `/admin/*`, server-rendered HTML, no client framework.
 - **Assets** — `/assets/*`, uploaded files served from blobs. Two key schemes: a rooted path
-  (`/germanfunstuff/images/coburg.jpg`, encoded like any other path) and, for anything uploaded before bundles,
+  (`/gallery/images/photo.jpg`, encoded like any other path) and, for anything uploaded before bundles,
   a content hash. Hash URLs keep resolving forever and belong to no bundle.
 - **Data** — `/data/<path>.json`, a collection served whole as JSON for a page to fetch and render.
   `/data/_collections.json` is the reserved index of every collection.
@@ -69,7 +69,7 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 - **Organization is a filesystem, and nothing more.** A path is a bundle holding everything at or under it;
   [bundle.ts](src/bundle.ts) is the whole rule, twelve lines, and it stores nothing. Pages, collections and assets
   are all just things at paths, with no ownership relation between them. Matching is on segment arrays, never
-  string prefixes: `/bavaria` does not hold `/bavaria-lessons/lessons`, and that pair exists on the live site.
+  string prefixes: `/photos` does not hold `/photos-archive/lessons`, and neighbours like that are easy to create.
   The `startsWith` version passes most tests, so [bundles.test.ts](src/bundles.test.ts) pins the neighbour cases;
   in `delete_bundle` the same bug destroys a bundle nobody named. Resist reintroducing an owner or a "belongs to"
   field: the path already says it, and a second vocabulary for the same fact is what made this hard the first time.
@@ -430,7 +430,7 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   explicit prohibitions only — `bicycle=no` is a fact somebody wrote down, "busy road" is an opinion. `analyzed_m`
   is the `check_refs` rule again: it is how much of the route carried tags at all, it is 0 when the router reports
   none, and untagged ground is counted under its own name, because a summary that examined nothing must not read
-  like one that passed. OSM coverage is near total in Bavaria and thin elsewhere. Never add a single safety number:
+  like one that passed. OSM coverage varies widely by region. Never add a single safety number:
   safe depends on the rider, it could not survive a provider change, and the moment one exists nobody reads the
   breakdown. The per-way `segments` table lives in the asset keyed to coordinate indices and is remapped when the
   line is simplified, since thinning it must never leave the table pointing at the wrong places while still

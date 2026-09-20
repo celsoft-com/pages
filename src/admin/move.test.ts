@@ -9,7 +9,7 @@ import { resetBlobs } from "../test/blobs";
 
 const BODY =
   '<!doctype html>\n<script>\nconst BASE = "/data/trip/";\nfetch(BASE + "items.json");\n' +
-  '</script>\n<img src="/assets/trip/images/coburg.jpg">\n';
+  '</script>\n<img src="/assets/trip/images/photo.jpg">\n';
 
 let cookie: string;
 
@@ -19,12 +19,12 @@ beforeEach(async () => {
   cookie = (await createSessionCookie((await getOwner())!)).split(";")[0];
 
   await savePage({ path: "/trip", contentType: "html", title: "Trip", body: BODY });
-  await saveCollection("/trip/items", [{ id: "muc", name: "München" }]);
+  await saveCollection("/trip/items", [{ id: "muc", name: "Zürich" }]);
   await putAsset({
-    filename: "coburg.jpg",
+    filename: "photo.jpg",
     contentType: "image/jpeg",
     bytes: new TextEncoder().encode("PICTURE").buffer,
-    path: "/trip/images/coburg.jpg",
+    path: "/trip/images/photo.jpg",
   });
 });
 
@@ -88,7 +88,7 @@ describe("the move screen", () => {
     expect(bundle).toContain("checked");
     expect(body).toContain("1 collection and 1 asset");
     expect(body).toContain("/trip/items");
-    expect(body).toContain("/trip/images/coburg.jpg");
+    expect(body).toContain("/trip/images/photo.jpg");
   });
 
   it("says what a page-only move leaves behind", async () => {
@@ -124,8 +124,8 @@ describe("a bundle move", () => {
     expect(await getPage("/travel")).not.toBeNull();
     expect(await getCollection("/trip/items")).toBeNull();
     expect((await getCollection("/travel/items"))!.items[0].id).toBe("muc");
-    expect((await handle(new Request("https://example.com/assets/travel/images/coburg.jpg"))).status).toBe(200);
-    expect((await handle(new Request("https://example.com/assets/trip/images/coburg.jpg"))).status).toBe(404);
+    expect((await handle(new Request("https://example.com/assets/travel/images/photo.jpg"))).status).toBe(200);
+    expect((await handle(new Request("https://example.com/assets/trip/images/photo.jpg"))).status).toBe(404);
   });
 
   it("lists the page lines still naming the old path, having changed none of them", async () => {
