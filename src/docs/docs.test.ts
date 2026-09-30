@@ -134,8 +134,10 @@ describe("a topic is a markdown file in docs/", () => {
       for (const [, name] of topic.source.matchAll(PLACEHOLDER))
         expect(known, `${topic.slug}.md uses {{${name}}}`).toContain(name);
 
-    for (const topic of PAGES) expect(await body(`/docs/${topic.slug}`), topic.slug).not.toContain("{{");
-    expect(await body("/docs/tools")).not.toContain("{{");
+    // Placeholder-shaped only: the templates topic prints Liquid, whose {{ page.path }} is content.
+    const leftover = new RegExp(PLACEHOLDER.source);
+    for (const topic of PAGES) expect(await body(`/docs/${topic.slug}`), topic.slug).not.toMatch(leftover);
+    expect(await body("/docs/tools")).not.toMatch(leftover);
   });
 
   it("links only to things the site serves", async () => {

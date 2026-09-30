@@ -16,8 +16,9 @@ a site's links are its owner's business: a page that wants to link elsewhere say
 words.
 
 The wrapping is yours to replace. The site's chrome is a head, where your stylesheet link goes, and
-a header and a footer, each of which is a template: an ordinary html page holding a fragment, at a
-path such as `/root/chrome/header`, named in the settings and edited like any other page. Leave
+a header and a footer, each of which is a [template](templates.md): an ordinary html page holding a
+fragment, at a path such as `/root/chrome/header`, named in the settings and edited like any other
+page. It sees the page it wraps, so a nav can mark where the reader is. Leave
 the header or footer empty to keep the built-in one, or set the theme to none to drop the built-in
 styles and chrome altogether, so the page is your head, your header, the content and your footer.
 A nav on every page goes in the header template. Chrome is live on every markdown page the moment
