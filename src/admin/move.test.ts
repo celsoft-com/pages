@@ -98,13 +98,21 @@ describe("the move screen", () => {
     expect(body).toContain("stays behind at its old URL");
   });
 
-  it("refuses a move onto the site root, which is generated", async () => {
+  it("refuses a move onto /, and names /root instead", async () => {
     await savePage({ path: "/trip", contentType: "markdown", title: "Trip", body: "# Trip" });
-    const response = await post("/admin/pages/move", { from: "/trip", to: "/root", scope: "page" });
+    const response = await post("/admin/pages/move", { from: "/trip", to: "/", scope: "page" });
 
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toContain("site+contents");
+    expect(response.headers.get("location")).toContain("stored+at+%2Froot");
     expect(await getPage("/trip")).not.toBeNull();
+  });
+
+  it("moves a page onto /root, where it becomes the home page", async () => {
+    await savePage({ path: "/trip", contentType: "markdown", title: "Trip", body: "# Trip" });
+    await post("/admin/pages/move", { from: "/trip", to: "/root", scope: "page" });
+
+    expect((await getPage("/root"))!.title).toBe("Trip");
+    expect(await getPage("/trip")).toBeNull();
   });
 
   it("turns away a path with no page", async () => {

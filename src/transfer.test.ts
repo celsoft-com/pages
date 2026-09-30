@@ -373,26 +373,18 @@ describe("atomicity", () => {
   });
 });
 
-describe("the site root is generated, so no transfer may write it", () => {
-  it("refuses a page moved onto /root", async () => {
+describe("the home page at /root is a page like any other", () => {
+  it("can be moved onto /root", async () => {
     await savePage({ path: "/archive/home", contentType: "markdown", title: "Home", body: "# Home" });
-    await expect(call("move_page", { from: "/archive/home", to: "/root" })).rejects.toThrow(/site contents/);
-    expect(await getPage("/archive/home")).not.toBeNull();
+    await call("move_page", { from: "/archive/home", to: "/root" });
+    expect((await getPage("/root"))!.body).toBe("# Home");
+    expect(await getPage("/archive/home")).toBeNull();
   });
 
-  it("refuses a page copied onto /root", async () => {
-    await savePage({ path: "/archive/home", contentType: "markdown", title: "Home", body: "# Home" });
-    await expect(call("copy_page", { from: "/archive/home", to: "/root" })).rejects.toThrow(/site contents/);
-  });
-
-  // A bundle verb never names the page it would land there, which is the whole reason the check
-  // is on the target rather than on the argument.
-  it("refuses a bundle move that would land a page on /root", async () => {
-    await savePage({ path: "/archive", contentType: "markdown", title: "Archive", body: "# Archive" });
-    await expect(call("move_bundle", { from: "/archive", to: "/root", confirm: true })).rejects.toThrow(
-      /site contents/,
-    );
-    expect(await getPage("/archive")).not.toBeNull();
+  it("can be copied off /root", async () => {
+    await savePage({ path: "/root", contentType: "markdown", title: "Home", body: "# Home" });
+    await call("copy_page", { from: "/root", to: "/archive/home" });
+    expect((await getPage("/archive/home"))!.body).toBe("# Home");
   });
 
   // The /root folder itself is ordinary: the favicon and anything else filed there still moves.
@@ -403,9 +395,17 @@ describe("the site root is generated, so no transfer may write it", () => {
   });
 });
 
+// Nothing writes one any more, but a site from before the refusal can still hold one.
 describe("a page stored at /", () => {
   beforeEach(async () => {
-    await savePage({ path: "/", contentType: "markdown", title: "Welcome", body: "# Welcome" });
+    await stores.pages().setJSON(encodeKey("/"), {
+      path: "/",
+      contentType: "markdown",
+      title: "Welcome",
+      body: "# Welcome",
+      createdAt: 1,
+      updatedAt: 1,
+    });
     await savePage({
       path: "/styles",
       contentType: "html",

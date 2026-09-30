@@ -85,16 +85,19 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   transfer refuse it at either end. That is
   the whole of the rule. A page, collection or asset may still sit at `/` like any other resource — it is simply
   not reachable through a bundle, and a collection there keeps its `/data/index.json` address. Nothing is migrated.
-- **The home page is the contents of the site, not a page.** `/` serves a generated list of every public page,
-  [contents.ts](src/pages/contents.ts), so there is nothing to write, keep current or delete: `savePage` and the
-  transfer engine both refuse `ROOT_BUNDLE` as a target, and setup seeds no welcome page. It is still a path, and
-  that is the point: `/root` is what `set_privacy` closes, what a share link opens and where the favicon sits,
-  because `/` itself can never be a scope — a scope holds everything at or under it, and that would be the site.
-  `/root` 301s to `/` so it has one URL, and the admin gives it a row on the Pages screen carrying access and
-  nothing else. The list leaves out every private page whoever is asking, grant or no grant: showing one to a link
-  holder would make a response that varies by cookie, and a public response is durable at the edge, so the next
-  visitor gets their copy. A tool aimed at `/root` says the contents is generated rather than that no page is
-  there, because a client told nothing is published will publish something.
+- **The home page is the page at `/root`, and the contents is its default.** `/` serves the page stored at
+  `ROOT_BUNDLE` when there is one, and otherwise the generated list of every public page,
+  [contents.ts](src/pages/contents.ts), so a new site needs nothing written and setup seeds no welcome page.
+  This overturned an earlier rule that `/` was never a page: a site whose home page could only be a list was a
+  site its owner could not design. `/` itself is never a page path, since it would be a second name for the
+  home page, so `savePage` and every admin screen refuse it and name `/root`; an old blob already at `/` is left
+  where it is and nothing serves it. `/root` is what `set_privacy` closes, what a share link opens and where the
+  favicon sits, because `/` itself can never be a scope — a scope holds everything at or under it, and that
+  would be the site. `/root` 301s to `/` so it has one URL. The contents leaves out every private page whoever
+  is asking, grant or no grant: showing one to a link holder would make a response that varies by cookie, and a
+  public response is durable at the edge, so the next visitor gets their copy. A read of `/root` with nothing
+  stored says `/` is serving the contents and how to replace it, because a client told only that nothing is
+  there cannot tell a default from a lost page.
 - **Bundles are organization, never a boundary.** Nothing is rejected, moved or blocked by them.
   `set_collection_refs` may cross bundles and a page may fetch any collection.
 - **Copy, move and delete are one service at four levels.** [transfer.ts](src/transfer.ts) is the whole of it:
