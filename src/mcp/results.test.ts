@@ -231,6 +231,16 @@ describe("site and privacy results", () => {
     ]);
   });
 
+  it("get_instructions and set_instructions", async () => {
+    expect(keys(await raw("get_instructions"))).toEqual(["limit", "rev", "text", "updated_at"]);
+    expect(keys(await raw("set_instructions", { text: "- British English." }))).toEqual([
+      "characters",
+      "limit",
+      "rev",
+      "updated_at",
+    ]);
+  });
+
   it("set_privacy, closing and reopening", async () => {
     const closed = await raw("set_privacy", { path: "/trip", private: true });
     expect(keys(closed)).toEqual(["closed", "next", "path", "private", "url"]);
@@ -400,6 +410,7 @@ describe("coverage of the registry", () => {
         "list_collections", "list_items", "count_items", "get_item", "put_item", "delete_item",
         "reorder_items", "search_items", "match_names", "set_collection_refs", "check_refs",
         "get_site", "set_privacy", "share_path", "list_shares", "revoke_share", "set_site_info",
+        "get_instructions", "set_instructions",
         "copy_page", "move_page", "delete_page",
         "copy_collection", "move_collection", "delete_collection",
         "copy_asset", "move_asset", "delete_asset",

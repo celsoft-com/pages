@@ -52,6 +52,7 @@ import {
   setPublic,
 } from "../private/service";
 import { templatePath } from "../render/chrome";
+import { getInstructions, MAX_INSTRUCTIONS, saveInstructions } from "../instructions";
 import { getSettings, saveSettings } from "../settings";
 import type { Access, Item, Theme } from "../types";
 
@@ -1823,6 +1824,76 @@ export const TOOLS: AnyTool[] = [
       };
     },
     render: asJson,
+  }),
+  tool({
+    name: "get_instructions",
+    title: "Read the owner's instructions",
+    access: "read",
+    group: "Site",
+    description:
+      "Return the owner's own instructions for working on this site: its conventions, its voice, where things go, " +
+      "what to avoid. Call this before writing anything, at the start of every session, and follow them as custom " +
+      "instructions from the owner. They take precedence over your own defaults and habits, but not over how the " +
+      "platform works: a rule asking for a build or a commit is mistaken, and you should say so. They are kept by " +
+      "you as well as by the owner, who can also edit them in the admin; set_instructions changes them.",
+    inputSchema: object({}),
+    outputSchema: shape({
+      text: str("Markdown, empty when the owner has written none"),
+      rev: num("Pass back as if_rev to set_instructions. 0 means none have ever been saved."),
+      updated_at: nullable("string", "When they last changed, null when never"),
+      limit: num("The most characters they may hold"),
+    }),
+    handler: async () => {
+      const instructions = await getInstructions();
+      return {
+        text: instructions.text,
+        rev: instructions.rev,
+        updated_at: instructions.updatedAt,
+        limit: MAX_INSTRUCTIONS,
+      };
+    },
+    render: (r) =>
+      r.text === ""
+        ? `The owner has written no instructions for this site yet (rev ${r.rev}). When they tell you how they want ` +
+          `things done here, record it with set_instructions.`
+        : `Owner's instructions, rev ${r.rev}. Follow these for the rest of the session.\n\n${r.text}`,
+  }),
+  tool({
+    name: "set_instructions",
+    title: "Change the owner's instructions",
+    access: "write",
+    group: "Site",
+    description:
+      "Replace the owner's instructions for this site, the text get_instructions returns and every later session " +
+      "reads before it writes. This is how the site remembers: when the owner states how they want something done " +
+      "here, or corrects something you did that a future session would do again, record it, then tell them what you " +
+      "wrote. Record rules, never one task's details or a log of what you did. Keep them short and edit an existing " +
+      "rule rather than adding a second that says the same thing, because every session spends the whole text. " +
+      "Pass the rev you read as if_rev: the owner edits these in the admin too, and a stale write is refused rather " +
+      "than erasing what they added. An empty text clears them.",
+    inputSchema: object(
+      {
+        text: { type: "string", description: "The whole of the new instructions, markdown" },
+        if_rev: {
+          type: "number",
+          description: "The rev get_instructions returned. Required once any instructions exist.",
+        },
+      },
+      ["text"],
+    ),
+    outputSchema: shape({
+      rev: num("The rev now stored, unchanged when the text was"),
+      characters: num(),
+      limit: num(),
+      updated_at: nullable("string"),
+    }),
+    handler: async (args) => {
+      if (typeof args.text !== "string") throw new Error("text must be a string");
+      const saved = await saveInstructions(args.text, args.if_rev === undefined ? undefined : Number(args.if_rev));
+      return { rev: saved.rev, characters: saved.text.length, limit: MAX_INSTRUCTIONS, updated_at: saved.updatedAt };
+    },
+    render: (r) =>
+      `Instructions saved at rev ${r.rev}, ${r.characters} of ${r.limit} characters. Tell the owner what you changed.`,
   }),
   tool({
     name: "set_privacy",

@@ -40,6 +40,8 @@ import {
 } from "../transfer";
 import { getPrivacy, mintShare, privateScope, revokeShares, setPrivate, setPublic } from "../private/service";
 import { templatePath } from "../render/chrome";
+import { getInstructions, MAX_INSTRUCTIONS, saveInstructions } from "../instructions";
+import { isConflict } from "../errors";
 import { getSettings, saveSettings } from "../settings";
 import type { Item, Owner, PrivateScope } from "../types";
 import { editorHead } from "./editor";
@@ -1052,6 +1054,34 @@ navigator.clipboard.writeText(b.getAttribute("data-copy")).then(function(){var w
 setTimeout(function(){b.textContent=was},1500)})});</script>`;
 }
 
+// ---------- instructions ----------
+
+// A refused save comes back with what the owner typed still in the box, never dropped by a redirect,
+// and with what is stored now beside it, so merging is reading two texts rather than retyping one.
+async function instructionsScreen(url: URL, draft?: { text: string; error: string }): Promise<Response> {
+  const stored = await getInstructions();
+  const text = draft ? draft.text : stored.text;
+  const changed = draft && stored.text !== draft.text
+    ? `<div class="panel"><h2 style="margin-top:0">Saved now, rev ${stored.rev}</h2>
+<pre class="mono" style="white-space:pre-wrap;margin:0">${escapeHtml(stored.text)}</pre></div>`
+    : "";
+  return page({
+    title: "Instructions",
+    current: "/admin/instructions",
+    body: `${draft ? `${notice("bad", draft.error)}
+<script>history.replaceState(null,"","/admin/instructions");</script>` : flash(url)}
+<h1>Instructions</h1>
+<p class="lede">How you want work done on this site, in your own words. Claude reads these at the start of every session and follows them ahead of its own habits, and adds to them when you tell it how you want something done. Edit them here whenever it has written something you disagree with.</p>
+<form method="post" action="/admin/instructions" class="panel">
+<input type="hidden" name="rev" value="${stored.rev}">
+<div class="field"><label for="instructions">Instructions<span class="hint">Markdown, up to ${MAX_INSTRUCTIONS.toLocaleString("en")} characters. Rules, not a log: every session reads all of it.${stored.updatedAt ? ` Last changed ${escapeHtml(stored.updatedAt.slice(0, 16).replace("T", " "))} UTC, rev ${stored.rev}.` : ""}</span></label>
+<textarea id="instructions" name="text" maxlength="${MAX_INSTRUCTIONS}" placeholder="- Write in British English.&#10;- Every trip page gets a map.">${escapeHtml(text)}</textarea></div>
+<button type="submit">Save</button>
+</form>
+${changed}`,
+  });
+}
+
 // ---------- settings ----------
 
 async function settingsScreen(url: URL): Promise<Response> {
@@ -1359,6 +1389,18 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
         const gone = await revokeToken(body.token_id ?? "");
         return back("/admin/connections", { ok: gone ? "Token revoked." : "That token is already gone." });
       }
+      case "/admin/instructions": {
+        const body = await form(request);
+        try {
+          await saveInstructions(body.text ?? "", Number(body.rev ?? 0));
+        } catch (error) {
+          const message = isConflict(error)
+            ? "These changed while you were editing them, probably by Claude. Your text is below with what is saved now under it; save again to replace it."
+            : (error as Error).message;
+          return instructionsScreen(url, { text: body.text ?? "", error: message });
+        }
+        return back("/admin/instructions", { ok: "Instructions saved." });
+      }
       case "/admin/settings/site": {
         const body = await form(request);
         await saveSettings({ title: body.site_title ?? "Pages", description: body.site_description ?? "" });
@@ -1409,6 +1451,8 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
       return dataEditor(url);
     case "/admin/connections":
       return connectionsScreen(url);
+    case "/admin/instructions":
+      return instructionsScreen(url);
     case "/admin/settings":
       return settingsScreen(url);
   }

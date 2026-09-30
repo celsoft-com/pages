@@ -40,6 +40,9 @@ paths organize pages, collections and assets into folders, why moves run on the 
 is public. Working without it produces changes that look right and are wrong in ways the owner
 finds later.
 
+**Then call `get_instructions`.** Those are the owner's rules for this one site, kept by the owner
+and by agents alike, and `instructions` says how to treat and update them.
+
 That text is deliberately not repeated here. It is one string on the site, served to this API and
 to the MCP connector alike, so a site running a newer deploy teaches you its newer conventions
 with nothing to update on your side. A copy in this file would be a second, older answer.

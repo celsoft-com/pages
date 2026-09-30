@@ -103,6 +103,7 @@ const NAV = [
   { href: "/admin", label: "Pages" },
   { href: "/admin/assets", label: "Assets" },
   { href: "/admin/data", label: "Data" },
+  { href: "/admin/instructions", label: "Instructions" },
   { href: "/admin/connections", label: "Connections" },
   { href: "/admin/settings", label: "Settings" },
 ];
