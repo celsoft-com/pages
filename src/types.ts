@@ -45,6 +45,8 @@ export interface PageSummary {
   title: string;
   meta: PageMeta;
   hasDraft: boolean;
+  // Words of prose in the live body, so a listing can say how long a read is without opening it.
+  words: number;
   updatedAt: number;
 }
 

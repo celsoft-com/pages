@@ -3,7 +3,8 @@ import { getCollection, normalizeCollectionPath } from "../data/service";
 import { getPrivacy, privateScope } from "../private/service";
 import { listable } from "../pages/contents";
 import { normalizePath } from "../pages/path";
-import { getPage, listPages } from "../pages/service";
+import { buildStamp, describeBuild } from "../build";
+import { countWords, getPage, listPages } from "../pages/service";
 import type { Page, PageSummary, Privacy } from "../types";
 import { escapeHtml } from "./theme";
 
@@ -25,13 +26,29 @@ function visible(input: TemplateScope, path: string): boolean {
   return covering === null || covering.path === scopeOf(input);
 }
 
+// minutes is a reading time at a steady 230 words a minute, at least one; a page that wants another
+// figure sets its own in meta and prints that instead.
 function pageValue(page: Page | PageSummary) {
+  const words = "words" in page ? page.words : countWords(page.body);
   return {
     path: page.path,
     title: page.title,
     format: page.contentType,
     updated: new Date(page.updatedAt).toISOString(),
+    words,
+    minutes: Math.max(1, Math.ceil(words / 230)),
     meta: page.meta,
+  };
+}
+
+// The deploy serving this render, as the admin and the docs already print it.
+function buildValue() {
+  const stamp = buildStamp();
+  return {
+    description: describeBuild(stamp),
+    commit: stamp.commit,
+    branch: stamp.branch,
+    built: stamp.builtAt,
   };
 }
 
@@ -119,6 +136,7 @@ export async function renderTemplate(source: string, context: TemplateContext): 
       page: context.input.page ? pageValue(context.input.page) : null,
       site: new SiteDrop(context.input, context.site.title, context.site.description),
       collections: new CollectionsDrop(context.input),
+      build: buildValue(),
     });
   } catch (error) {
     return `<pre class="pages-error">Template error: ${escapeHtml((error as Error).message)}</pre>`;

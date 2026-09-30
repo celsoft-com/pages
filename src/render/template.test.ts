@@ -176,3 +176,23 @@ describe("the tag of a page with a fence", () => {
     expect(after).not.toBe(before);
   });
 });
+
+describe("reading time and the build", () => {
+  it("counts prose only, and gives every page a reading time of at least a minute", async () => {
+    const prose = Array.from({ length: 460 }, (_, i) => `word${i}`).join(" ");
+    await markdown(
+      "/long",
+      `# Title here\n\n${prose}\n\n\`\`\`ts\nconst not = counted;\n\`\`\`\n\n<div class="x">[a link](/somewhere)</div>`,
+    );
+    await markdown("/list", fence(`{% for p in site.pages %}{% if p.path == "/long" or p.path == "/essay/one" %}{{ p.path }}={{ p.words }}/{{ p.minutes }};{% endif %}{% endfor %}`));
+
+    const body = await visit("/list");
+    expect(body).toContain("/long=464/3;");
+    expect(body).toContain("/essay/one=1/1;");
+  });
+
+  it("puts the deploy in scope as build", async () => {
+    await markdown("/foot", fence("{{ build.description }}"));
+    expect(await visit("/foot")).toContain("Running locally, not from a deploy build.");
+  });
+});

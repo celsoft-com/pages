@@ -50,7 +50,17 @@ export function mergeMeta(existing: PageMeta, raw: unknown): PageMeta {
 
 // Bumped whenever PageSummary gains a field. Metadata written under an older number is not trusted
 // or patched up: the blob is read and the summary derived, which is slower and always right.
-const SUMMARY_VERSION = 3;
+const SUMMARY_VERSION = 4;
+
+// Prose only: code, tags, template tags and markdown punctuation are not read, so they are not counted.
+export function countWords(body: string): number {
+  const prose = body
+    .replace(/^(```|~~~)[\s\S]*?^\1[ \t]*$/gm, " ")
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>|\{%[\s\S]*?%\}|\{\{[\s\S]*?\}\}/g, " ")
+    .replace(/\]\([^)]*\)/g, "]");
+  return prose.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0;
+}
 
 function summarize(page: Page): PageSummary & { v: number } {
   return {
@@ -60,6 +70,7 @@ function summarize(page: Page): PageSummary & { v: number } {
     title: page.title,
     meta: page.meta,
     hasDraft: page.draft !== null,
+    words: countWords(page.body),
     updatedAt: page.updatedAt,
   };
 }

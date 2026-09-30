@@ -31,11 +31,14 @@ still possible.
 
 ## What a template can see
 
-- **`page`** is the page being rendered: `path`, `title`, `format`, `updated` and its
-  [meta](pages.md).
+- **`page`** is the page being rendered: `path`, `title`, `format`, `updated`, its
+  [meta](pages.md), `words` (the prose in its body, not counting code or markup) and `minutes`, a
+  reading time at 230 words a minute and never less than one.
 - **`site.pages`** is every public page, each with the same fields, in path order. Liquid's `where`,
   `sort`, `reverse` and a loop's `limit` and `offset` are how you pick from it.
 - **`site.title`** and **`site.description`** are the site's own.
+- **`build`** is the deploy serving the page: `description` is the one line the admin prints, and
+  `commit`, `branch` and `built` are its parts.
 - **`collections["/trip/stops"]`** is a [collection](collections.md)'s items, the same array its
   `/data` URL serves, in collection order. It is read only when a template names it.
 
