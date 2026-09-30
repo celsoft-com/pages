@@ -91,6 +91,13 @@ describe("instructions", () => {
       expect(INSTRUCTIONS).toContain(name);
   });
 
+  // Near the top on purpose: a connector that truncates long server instructions still keeps this.
+  it("sends the client to the owner's instructions before anything else", () => {
+    const first = INSTRUCTIONS.split("\n").slice(0, 3).join("\n");
+    expect(first).toContain("Call get_instructions before writing anything");
+    expect(first).toMatch(/record it with set_instructions and tell them what you wrote/);
+  });
+
   it("reaches the client on initialize", async () => {
     const reply = await rpc("initialize");
     expect(reply.result.instructions).toBe(INSTRUCTIONS);

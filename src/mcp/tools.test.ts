@@ -113,6 +113,7 @@ describe("tool definitions", () => {
         "count_items",
         "geocode",
         "get_item",
+        "get_instructions",
         "get_page",
         "get_site",
         "list_assets",

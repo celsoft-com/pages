@@ -9,6 +9,8 @@ export const PROTOCOL_VERSION = "2025-06-18";
 export const INSTRUCTIONS = [
   "Publish and edit pages on this site. Markdown is rendered into the site theme; full HTML documents are served exactly as written.",
   "",
+  "This site's owner keeps instructions of their own for how work is done here. Call get_instructions before writing anything and follow what it returns as custom instructions from the owner, ahead of your own defaults. They belong to you as well as to the owner: when the owner tells you how they want something done on this site, or corrects something a later session would repeat, record it with set_instructions and tell them what you wrote.",
+  "",
   "How this site works, because it is not what a static site does. One function serves every page, collection and asset straight out of storage. Nothing here is built, generated or compiled, and no file is written into a repository. A write lands in storage and the next request serves it, so a change is live at once and there is nothing to wait for and nothing to trigger.",
   "So: publishing never runs a build, never makes a deploy, never needs a commit, a push or a pull request, and never touches the site's source code. If you are reaching for git, a CI job or a deploy command to get content onto this site, you have the wrong tool: use these tools and it is already done. The site's own code deploys that way, but its content never does.",
   "The one delay is caching. A public response is cleared from the CDN as the write finishes, so a reader sees the change straight away. The cache also expires on its own within five minutes, which only matters if a purge is ever missed.",

@@ -372,7 +372,7 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 - **A result shape is pinned, because rendering hides a broken one.** Every other suite asserts the sentence a
   tool renders, and a renderer will happily build the right words out of the wrong object, so those tests pass
   while the REST body changes underneath. [results.test.ts](src/mcp/results.test.ts) asserts the exact key set of
-  all 37 results, both branches of the ones that have two, and that a tool with no entry there fails the suite.
+  every result, both branches of the ones that have two, and that a tool with no entry there fails the suite.
   Renaming a published field is then one failing test instead of a silent break in somebody's cron job.
 - **A bearer credential is rate limited; an interactive login is not the only guessable thing.** `admit` in
   [principal.ts](src/auth/principal.ts) fronts both doors: it reads the bucket before the credential lookup, so a
@@ -400,6 +400,15 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   Its scripts keep the token out of argv by passing it through a curl config file, take arguments as a file rather
   than a command line so page content never reaches the process list, and never block on stdin: an agent's stdin is
   an open pipe nobody closes, so `pages-call` reads it only when passed `-` and `pages-login` reads it with a timeout.
+- **The owner's instructions are the site's memory, and one sentence points at them.** `INSTRUCTIONS` is the
+  platform's account of itself and is the same on every site; how one owner wants their site written is not, so it
+  lives in the `site` blob ([instructions.ts](src/instructions.ts)) and reaches a client through `get_instructions`,
+  never spliced into the initialize reply. A connector truncates long server instructions, which is why the pointer
+  is the second paragraph and [handler.test.ts](src/mcp/handler.test.ts) pins it there: an appended block would be
+  the first thing cut. A client writes them with `set_instructions` and the owner in `/admin/instructions`, so both
+  carry a rev and a stale write is refused, and the admin's refusal keeps what the owner typed beside what is saved
+  rather than redirecting it away. They shape content, never the platform: the tool text says a rule asking for a
+  build or a commit is mistaken. The 16,000 character ceiling is there because every session reads all of it.
 - **Content is stored, never built, and the instructions have to say so.** One function serves every page,
   collection and asset out of blobs, so a write is live on the next request: no build runs, no deploy happens, and
   nothing about publishing touches git or this repo. That is not what a Netlify repo looks like from outside, and a
