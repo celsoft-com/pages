@@ -14,8 +14,19 @@ import { changePassword, completeSetup, getOwner, isSetupComplete } from "../aut
 import { completeAuthorize, parseAuthorize } from "../oauth/server";
 import { listGrants, revokeGrant } from "../oauth/store";
 import { listTokens, mintToken, revokeToken, type ApiToken } from "../auth/tokens";
-import { deletePage, deriveTitle, getPage, listPages, savePage, validateMeta } from "../pages/service";
-import type { PageMeta } from "../types";
+import {
+  deletePage,
+  deriveTitle,
+  discardDraft,
+  getPage,
+  listPages,
+  previewOf,
+  publishDraft,
+  saveDraft,
+  savePage,
+  validateMeta,
+} from "../pages/service";
+import type { ContentType, PageMeta } from "../types";
 import { HOME_IS_AT_ROOT, isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
 import { bundleContents } from "../inventory";
 import { originOf } from "../origin";
@@ -287,7 +298,7 @@ ${confirmAction({
           return `<tr>
 <td><a href="/admin/pages/edit?path=${encodeURIComponent(p.path)}">${escapeHtml(p.title)}</a>
 <div class="small"><span class="muted mono">${escapeHtml(p.path)}</span></div></td>
-<td><span class="pill">${p.contentType}</span></td>
+<td><span class="pill">${p.contentType}</span>${p.hasDraft ? ' <span class="pill warn">draft</span>' : ""}</td>
 <td>${accessCell(p.path, own, own ? null : privateScope(privacy, p.path), true)}</td>
 <td class="actions">
 <a class="button secondary" href="${escapeHtml(p.path)}" target="_blank" rel="noopener">View</a>
@@ -504,6 +515,24 @@ interface EditorDraft {
   error: string;
 }
 
+// A preview is the page's own URL, so it renders with the chrome and templates a reader would get.
+function workingCopyPanel(path: string, savedAt: number, armed: string | null): string {
+  const here = `/admin/pages/edit?path=${encodeURIComponent(path)}`;
+  const view = path === ROOT_BUNDLE ? "/" : path;
+  return `<div class="notice warn"><strong>Unpublished changes</strong>, saved ${escapeHtml(new Date(savedAt).toISOString().slice(0, 16).replace("T", " "))} UTC. Readers still see the live page.
+<div class="row" style="margin-top:.5rem"><a class="button secondary" href="${escapeHtml(view)}?preview" target="_blank" rel="noopener">Preview</a>
+${confirmAction({
+    here,
+    token: `discard:${path}`,
+    armed,
+    action: "/admin/pages/discard",
+    fields: { path },
+    label: "Discard",
+    confirm: `Discard the working copy and keep ${view} as it is live`,
+    cancel: "Keep it",
+  })}</div></div>`;
+}
+
 async function pageEditor(
   url: URL,
   minted?: { label: string; link: string },
@@ -512,6 +541,8 @@ async function pageEditor(
   const path = url.searchParams.get("path");
   if (path && normalizePath(path) === "/") return back("/admin", { error: HOME_IS_AT_ROOT });
   const existing = path ? await getPage(path) : null;
+  // The form edits the working copy when there is one, so saving a draft twice never loses the first.
+  const shown = existing ? previewOf(existing) : null;
 
   // Access belongs to a path, so there is nothing to show until the page has one.
   let access = "";
@@ -537,6 +568,7 @@ async function pageEditor(
 <h1>${existing ? "Edit page" : "New page"}</h1>
 ${access}
 ${existing ? "<h2>Content</h2>" : ""}
+${existing?.draft ? workingCopyPanel(existing.path, existing.draft.updatedAt, url.searchParams.get("confirm")) : ""}
 <form method="post" action="/admin/pages/save" class="panel">
 ${
       existing
@@ -554,25 +586,27 @@ ${
     }
 <div class="field">
   <label for="title">Title<span class="hint">Leave blank to use the first heading.</span></label>
-  <input id="title" name="title" type="text" value="${escapeHtml(draft?.title ?? existing?.title ?? "")}">
+  <input id="title" name="title" type="text" value="${escapeHtml(draft?.title ?? shown?.title ?? "")}">
 </div>
 <div class="field">
   <label for="format">Format<span class="hint">Markdown is wrapped in the site theme. HTML is served exactly as written.</span></label>
   <select id="format" name="format">
-    <option value="markdown"${(draft?.format ?? existing?.contentType) === "markdown" ? " selected" : ""}>Markdown</option>
-    <option value="html"${(draft?.format ?? existing?.contentType) === "html" ? " selected" : ""}>HTML</option>
+    <option value="markdown"${(draft?.format ?? shown?.contentType) === "markdown" ? " selected" : ""}>Markdown</option>
+    <option value="html"${(draft?.format ?? shown?.contentType) === "html" ? " selected" : ""}>HTML</option>
   </select>
 </div>
 <div class="field">
   <label for="meta">Meta<span class="hint">One key: value per line, for example date: 2026-09-30. Listed with the page, never shown in it.</span></label>
-  <textarea id="meta" name="meta" class="mono" rows="4">${escapeHtml(draft?.meta ?? metaText(existing?.meta ?? {}))}</textarea>
+  <textarea id="meta" name="meta" class="mono" rows="4">${escapeHtml(draft?.meta ?? metaText(shown?.meta ?? {}))}</textarea>
 </div>
 <div class="field">
   <label for="content">Content</label>
-  <textarea id="content" name="content" data-editor required>${escapeHtml(draft?.content ?? existing?.body ?? "")}</textarea>
+  <textarea id="content" name="content" data-editor required>${escapeHtml(draft?.content ?? shown?.body ?? "")}</textarea>
 </div>
-<div class="row"><button type="submit">Save</button>
+<div class="row"><button type="submit" name="action" value="publish">Publish</button>
+${existing ? '<button type="submit" name="action" value="draft" class="secondary">Save draft</button>' : ""}
 <a class="button secondary" href="/admin">Cancel</a></div>
+${existing ? '<div class="small muted" style="margin-top:.5rem">Save draft keeps readers on the live page while you work; Publish makes this live.</div>' : ""}
 </form>`,
   });
 }
@@ -602,13 +636,22 @@ async function savePageForm(request: Request): Promise<Response> {
     });
   }
 
-  await savePage({
-    path,
-    contentType: body.format === "html" ? "html" : "markdown",
+  const fields = {
+    contentType: (body.format === "html" ? "html" : "markdown") as ContentType,
     title: body.title?.trim() || deriveTitle(body.content ?? "", path),
     body: body.content ?? "",
     meta,
-  });
+  };
+  const existing = await getPage(path);
+  if (existing && body.action === "draft") {
+    await saveDraft(path, fields);
+    return back(`/admin/pages/edit?path=${encodeURIComponent(path)}`, { ok: "Draft saved. Readers still see the live page." });
+  }
+  // Publishing from the editor publishes what the form holds, so a working copy it was showing goes too.
+  if (existing?.draft) {
+    await saveDraft(path, fields);
+    await publishDraft(path);
+  } else await savePage({ path, ...fields });
 
   return back("/admin", { ok: `Saved ${path}` });
 }
@@ -1222,6 +1265,12 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
         return savePageForm(request);
       case "/admin/pages/move":
         return movePageForm(request);
+      case "/admin/pages/discard": {
+        const body = await form(request);
+        const path = normalizePath(body.path ?? "");
+        await discardDraft(path);
+        return back(`/admin/pages/edit?path=${encodeURIComponent(path)}`, { ok: "Working copy discarded." });
+      }
       case "/admin/pages/delete": {
         const body = await form(request);
         await deletePage(body.path ?? "");

@@ -52,16 +52,16 @@ describe("page results", () => {
   it("list_pages", async () => {
     const r = await raw("list_pages");
     expect(keys(r)).toEqual(["pages"]);
-    expect(keys(r.pages[0])).toEqual(["format", "meta", "path", "title", "url"]);
+    expect(keys(r.pages[0])).toEqual(["format", "has_draft", "meta", "path", "title", "url"]);
   });
 
   it("get_page whole", async () => {
-    expect(keys(await raw("get_page", { path: "/trip" }))).toEqual(["content", "format", "meta", "path", "title"]);
+    expect(keys(await raw("get_page", { path: "/trip" }))).toEqual(["content", "format", "has_draft", "meta", "path", "title"]);
   });
 
   it("get_page sliced", async () => {
     const r = await raw("get_page", { path: "/trip", find: "line" });
-    expect(keys(r)).toEqual(["format", "lines", "meta", "more", "path", "title", "total"]);
+    expect(keys(r)).toEqual(["format", "has_draft", "lines", "meta", "more", "path", "title", "total"]);
   });
 
   it("publish_page and update_page share one shape", async () => {
@@ -69,6 +69,19 @@ describe("page results", () => {
     const updated = await raw("update_page", { path: "/new", content: "# Newer" });
     expect(keys(published)).toEqual(["format", "meta", "path", "title", "url"]);
     expect(keys(updated)).toEqual(keys(published));
+  });
+
+  it("a draft update and a draft edit carry a preview url, and nothing else changes", async () => {
+    const updated = await raw("update_page", { path: "/trip", content: "# Trip\n\nA line.\n", draft: true });
+    expect(keys(updated)).toEqual(["format", "meta", "path", "preview_url", "title", "url"]);
+    const edited = await raw("edit_page", { path: "/trip", find: "A line.", replace: "B line.", draft: true });
+    expect(keys(edited)).toEqual(["lines", "path", "preview_url", "replaced", "url"]);
+  });
+
+  it("publish_draft and discard_draft", async () => {
+    await raw("update_page", { path: "/trip", content: "# Trip two", draft: true });
+    expect(keys(await raw("publish_draft", { path: "/trip" }))).toEqual(["format", "meta", "path", "title", "url"]);
+    expect(keys(await raw("discard_draft", { path: "/trip" }))).toEqual(["discarded", "path"]);
   });
 
   it("edit_page", async () => {
@@ -374,7 +387,7 @@ describe("coverage of the registry", () => {
   it("pins a result shape for every tool", () => {
     const pinned = new Set(
       [
-        "list_pages", "get_page", "edit_page", "publish_page", "update_page",
+        "list_pages", "get_page", "edit_page", "publish_page", "update_page", "publish_draft", "discard_draft",
         "upload_asset", "list_assets", "list_bundle",
         "list_collections", "list_items", "count_items", "get_item", "put_item", "delete_item",
         "reorder_items", "search_items", "match_names", "set_collection_refs", "check_refs",

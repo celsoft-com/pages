@@ -82,6 +82,14 @@ export async function accessToScope(request: Request, scope: PrivateScope | null
   return { scope, open: false };
 }
 
+// A preview shows work nobody has published, so only the owner may see one: their session, or a
+// credential, which goes through admit so guessing one here is rate limited like everywhere else.
+// Anybody else asking for ?preview is served the page as if they had not.
+export async function canPreview(request: Request): Promise<boolean> {
+  if (await getSessionOwner(request)) return true;
+  return bearerOf(request) !== null && (await admit(request)).ok;
+}
+
 export async function accessTo(request: Request, path: string): Promise<Access> {
   return accessToScope(request, privateScope(await getPrivacy(), path));
 }

@@ -20,7 +20,18 @@ export interface Page {
   title: string;
   body: string;
   meta: PageMeta;
+  // The working copy, when one is being written. Readers, listings and templates only ever see the
+  // live fields; ?preview shows this in their place to the owner, and publishing copies it over.
+  draft: PageDraft | null;
   createdAt: number;
+  updatedAt: number;
+}
+
+export interface PageDraft {
+  contentType: ContentType;
+  title: string;
+  body: string;
+  meta: PageMeta;
   updatedAt: number;
 }
 
@@ -33,6 +44,7 @@ export interface PageSummary {
   contentType: ContentType;
   title: string;
   meta: PageMeta;
+  hasDraft: boolean;
   updatedAt: number;
 }
 
