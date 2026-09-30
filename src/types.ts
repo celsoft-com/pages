@@ -86,7 +86,16 @@ export interface Privacy {
   scopes: PrivateScope[];
 }
 
+export type Theme = "default" | "none";
+
+// head is the owner's own HTML for every themed page's head. header and footer are paths of stored
+// templates, pages whose bodies wrap the content; empty means the built-in one. theme none drops the
+// built-in styles and chrome altogether.
 export interface SiteSettings {
   title: string;
   description: string;
+  head: string;
+  header: string;
+  footer: string;
+  theme: Theme;
 }

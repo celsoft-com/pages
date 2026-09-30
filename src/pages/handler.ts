@@ -4,7 +4,7 @@ import { getPrivacy, privateScope } from "../private/service";
 import { UNLOCK_HEAD } from "../private/unlock";
 import { renderMarkdown } from "../render/markdown";
 import { escapeHtml, layout } from "../render/theme";
-import { getSettings } from "../settings";
+import { loadChrome } from "../render/chrome";
 import type { Page } from "../types";
 import { contentsEtag, contentsHtml, listable } from "./contents";
 import { ROOT_BUNDLE, normalizePath } from "./path";
@@ -20,27 +20,15 @@ function html(body: string, access: Access, etag: string): Response {
   return new Response(body, { headers });
 }
 
-async function renderPage(page: Page): Promise<string> {
-  const settings = await getSettings();
-  return layout({
-    title: page.title,
-    siteTitle: settings.title,
-    siteDescription: settings.description || undefined,
-    content: renderMarkdown(page.body),
-  });
-}
-
 // The one answer for a path nobody may see, whether that is because nothing is published there or
 // because it is private and this visitor holds no grant. Both cases return this exact document, so
 // the 404 says nothing about whether the path exists. It also carries the unlock script, which is
 // how a share link works at all: the fragment holding the token never reaches the server, so the
 // script that reads it has to arrive in the response a stranger gets.
 async function closed(path: string): Promise<Response> {
-  const settings = await getSettings();
   const body = layout({
     title: "Not found",
-    siteTitle: settings.title,
-    siteDescription: settings.description || undefined,
+    chrome: await loadChrome(),
     head: UNLOCK_HEAD,
     content: `<h1>Not found</h1><p>Nothing is published at <code>${escapeHtml(path)}</code>.</p>`,
   });
@@ -61,14 +49,10 @@ async function home(request: Request): Promise<Response> {
   const stored = await getPage(ROOT_BUNDLE);
   if (stored) return served(stored, access);
 
-  const settings = await getSettings();
+  const chrome = await loadChrome();
   const pages = listable(await listPages()).filter((page) => !privateScope(privacy, page.path));
-  const body = contentsHtml({
-    siteTitle: settings.title,
-    siteDescription: settings.description || undefined,
-    pages,
-  });
-  return html(body, access, contentsEtag(pages));
+  const body = contentsHtml({ chrome, pages });
+  return html(body, access, `${contentsEtag(pages)}-${chrome.tag}`);
 }
 
 export async function handlePage(request: Request): Promise<Response> {
@@ -91,5 +75,7 @@ export async function handlePage(request: Request): Promise<Response> {
 
 async function served(page: Page, access: Access): Promise<Response> {
   if (page.contentType === "html") return html(page.body, access, String(page.updatedAt));
-  return html(await renderPage(page), access, String(page.updatedAt));
+  const chrome = await loadChrome();
+  const body = layout({ title: page.title, chrome, content: renderMarkdown(page.body) });
+  return html(body, access, `${page.updatedAt}-${chrome.tag}`);
 }

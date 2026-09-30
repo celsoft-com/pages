@@ -1,4 +1,5 @@
 import { escapeHtml, layout } from "../render/theme";
+import type { Chrome } from "../render/chrome";
 import type { PageSummary } from "../types";
 import { ROOT_BUNDLE } from "./path";
 
@@ -13,11 +14,7 @@ export function listable(pages: PageSummary[]): PageSummary[] {
   return pages.filter((page) => page.path !== "/" && page.path !== ROOT_BUNDLE);
 }
 
-export function contentsHtml(input: {
-  siteTitle: string;
-  siteDescription?: string;
-  pages: PageSummary[];
-}): string {
+export function contentsHtml(input: { chrome: Chrome; pages: PageSummary[] }): string {
   const list = input.pages.length
     ? `<ul class="index">${input.pages
         .map(
@@ -29,9 +26,8 @@ export function contentsHtml(input: {
     : "<p>Nothing is published yet.</p>";
 
   return layout({
-    title: input.siteTitle,
-    siteTitle: input.siteTitle,
-    siteDescription: input.siteDescription,
+    title: input.chrome.site.title,
+    chrome: input.chrome,
     content: `<h1>Contents</h1>${list}`,
   });
 }

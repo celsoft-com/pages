@@ -196,12 +196,16 @@ describe("site and privacy results", () => {
   beforeEach(seed);
 
   it("get_site", async () => {
-    expect(keys(await raw("get_site"))).toEqual(["description", "pages", "private", "title", "url"]);
+    expect(keys(await raw("get_site"))).toEqual(["description", "footer", "head", "header", "pages", "private", "theme", "title", "url"]);
   });
 
   it("set_site_info", async () => {
     expect(keys(await raw("set_site_info", { title: "T", description: "D" }))).toEqual([
       "description",
+      "footer",
+      "head",
+      "header",
+      "theme",
       "title",
     ]);
   });

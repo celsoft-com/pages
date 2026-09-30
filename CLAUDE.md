@@ -233,8 +233,15 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   revs exact, and a rule that each write path must announce itself is one a write path will forget. The bounded
   `s-maxage` is the backstop, so the worst case of a purge that never lands is five minutes, not forever.
 - **The themed layout reads settings and nothing else.** There is no site nav. A page that wants links to
-  other pages writes them, and a client that wants a nav builds one into its pages; the layout is the site title,
-  the description and the content. Drawing eight nav links cost a full read of every page blob, body included, on
+  other pages writes them, and an owner who wants a nav puts one in the chrome; the layout is the site title,
+  the description, the chrome and the content. Chrome is `head`, the owner's HTML placed verbatim, `header` and
+  `footer`, which are paths of stored templates, and `theme: none` to drop the built-in styles and wrapper. A
+  template is an ordinary page, so there is one template mechanism and chrome is only which template wraps
+  every page; a name is refused unless a page is stored there, and one whose page has gone renders the built-in
+  piece rather than breaking the site. [chrome.ts](src/render/chrome.ts) reads all of it. It never reaches an
+  HTML page. A themed page's ETag carries the chrome's tag beside its own `updatedAt`, because a chrome or
+  template change moves nothing on the page and a tag from the page alone would revalidate the old header into
+  a 304. Drawing eight nav links cost a full read of every page blob, body included, on
   every request, and it decided for the owner what their site looked like.
 - **Repeating content belongs in a collection.** A page that lists things fetches `/data/<path>.json`; it does not
   bake the list into its HTML. The MCP instructions in [handler.ts](src/mcp/handler.ts) tell clients to offer the
