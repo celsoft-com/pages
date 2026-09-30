@@ -16,7 +16,7 @@ import { listGrants, revokeGrant } from "../oauth/store";
 import { listTokens, mintToken, revokeToken, type ApiToken } from "../auth/tokens";
 import { deletePage, deriveTitle, getPage, listPages, savePage, validateMeta } from "../pages/service";
 import type { PageMeta } from "../types";
-import { HOME_IS_GENERATED, isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
+import { HOME_IS_AT_ROOT, isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
 import { bundleContents } from "../inventory";
 import { originOf } from "../origin";
 import {
@@ -234,6 +234,7 @@ function accessCell(
 async function pagesScreen(url: URL): Promise<Response> {
   const [all, grants, privacy] = await Promise.all([listPages(), listGrants(), getPrivacy()]);
   const pages = all.filter((p) => p.path !== ROOT_BUNDLE);
+  const stored = all.find((p) => p.path === ROOT_BUNDLE);
   const origin = originOf(url);
   const armed = url.searchParams.get("confirm");
 
@@ -250,13 +251,32 @@ async function pagesScreen(url: URL): Promise<Response> {
     },
   ]);
 
-  // The site root is not a page: it is the list of them, generated on every request. It still has
-  // a path, so it carries the same access control as any other row and nothing else.
-  const homeRow = `<tr>
+  // The home page is the page stored at /root, or the generated contents while there is none. Either
+  // way it is the row a visitor reaches at /, so it leads the table and carries access like any other.
+  const homeAccess = accessCell(ROOT_BUNDLE, privacy.scopes.find((scope) => scope.path === ROOT_BUNDLE), null, false);
+  const homeEdit = `/admin/pages/edit?path=${encodeURIComponent(ROOT_BUNDLE)}`;
+  const homeRow = stored
+    ? `<tr>
+<td><a href="${homeEdit}">${escapeHtml(stored.title)}</a><div class="small"><span class="muted mono">/</span></div>
+<div class="small muted">Your home page, stored at <span class="mono">${ROOT_BUNDLE}</span>.</div></td>
+<td><span class="pill">${stored.contentType}</span></td>
+<td>${homeAccess}</td>
+<td class="actions"><a class="button secondary" href="/" target="_blank" rel="noopener">View</a>
+${confirmAction({
+        here: "/admin",
+        token: `delete:${ROOT_BUNDLE}`,
+        armed,
+        action: "/admin/pages/delete",
+        fields: { path: ROOT_BUNDLE },
+        label: "Delete",
+        confirm: "Delete the home page and list every page at / again",
+        cancel: "Keep it",
+      })}</td></tr>`
+    : `<tr>
 <td>Contents<div class="small"><span class="muted mono">/</span></div>
-<div class="small muted">Every public page, listed automatically.</div></td>
+<div class="small muted">Every public page, listed automatically. <a href="${homeEdit}">Write a home page</a> to replace it.</div></td>
 <td><span class="pill">generated</span></td>
-<td>${accessCell(ROOT_BUNDLE, privacy.scopes.find((scope) => scope.path === ROOT_BUNDLE), null, false)}</td>
+<td>${homeAccess}</td>
 <td class="actions"><a class="button secondary" href="/" target="_blank" rel="noopener">View</a></td></tr>`;
 
   const rows = pages.length
@@ -489,8 +509,7 @@ async function pageEditor(
   draft?: EditorDraft,
 ): Promise<Response> {
   const path = url.searchParams.get("path");
-  if (path && (normalizePath(path) === ROOT_BUNDLE || normalizePath(path) === "/"))
-    return back("/admin", { error: HOME_IS_GENERATED });
+  if (path && normalizePath(path) === "/") return back("/admin", { error: HOME_IS_AT_ROOT });
   const existing = path ? await getPage(path) : null;
 
   // Access belongs to a path, so there is nothing to show until the page has one.
@@ -528,8 +547,8 @@ ${
   <a class="link" href="/admin/pages/move?path=${encodeURIComponent(existing.path)}">Move or rename</a></div>
 </div>`
         : `<div class="field">
-  <label for="path">Path<span class="hint">Lowercase, for example /about. The site root lists every page, so nothing is published there.</span></label>
-  <input id="path" name="path" type="text" required value="${escapeHtml(draft?.path ?? "")}" placeholder="/about">
+  <label for="path">Path<span class="hint">Lowercase, for example /about. A page at /root is the home page, served at /.</span></label>
+  <input id="path" name="path" type="text" required value="${escapeHtml(draft?.path ?? path ?? "")}" placeholder="/about">
 </div>`
     }
 <div class="field">
@@ -565,7 +584,7 @@ async function savePageForm(request: Request): Promise<Response> {
   const body = await form(request);
   const path = normalizePath(body.path ?? "");
   if (!isValidPath(path)) return back("/admin/pages/edit", { error: `Path "${body.path}" is not usable.` });
-  if (path === "/" || path === ROOT_BUNDLE) return back("/admin/pages/edit", { error: HOME_IS_GENERATED });
+  if (path === "/") return back("/admin/pages/edit", { error: HOME_IS_AT_ROOT });
 
   let meta: PageMeta;
   try {
@@ -787,7 +806,7 @@ async function movePageForm(request: Request): Promise<Response> {
   const home = `/admin/pages/move?path=${encodeURIComponent(from)}`;
 
   if (!isValidPath(to)) return back(home, { error: `Path "${body.to}" is not usable.` });
-  if (to === "/" || to === ROOT_BUNDLE) return back(home, { error: HOME_IS_GENERATED });
+  if (to === "/") return back(home, { error: HOME_IS_AT_ROOT });
 
   try {
     return moveResult(

@@ -236,9 +236,10 @@ export const BUNDLES =
   "is no owner and no owning page, and nothing is ever unfiled or ungrouped: a resource's own path already says " +
   "which bundles hold it, so publishing a page at /trip changes nothing about what is under /trip. Matching is on " +
   "whole path segments, so /photos does not hold /photos-archive/lessons. One exception: / is not a bundle, " +
-  "because it would hold the entire site. A resource may still sit at /, and what a browser gets at / is the site " +
-  "contents, a generated list of every public page that no tool writes or deletes. The /root bundle is an ordinary " +
-  "folder holding the favicon and whatever else is filed there. This is organization only, never a boundary: " +
+  "because it would hold the entire site. A resource may still sit at /. What a browser gets at / is the page " +
+  "stored at /root, or the site contents, a generated list of every public page, until one is published there. " +
+  "The /root bundle is otherwise an ordinary folder holding the home page, the favicon and whatever else is filed " +
+  "there. This is organization only, never a boundary: " +
   "nothing is rejected, moved or blocked by it, " +
   "any page may fetch any collection, and references may cross bundles.";
 
@@ -624,8 +625,8 @@ export const TOOLS: AnyTool[] = [
         path: {
           type: "string",
           description:
-            "Page path, for example /about. / is the generated site contents, so a page cannot be published there; " +
-            "every page you publish is listed on it.",
+            "Page path, for example /about. A page at /root is the home page, served at /; until one exists / " +
+            "serves the generated contents, a list of every public page. / itself is not a page path.",
         },
         content: { type: "string", description: "Markdown or a full HTML document" },
         format: { type: "string", enum: ["markdown", "html"], description: "Defaults to auto-detect" },

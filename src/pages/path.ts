@@ -2,14 +2,17 @@
 // this bundle and is served at /, so nothing sits above everything else.
 export const ROOT_BUNDLE = "/root";
 
-// The home page is the site's contents, generated from what is published, so it is the one page
-// nobody writes, edits or deletes. It is still a path: /root is what privacy closes, what a share
-// link opens and where the favicon sits, and a page blob stored there would be a second home page
-// nothing serves. Every write that would make one is refused with this.
+// The home page is stored at /root and served at /. / itself is never a page path: it would be a
+// second name for the same page, and a scope at / would hold the whole site.
+export const HOME_IS_AT_ROOT =
+  `The home page is stored at ${ROOT_BUNDLE} and served at /. Publish at ${ROOT_BUNDLE} to write one; ` +
+  "until one exists, / serves the generated contents, a list of every public page.";
+
+// What a read of /root says when nothing is stored there. It is not missing: / is serving the
+// generated contents, and a client told only that nothing is there cannot tell that from a lost page.
 export const HOME_IS_GENERATED =
-  `${ROOT_BUNDLE} is served at / as the site contents, a list of every public page, generated on every ` +
-  "request. It is not stored, so it cannot be published, edited, moved onto or deleted. Publish at any " +
-  "other path and it appears in the list.";
+  `No page is stored at ${ROOT_BUNDLE}, so / serves the generated contents, a list of every public page. ` +
+  `Publish at ${ROOT_BUNDLE} to replace it with a home page of your own.`;
 
 export function normalizePath(input: string): string {
   let path = input.trim();

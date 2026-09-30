@@ -369,6 +369,20 @@ describe("the site contents can be private", () => {
     expect(await (await get("/", cookie)).text()).toContain("Hello");
   });
 
+  it("closes a stored home page the same way, and never lets the edge keep the granted copy", async () => {
+    await savePage({ path: "/root", contentType: "markdown", title: "Home", body: "# Secret home" });
+    const link = await share("/root");
+
+    const blocked = await get("/");
+    expect(blocked.status).toBe(404);
+    expect(await blocked.text()).not.toContain("Secret home");
+
+    const cookie = (await unlock(link.split("#")[1])).headers.get("set-cookie")!.split(";")[0];
+    const granted = await get("/", cookie);
+    expect(await granted.text()).toContain("Secret home");
+    expect(granted.headers.get("netlify-cdn-cache-control")).toBeNull();
+  });
+
   // A page under its own scope is left out whoever is asking. Listing it for a link holder would
   // make a public response vary by cookie, and that response is cached at the edge for everyone.
   it("leaves a private page out of the list", async () => {

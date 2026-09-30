@@ -53,10 +53,10 @@ In `delete_bundle` this is the difference between a wrong listing and permanent 
   so it stays true as tools are added.
 - **A resource may still sit at `/`.** A page, collection or asset there is an ordinary resource; it is just
   not reachable through a bundle. A collection at `/` keeps its `/data/index.json` address.
-- **What a browser gets at `/` is the site contents**, a list of every public page, generated on every request.
-  Nothing publishes, edits or deletes it. `/root` names it as a path, which is what closes it and opens it with a
-  share link, and `/root` itself redirects to `/` so it has one URL. The `/root` folder is otherwise ordinary: the
-  favicon and anything else filed there behaves like any other resource.
+- **What a browser gets at `/` is the page stored at `/root`**, or, until one is published there, the site
+  contents, a list of every public page generated on every request. `/root` is also what closes it and opens it
+  with a share link, and `/root` itself redirects to `/` so it has one URL. The `/root` folder is otherwise
+  ordinary: the favicon and anything else filed there behaves like any other resource.
 - **Nothing is migrated.** A page already stored at `/` stays exactly where it is.
 
 ## Organization is not a boundary

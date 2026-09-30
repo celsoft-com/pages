@@ -45,16 +45,17 @@ starts with a letter; `path` and `title` are refused, because the page already h
 Changing one fact changes one name: the rest are kept, and the body is not sent again. In the
 admin editor meta is one `name: value` per line.
 
-## The home page is not a page
+## The home page lives at /root
 
-`/` is the contents of the site: a list of every public page, generated on every request. Nobody
-writes it, nobody has to keep it current, and it cannot be published to, edited or deleted. Publish
-anywhere else and it appears there.
+The home page is the page stored at `/root`, and it is served at `/`. Until you write one, `/` is
+the contents of the site instead: a list of every public page, generated on every request, which
+nobody has to keep current. Publish at `/root` and your page replaces the list; delete it and the
+list comes back.
 
-It is still a path, and its name is `/root`. That matters in three places: it is what you make
-private to close the site to the public, it is where a share link for the whole site points, and it
-is where the [favicon](assets.md) lives. `/root` itself redirects to `/`, so the contents has one
-address.
+`/` itself is never a page path, because it would be a second name for the same page. `/root` is
+also what you make private to close the site to the public, where a share link for the whole site
+points, and where the [favicon](assets.md) lives. `/root` itself redirects to `/`, so the home page
+has one address.
 
 A private page is left out of the list for everyone, link holders included, because a page that
 varied by who was asking could not be cached, and the next visitor would get somebody else's copy.

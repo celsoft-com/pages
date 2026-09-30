@@ -92,8 +92,7 @@ repoint the page, confirm it renders, then delete the source.
 Every tool returns the same envelope: `operation`, `scope`, `from`, `to`, `applied`, `resources`, `breaks`,
 `pages_to_update`, `notes`, and `rest_of_bundle` on a page verb. Each resource carries its kind, both paths,
 the target URL and whether it replaced something, plus item count, rev and refs for a collection and size for
-an asset. A page may never land on `/root`: the site root is generated, so a page verb naming it and a bundle verb
-that would carry one there are both refused before anything is written.
+an asset. A page that lands on `/root`, named outright or carried there by a bundle verb, becomes the home page.
 
 That is enough to verify the result without a follow-up call.
 

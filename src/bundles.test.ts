@@ -139,9 +139,10 @@ describe("/ is not a bundle", () => {
     await expect(call("delete_bundle", { path: "/", confirm: true })).rejects.toThrow(/not a bundle/);
   });
 
-  it("still lets a page sit at /, unserved like any other resource", async () => {
-    await page("/");
-    expect(await getPage("/")).not.toBeNull();
+  // / would be a second name for the home page, which is stored at /root.
+  it("refuses a page at /, and names /root instead", async () => {
+    await expect(page("/")).rejects.toThrow(/stored at \/root and served at \//);
+    expect(await getPage("/")).toBeNull();
   });
 
   it("still lets a collection sit at /", async () => {
@@ -152,7 +153,7 @@ describe("/ is not a bundle", () => {
   });
 });
 
-describe("the site root is the contents of the site", () => {
+describe("the site root is the contents of the site until a home page is written", () => {
   const visit = (path: string) => handlePage(new Request(`https://example.com${path}`));
 
   it("lists every published page", async () => {
@@ -169,9 +170,30 @@ describe("the site root is the contents of the site", () => {
     expect(await (await visit("/")).text()).toContain("Nothing is published yet");
   });
 
-  it("is not a page, so nothing publishes one there", async () => {
-    await expect(call("publish_page", { path: "/root", content: "# Home" })).rejects.toThrow(/site contents/);
-    expect(await getPage(ROOT_BUNDLE)).toBeNull();
+  it("serves a page stored at /root in place of the contents", async () => {
+    await call("publish_page", { path: "/about", content: "# About us" });
+    await call("publish_page", { path: "/root", content: "# Welcome home" });
+
+    const response = await visit("/");
+    const body = await response.text();
+    expect(response.status).toBe(200);
+    expect(body).toContain("Welcome home");
+    expect(body).not.toContain('href="/about"');
+  });
+
+  it("goes back to the contents when the home page is deleted", async () => {
+    await call("publish_page", { path: "/about", content: "# About us" });
+    await call("publish_page", { path: "/root", content: "# Welcome home" });
+    await call("delete_page", { path: "/root" });
+
+    const body = await (await visit("/")).text();
+    expect(body).not.toContain("Welcome home");
+    expect(body).toContain('href="/about"');
+  });
+
+  it("serves an html home page verbatim", async () => {
+    await call("publish_page", { path: "/root", content: "<!doctype html><p>mine</p>" });
+    expect(await (await visit("/")).text()).toBe("<!doctype html><p>mine</p>");
   });
 
   it("gives the site root one URL, not two", async () => {
@@ -180,13 +202,14 @@ describe("the site root is the contents of the site", () => {
     expect(response.headers.get("location")).toBe("/");
   });
 
-  it("never lists a page stored at / or /root, which nothing serves", async () => {
+  // A blob at / predates the refusal and nothing serves it; the contents must not link to it.
+  it("never lists a page stored at /, which nothing serves", async () => {
     await savePageDirect("/", "# Old home");
-    await savePageDirect(ROOT_BUNDLE, "# Older home");
+    await call("publish_page", { path: "/about", content: "# About us" });
 
     const body = await (await visit("/")).text();
     expect(body).not.toContain("Old home");
-    expect(body).not.toContain("Older home");
+    expect(body).toContain('href="/about"');
   });
 
   it("holds its own collections like any other bundle", async () => {

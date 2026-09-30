@@ -50,13 +50,16 @@ async function closed(path: string): Promise<Response> {
   });
 }
 
-// The contents of the site, generated on every request. It is closed and opened like any other
-// page, through the /root scope: / itself can never be one, because a scope holds everything at or
-// under its path and that would be the site.
-async function contents(request: Request): Promise<Response> {
+// A page stored at /root is the home page; without one, / is the contents of the site, generated on
+// every request. Either is closed and opened through the /root scope: / itself can never be one,
+// because a scope holds everything at or under its path and that would be the site.
+async function home(request: Request): Promise<Response> {
   const privacy = await getPrivacy();
   const access = await accessToScope(request, privateScope(privacy, ROOT_BUNDLE));
   if (!access.open) return closed("/");
+
+  const stored = await getPage(ROOT_BUNDLE);
+  if (stored) return served(stored, access);
 
   const settings = await getSettings();
   const pages = listable(await listPages()).filter((page) => !privateScope(privacy, page.path));
@@ -75,7 +78,7 @@ export async function handlePage(request: Request): Promise<Response> {
   // The home page is served at /, so it has one URL, not two.
   if (path === ROOT_BUNDLE) return new Response(null, { status: 301, headers: { location: "/" } });
 
-  if (path === "/") return contents(request);
+  if (path === "/") return home(request);
 
   // Before the page is read, so a stranger's request costs one blob read and reveals nothing.
   const access = await accessTo(request, path);
@@ -83,7 +86,10 @@ export async function handlePage(request: Request): Promise<Response> {
 
   const page = await getPage(path);
   if (!page) return closed(path);
+  return served(page, access);
+}
 
+async function served(page: Page, access: Access): Promise<Response> {
   if (page.contentType === "html") return html(page.body, access, String(page.updatedAt));
   return html(await renderPage(page), access, String(page.updatedAt));
 }

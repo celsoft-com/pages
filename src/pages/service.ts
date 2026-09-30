@@ -1,9 +1,8 @@
 import { encodeKey, stores } from "../store";
 import type { ContentType, Page, PageMeta, PageSummary } from "../types";
-import { HOME_IS_GENERATED, ROOT_BUNDLE, normalizePath } from "./path";
+import { HOME_IS_AT_ROOT, HOME_IS_GENERATED, ROOT_BUNDLE, normalizePath } from "./path";
 
-// What to say when a page is not there. At /root it is not missing: it is the one page nothing
-// stores, and a client told only that nothing is there will try to publish one.
+// What to say when a page is not there. At /root the answer is what / is serving instead.
 export function noPageAt(path: string): string {
   return path === ROOT_BUNDLE ? HOME_IS_GENERATED : `No page exists at ${path}`;
 }
@@ -108,7 +107,7 @@ export async function savePage(input: {
   meta?: PageMeta;
 }): Promise<Page> {
   const path = normalizePath(input.path);
-  if (path === ROOT_BUNDLE) throw new Error(HOME_IS_GENERATED);
+  if (path === "/") throw new Error(HOME_IS_AT_ROOT);
   const existing = await getPage(path);
   const now = Date.now();
   const page: Page = {

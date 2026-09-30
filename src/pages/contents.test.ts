@@ -66,17 +66,16 @@ describe("closing the contents", () => {
   });
 });
 
-// The tools have to say what / is, not that nothing is there: a client told a page is missing
-// publishes one.
-describe("a tool aimed at the site root", () => {
-  it("says the contents is generated rather than that nothing is published", async () => {
+// With no home page stored, the tools have to say what / is serving, not only that nothing is there.
+describe("a tool aimed at /root before a home page exists", () => {
+  it("says / is serving the generated contents, and how to replace it", async () => {
     for (const [name, args] of [
       ["get_page", { path: "/root" }],
       ["update_page", { path: "/root", content: "# Mine" }],
       ["edit_page", { path: "/root", find: "a", replace: "b" }],
       ["delete_page", { path: "/root" }],
     ] as const) {
-      await expect(call(name, args)).rejects.toThrow(/site contents/);
+      await expect(call(name, args)).rejects.toThrow(/generated contents.*Publish at \/root/);
     }
   });
 });
