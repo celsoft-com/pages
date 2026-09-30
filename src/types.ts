@@ -19,14 +19,20 @@ export interface Page {
   contentType: ContentType;
   title: string;
   body: string;
+  meta: PageMeta;
   createdAt: number;
   updatedAt: number;
 }
+
+// Values are strings only: a type that changed when the admin form round-tripped it would be a
+// fact changing without anyone asking. An ISO date and a zero-padded number both sort as text.
+export type PageMeta = Record<string, string>;
 
 export interface PageSummary {
   path: string;
   contentType: ContentType;
   title: string;
+  meta: PageMeta;
   updatedAt: number;
 }
 

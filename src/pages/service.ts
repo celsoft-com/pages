@@ -1,5 +1,5 @@
 import { encodeKey, stores } from "../store";
-import type { ContentType, Page, PageSummary } from "../types";
+import type { ContentType, Page, PageMeta, PageSummary } from "../types";
 import { HOME_IS_GENERATED, ROOT_BUNDLE, normalizePath } from "./path";
 
 // What to say when a page is not there. At /root it is not missing: it is the one page nothing
@@ -8,14 +8,50 @@ export function noPageAt(path: string): string {
   return path === ROOT_BUNDLE ? HOME_IS_GENERATED : `No page exists at ${path}`;
 }
 
+// A blob written before a field existed still comes back carrying it. Every page read goes
+// through here, listPages' fallback included, so a new field is defaulted once.
+function hydratePage(stored: Page | null): Page | null {
+  return stored ? { ...stored, meta: stored.meta ?? {} } : null;
+}
+
 export async function getPage(path: string): Promise<Page | null> {
   const stored = await stores.pages().get(encodeKey(normalizePath(path)), { type: "json" });
-  return (stored as Page | null) ?? null;
+  return hydratePage(stored as Page | null);
+}
+
+// path and title are fields of the page itself, and a second copy of either in meta would be two
+// answers to one question. A key is also a CSS class and a template name, so it stays an identifier.
+const META_KEY = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+const PAGE_FIELDS = ["path", "title"];
+
+export function validateMeta(raw: unknown): PageMeta {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+    throw new Error("meta must be an object of string values");
+  const meta: PageMeta = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!META_KEY.test(key))
+      throw new Error(`meta key "${key}" must start with a letter and hold only letters, digits, - and _`);
+    if (PAGE_FIELDS.includes(key)) throw new Error(`meta cannot hold "${key}": it is a field of the page itself`);
+    if (typeof value !== "string") throw new Error(`meta.${key} must be a string`);
+    meta[key] = value;
+  }
+  return meta;
+}
+
+export function mergeMeta(existing: PageMeta, raw: unknown): PageMeta {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+    throw new Error("meta must be an object of string or null values");
+  const entries = Object.entries(raw);
+  const removed = entries.filter(([, value]) => value === null).map(([key]) => key);
+  const set = validateMeta(Object.fromEntries(entries.filter(([, value]) => value !== null)));
+  const merged = { ...existing, ...set };
+  for (const key of removed) delete merged[key];
+  return merged;
 }
 
 // Bumped whenever PageSummary gains a field. Metadata written under an older number is not trusted
 // or patched up: the blob is read and the summary derived, which is slower and always right.
-const SUMMARY_VERSION = 1;
+const SUMMARY_VERSION = 2;
 
 function summarize(page: Page): PageSummary & { v: number } {
   return {
@@ -23,6 +59,7 @@ function summarize(page: Page): PageSummary & { v: number } {
     path: page.path,
     contentType: page.contentType,
     title: page.title,
+    meta: page.meta,
     updatedAt: page.updatedAt,
   };
 }
@@ -53,7 +90,7 @@ export async function listPages(): Promise<PageSummary[]> {
         const { v: _version, ...rest } = summary;
         return rest satisfies PageSummary;
       }
-      const page = (await stores.pages().get(blob.key, { type: "json" })) as Page | null;
+      const page = hydratePage((await stores.pages().get(blob.key, { type: "json" })) as Page | null);
       if (!page) return null;
       const { v: _v, ...rest } = summarize(page);
       return rest satisfies PageSummary;
@@ -67,6 +104,8 @@ export async function savePage(input: {
   contentType: ContentType;
   title: string;
   body: string;
+  // Left out, the page keeps what it had: an edit to the body is not a decision about its meta.
+  meta?: PageMeta;
 }): Promise<Page> {
   const path = normalizePath(input.path);
   if (path === ROOT_BUNDLE) throw new Error(HOME_IS_GENERATED);
@@ -77,6 +116,7 @@ export async function savePage(input: {
     contentType: input.contentType,
     title: input.title,
     body: input.body,
+    meta: input.meta ?? existing?.meta ?? {},
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };

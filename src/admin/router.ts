@@ -14,7 +14,8 @@ import { changePassword, completeSetup, getOwner, isSetupComplete } from "../aut
 import { completeAuthorize, parseAuthorize } from "../oauth/server";
 import { listGrants, revokeGrant } from "../oauth/store";
 import { listTokens, mintToken, revokeToken, type ApiToken } from "../auth/tokens";
-import { deletePage, deriveTitle, getPage, listPages, savePage } from "../pages/service";
+import { deletePage, deriveTitle, getPage, listPages, savePage, validateMeta } from "../pages/service";
+import type { PageMeta } from "../types";
 import { HOME_IS_GENERATED, isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
 import { bundleContents } from "../inventory";
 import { originOf } from "../origin";
@@ -452,7 +453,41 @@ ${accessPanel({
   });
 }
 
-async function pageEditor(url: URL, minted?: { label: string; link: string }): Promise<Response> {
+// Meta is edited as one key: value per line, the same shape a listing fence is written in, so the
+// form needs no script and a value may hold a colon of its own.
+function metaText(meta: PageMeta): string {
+  return Object.entries(meta)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
+}
+
+function parseMetaText(text: string): PageMeta {
+  const raw: Record<string, string> = {};
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    if (line.trim() === "") continue;
+    const colon = line.indexOf(":");
+    if (colon < 1) throw new Error(`Meta line ${index + 1} needs a key, a colon and a value`);
+    raw[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
+  }
+  return validateMeta(raw);
+}
+
+// What a refused save typed, put back into the form so a mistake in one meta line costs nothing
+// else. The response rewrites its history entry for the same reason a minted link does.
+interface EditorDraft {
+  path: string;
+  title: string;
+  format: string;
+  meta: string;
+  content: string;
+  error: string;
+}
+
+async function pageEditor(
+  url: URL,
+  minted?: { label: string; link: string },
+  draft?: EditorDraft,
+): Promise<Response> {
   const path = url.searchParams.get("path");
   if (path && (normalizePath(path) === ROOT_BUNDLE || normalizePath(path) === "/"))
     return back("/admin", { error: HOME_IS_GENERATED });
@@ -477,7 +512,8 @@ async function pageEditor(url: URL, minted?: { label: string; link: string }): P
     title: existing ? `Edit ${existing.path}` : "New page",
     current: "/admin",
     head: editorHead,
-    body: `${flash(url)}
+    body: `${draft ? `${notice("bad", draft.error)}
+<script>history.replaceState(null,"",${JSON.stringify(`${url.pathname}${url.search}`)});</script>` : flash(url)}
 <h1>${existing ? "Edit page" : "New page"}</h1>
 ${access}
 ${existing ? "<h2>Content</h2>" : ""}
@@ -493,23 +529,27 @@ ${
 </div>`
         : `<div class="field">
   <label for="path">Path<span class="hint">Lowercase, for example /about. The site root lists every page, so nothing is published there.</span></label>
-  <input id="path" name="path" type="text" required value="" placeholder="/about">
+  <input id="path" name="path" type="text" required value="${escapeHtml(draft?.path ?? "")}" placeholder="/about">
 </div>`
     }
 <div class="field">
   <label for="title">Title<span class="hint">Leave blank to use the first heading.</span></label>
-  <input id="title" name="title" type="text" value="${escapeHtml(existing?.title ?? "")}">
+  <input id="title" name="title" type="text" value="${escapeHtml(draft?.title ?? existing?.title ?? "")}">
 </div>
 <div class="field">
   <label for="format">Format<span class="hint">Markdown is wrapped in the site theme. HTML is served exactly as written.</span></label>
   <select id="format" name="format">
-    <option value="markdown"${existing?.contentType === "markdown" ? " selected" : ""}>Markdown</option>
-    <option value="html"${existing?.contentType === "html" ? " selected" : ""}>HTML</option>
+    <option value="markdown"${(draft?.format ?? existing?.contentType) === "markdown" ? " selected" : ""}>Markdown</option>
+    <option value="html"${(draft?.format ?? existing?.contentType) === "html" ? " selected" : ""}>HTML</option>
   </select>
 </div>
 <div class="field">
+  <label for="meta">Meta<span class="hint">One key: value per line, for example date: 2026-09-30. Listed with the page, never shown in it.</span></label>
+  <textarea id="meta" name="meta" class="mono" rows="4">${escapeHtml(draft?.meta ?? metaText(existing?.meta ?? {}))}</textarea>
+</div>
+<div class="field">
   <label for="content">Content</label>
-  <textarea id="content" name="content" data-editor required>${escapeHtml(existing?.body ?? "")}</textarea>
+  <textarea id="content" name="content" data-editor required>${escapeHtml(draft?.content ?? existing?.body ?? "")}</textarea>
 </div>
 <div class="row"><button type="submit">Save</button>
 <a class="button secondary" href="/admin">Cancel</a></div>
@@ -527,11 +567,27 @@ async function savePageForm(request: Request): Promise<Response> {
   if (!isValidPath(path)) return back("/admin/pages/edit", { error: `Path "${body.path}" is not usable.` });
   if (path === "/" || path === ROOT_BUNDLE) return back("/admin/pages/edit", { error: HOME_IS_GENERATED });
 
+  let meta: PageMeta;
+  try {
+    meta = parseMetaText(body.meta ?? "");
+  } catch (error) {
+    const here = (await getPage(path)) ? `/admin/pages/edit?path=${encodeURIComponent(path)}` : "/admin/pages/edit";
+    return pageEditor(new URL(here, "https://admin.invalid"), undefined, {
+      path,
+      title: body.title ?? "",
+      format: body.format ?? "markdown",
+      meta: body.meta ?? "",
+      content: body.content ?? "",
+      error: (error as Error).message,
+    });
+  }
+
   await savePage({
     path,
     contentType: body.format === "html" ? "html" : "markdown",
     title: body.title?.trim() || deriveTitle(body.content ?? "", path),
     body: body.content ?? "",
+    meta,
   });
 
   return back("/admin", { ok: `Saved ${path}` });
