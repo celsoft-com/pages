@@ -30,8 +30,8 @@ describe("page summaries", () => {
     } as unknown as ReturnType<typeof stores.pages>);
 
     expect(await listPages()).toEqual([
-      { path: "/hello", title: "Hello", contentType: "markdown", meta: {}, hasDraft: false, updatedAt: expect.any(Number) },
-      { path: "/hi", title: "Hi", contentType: "markdown", meta: {}, hasDraft: false, updatedAt: expect.any(Number) },
+      { path: "/hello", title: "Hello", contentType: "markdown", meta: {}, hasDraft: false, words: expect.any(Number), updatedAt: expect.any(Number) },
+      { path: "/hi", title: "Hi", contentType: "markdown", meta: {}, hasDraft: false, words: expect.any(Number), updatedAt: expect.any(Number) },
     ]);
     spy.mockRestore();
   });
@@ -45,7 +45,7 @@ describe("page summaries", () => {
     );
 
     expect(await listPages()).toEqual([
-      { path: "/hello", title: "Hello", contentType: "markdown", meta: {}, hasDraft: false, updatedAt: 1 },
+      { path: "/hello", title: "Hello", contentType: "markdown", meta: {}, hasDraft: false, words: expect.any(Number), updatedAt: 1 },
     ]);
   });
 
@@ -59,7 +59,7 @@ describe("page summaries", () => {
       updatedAt: 2,
     });
 
-    expect(await listPages()).toEqual([{ path: "/hello", title: "Hello", contentType: "html", meta: {}, hasDraft: false, updatedAt: 2 }]);
+    expect(await listPages()).toEqual([{ path: "/hello", title: "Hello", contentType: "html", meta: {}, hasDraft: false, words: expect.any(Number), updatedAt: 2 }]);
   });
 
   // A title is whatever an h1 says, so it can be longer than the 2 KB metadata cap. Losing the
@@ -71,7 +71,7 @@ describe("page summaries", () => {
     const found = await stores.pages().getMetadata(encodeKey("/hello"));
     expect(found!.metadata).toEqual({});
     expect(await listPages()).toEqual([
-      { path: "/hello", title, contentType: "markdown", meta: {}, hasDraft: false, updatedAt: expect.any(Number) },
+      { path: "/hello", title, contentType: "markdown", meta: {}, hasDraft: false, words: expect.any(Number), updatedAt: expect.any(Number) },
     ]);
   });
 
