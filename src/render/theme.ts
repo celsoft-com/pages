@@ -1,4 +1,5 @@
 import type { Chrome } from "./chrome";
+import { TOKEN_STYLES } from "./highlight";
 
 export interface LayoutOptions {
   title: string;
@@ -107,7 +108,7 @@ ${footer}`;
 <link rel="icon" href="/favicon.ico">
 <title>${escapeHtml(options.title)}</title>
 ${site.description ? `<meta name="description" content="${escapeHtml(site.description)}">` : ""}
-${bare ? "" : `<style>${STYLES}</style>`}
+${bare ? "" : `<style>${STYLES}${TOKEN_STYLES}</style>`}
 ${site.head}
 ${options.head ?? ""}
 </head>

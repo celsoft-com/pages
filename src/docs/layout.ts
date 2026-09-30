@@ -1,4 +1,5 @@
 import { describeBuild } from "../build";
+import { TOKEN_STYLES } from "../render/highlight";
 import { escapeHtml } from "../render/theme";
 
 // The docs have their own chrome rather than the site theme or the admin's: the themed layout is
@@ -123,7 +124,7 @@ export function docsLayout(options: { title: string; here: string; nav: NavItem[
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="/favicon.ico">
 <title>${escapeHtml(options.title)} · pages docs</title>
-<style>${STYLES}</style>
+<style>${STYLES}${TOKEN_STYLES}</style>
 </head>
 <body>
 <div class="shell">

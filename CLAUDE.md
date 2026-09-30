@@ -253,6 +253,14 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   rendered HTML as code or paragraphs. A failing template renders its error in place and costs its own block.
   HTML pages never run templates: verbatim is verbatim. Because a template reads the rest of the site, a page's
   ETag is a hash of the bytes sent; no timestamp moves when everything a template read does.
+- **Code is highlighted on the server, and colours are variables.** [highlight.ts](src/render/highlight.ts) is
+  Shiki's sync core with the JavaScript regex engine, wired as marked's `code` renderer, over a fixed list of
+  common grammars. Server-side because the alternative is a flash of plain code and JavaScript as a
+  requirement for reading. The `css-variables` theme means no palette enters the platform: `TOKEN_STYLES` sets
+  the variables for the built-in theme and the docs, and a `theme: none` site sets its own. A language outside
+  the list returns `false` so marked renders it as before, which is what keeps a mermaid or sandbox fence a
+  page's own script mounts byte-identical; a highlighted block keeps its `language-` class for the same reason.
+  The highlighter is built on first use, about 130 ms once per cold start.
 - **The themed layout reads settings and nothing else.** There is no site nav. A page that wants links to
   other pages writes them, and an owner who wants a nav puts one in the chrome; the layout is the site title,
   the description, the chrome and the content. Chrome is `head`, the owner's HTML placed verbatim, `header` and
