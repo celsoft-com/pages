@@ -127,6 +127,12 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   Ids, array order, nested values and item revs survive exactly; a copy starts at fresh revs and a move carries
   them, and replacing a target bumps the rev past what it held so no rev a client holds is reused for different
   content.
+- **Links are checked on demand, and the report states its scope.** `check_links`
+  ([links.ts](src/pages/links.ts)) is what replaces a static build's dead-link gate: it resolves every link a live
+  page wrote out whole (markdown links, `href`, `src`, quoted `/data` and `/assets` literals) against pages,
+  assets, collections and the app's own routes. It counts what it checked and says so when that was nothing,
+  the `check_refs` rule again, because a URL a template or script assembles cannot be seen and an empty list
+  must not read as a clean site.
 - **A transfer never edits a page.** Pages hardcode their URLs and there is no reliable way to tell which strings
   in arbitrary HTML are one, so every move and delete reports the page lines still naming what it took away and
   touches none of them. The scan matches a collection's `/data` URL and its parent prefix, which is what finds a
