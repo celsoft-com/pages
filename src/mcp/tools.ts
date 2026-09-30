@@ -45,8 +45,9 @@ import {
   setPrivate,
   setPublic,
 } from "../private/service";
+import { templatePath } from "../render/chrome";
 import { getSettings, saveSettings } from "../settings";
-import type { Access, Item } from "../types";
+import type { Access, Item, Theme } from "../types";
 
 export interface ToolContext {
   siteUrl: string;
@@ -161,6 +162,13 @@ function either(...branches: Record<string, unknown>[]) {
 function branch(title: string, properties: Record<string, unknown>, optional: string[] = []) {
   return { title, ...shape(properties, optional) };
 }
+
+const CHROME_OUTPUT = {
+  head: str("HTML in every themed page's head. Empty when none is set."),
+  header: str("Path of the template page placed before the content. Empty means the built-in header."),
+  footer: str("Path of the template page placed after the content. Empty means the built-in footer."),
+  theme: str("default, or none when the built-in styles and chrome are dropped"),
+};
 
 const PAGE_META = map(str(), "Facts about the page beside its body, all strings. Empty when none are set.");
 
@@ -1624,11 +1632,13 @@ export const TOOLS: AnyTool[] = [
     access: "read",
     group: "Site",
     description:
-      "Return the site title, description, address, page count and every private path with its live share count.",
+      "Return the site title, description, chrome, address, page count and every private path with its live share count. " +
+      "Read the chrome here before changing it with set_site_info, which replaces a field whole.",
     inputSchema: object({}),
     outputSchema: shape({
       title: str(),
       description: str(),
+      ...CHROME_OUTPUT,
       url: str("The site's own address"),
       pages: num("How many pages are published"),
       private: list(shape({ path: str(), shares: num("Live share links on it") })),
@@ -1638,6 +1648,10 @@ export const TOOLS: AnyTool[] = [
       return {
         title: settings.title,
         description: settings.description,
+        head: settings.head,
+        header: settings.header,
+        footer: settings.footer,
+        theme: settings.theme,
         url: ctx.siteUrl,
         pages: pages.length,
         private: privacy.scopes.map((scope) => ({ path: scope.path, shares: scope.shares.length })),
@@ -1883,18 +1897,71 @@ export const TOOLS: AnyTool[] = [
   }),
   tool({
     name: "set_site_info",
-    title: "Set site title and description",
+    title: "Set site info and chrome",
     access: "write",
     group: "Site",
-    description: "Update the site title and description shown in the header of every themed page.",
-    inputSchema: object({ title: { type: "string" }, description: { type: "string" } }),
-    outputSchema: shape({ title: str(), description: str() }),
+    description:
+      "Update the site title, the description, and the chrome around every markdown page: HTML for the head, the " +
+      "stored templates used as the header and the footer, and whether the built-in theme applies. A template is an " +
+      "ordinary html page holding a fragment, for example /root/chrome/header, named here by its path and edited " +
+      "like any other page. A field left out is kept, and a field passed is replaced whole, so read the current " +
+      "chrome with get_site first. " +
+      "Chrome is live code on every themed page the moment it is saved, with no preview and no validation: a broken " +
+      "tag in the header breaks every page at once. It never touches an HTML page, which is served exactly as written. " +
+      "Moving or deleting a template page does not update these names, and a name pointing at nothing renders the " +
+      "built-in piece. Links between pages belong in the header template if the owner wants a nav on every page; the " +
+      "site draws none of its own.",
+    inputSchema: object({
+      title: { type: "string", description: "The site's name, shown in the built-in header" },
+      description: { type: "string", description: "One line under the name, and the page's meta description" },
+      head: {
+        type: "string",
+        description:
+          "HTML placed in every themed page's head, after the built-in styles, for example a stylesheet link to an asset",
+      },
+      header: {
+        type: "string",
+        description:
+          "Path of the page whose body is placed before the content. Refused if no page is stored there. Empty " +
+          "restores the built-in header with the title and description.",
+      },
+      footer: {
+        type: "string",
+        description:
+          "Path of the page whose body is placed after the content. Refused if no page is stored there. Empty " +
+          "restores the built-in footer.",
+      },
+      theme: {
+        type: "string",
+        enum: ["default", "none"],
+        description:
+          "none drops the built-in styles, header, footer and wrapper, leaving head, header, content and footer as " +
+          "the whole page. For a site with its own stylesheet.",
+      },
+    }),
+    outputSchema: shape({ title: str(), description: str(), ...CHROME_OUTPUT }),
     handler: async (args) => {
+      if (args.theme !== undefined && args.theme !== "default" && args.theme !== "none")
+        throw new Error('theme must be "default" or "none"');
+      const text = (key: string) => (typeof args[key] === "string" ? { [key]: args[key] as string } : {});
+      const named = async (key: "header" | "footer") =>
+        typeof args[key] === "string" ? { [key]: await templatePath(key, args[key] as string) } : {};
       const settings = await saveSettings({
-        ...(typeof args.title === "string" ? { title: args.title } : {}),
-        ...(typeof args.description === "string" ? { description: args.description } : {}),
+        ...text("title"),
+        ...text("description"),
+        ...text("head"),
+        ...(await named("header")),
+        ...(await named("footer")),
+        ...(args.theme === undefined ? {} : { theme: args.theme as Theme }),
       });
-      return { title: settings.title, description: settings.description };
+      return {
+        title: settings.title,
+        description: settings.description,
+        head: settings.head,
+        header: settings.header,
+        footer: settings.footer,
+        theme: settings.theme,
+      };
     },
     render: () => "Site info updated.",
   }),

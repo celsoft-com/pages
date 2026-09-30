@@ -1,7 +1,8 @@
+import type { Chrome } from "./chrome";
+
 export interface LayoutOptions {
   title: string;
-  siteTitle: string;
-  siteDescription?: string;
+  chrome: Chrome;
   content: string;
   head?: string;
 }
@@ -77,7 +78,27 @@ export function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// The owner's head goes after the built-in styles, so a stylesheet linked there wins any tie. With
+// theme none there are no built-in styles and no wrapper: the page is the owner's chrome around the
+// rendered body and nothing else, which is what a site with its own design system needs.
 export function layout(options: LayoutOptions): string {
+  const { site } = options.chrome;
+  const bare = site.theme === "none";
+  const header =
+    options.chrome.header ||
+    (bare
+      ? ""
+      : `<header class="site">
+<a class="brand" href="/">${escapeHtml(site.title)}</a>
+${site.description ? `<p>${escapeHtml(site.description)}</p>` : ""}
+</header>`);
+  const footer =
+    options.chrome.footer ||
+    (bare ? "" : `<footer class="site">Published with <a href="https://github.com/celsoft-com/pages">pages</a></footer>`);
+  const body = `${header}
+<main>${options.content}</main>
+${footer}`;
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -85,19 +106,13 @@ export function layout(options: LayoutOptions): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="/favicon.ico">
 <title>${escapeHtml(options.title)}</title>
-${options.siteDescription ? `<meta name="description" content="${escapeHtml(options.siteDescription)}">` : ""}
-<style>${STYLES}</style>
+${site.description ? `<meta name="description" content="${escapeHtml(site.description)}">` : ""}
+${bare ? "" : `<style>${STYLES}</style>`}
+${site.head}
 ${options.head ?? ""}
 </head>
 <body>
-<div class="wrap">
-<header class="site">
-<a class="brand" href="/">${escapeHtml(options.siteTitle)}</a>
-${options.siteDescription ? `<p>${escapeHtml(options.siteDescription)}</p>` : ""}
-</header>
-<main>${options.content}</main>
-<footer class="site">Published with <a href="https://github.com/celsoft-com/pages">pages</a></footer>
-</div>
+${bare ? body : `<div class="wrap">\n${body}\n</div>`}
 </body>
 </html>`;
 }

@@ -1,10 +1,11 @@
 import { layout } from "./render/theme";
+import { DEFAULT_SETTINGS } from "./settings";
 
 export function welcomePage(): Response {
   return new Response(
     layout({
       title: "A new site",
-      siteTitle: "A new site",
+      chrome: { site: { ...DEFAULT_SETTINGS, title: "A new site" }, header: "", footer: "", tag: "" },
       content: `
 <h1>This site is ready to set up</h1>
 <p>It is a personal page host. Once it is set up, its owner writes and publishes pages here by talking to Claude.</p>

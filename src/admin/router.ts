@@ -28,6 +28,7 @@ import {
   type Transfer,
 } from "../transfer";
 import { getPrivacy, mintShare, privateScope, revokeShares, setPrivate, setPublic } from "../private/service";
+import { templatePath } from "../render/chrome";
 import { getSettings, saveSettings } from "../settings";
 import type { Item, Owner, PrivateScope } from "../types";
 import { editorHead } from "./editor";
@@ -1025,6 +1026,22 @@ async function settingsScreen(url: URL): Promise<Response> {
 <input id="site_description" name="site_description" type="text" value="${escapeHtml(settings.description)}"></div>
 <button type="submit">Save</button>
 </form>
+<form method="post" action="/admin/settings/chrome" class="panel">
+<h2 style="margin-top:0">Chrome</h2>
+<p class="small muted">What surrounds every markdown page, live on all of them the moment it is saved. The header and footer are templates: html pages holding a fragment, named here by path and edited like any other page. HTML pages are served as written and never get any of this.</p>
+<div class="field"><label for="theme">Theme<span class="hint">None drops the built-in styles, header and footer, for a site with its own stylesheet.</span></label>
+<select id="theme" name="theme">
+  <option value="default"${settings.theme === "default" ? " selected" : ""}>Built in</option>
+  <option value="none"${settings.theme === "none" ? " selected" : ""}>None</option>
+</select></div>
+<div class="field"><label for="chrome_head">Head<span class="hint">After the built-in styles, for example a stylesheet link.</span></label>
+<textarea id="chrome_head" name="head" class="mono" rows="4">${escapeHtml(settings.head)}</textarea></div>
+<div class="field"><label for="chrome_header">Header<span class="hint">Path of the template before the content, for example /root/chrome/header. Empty uses the built-in one.</span></label>
+<input id="chrome_header" name="header" type="text" class="mono" value="${escapeHtml(settings.header)}"></div>
+<div class="field"><label for="chrome_footer">Footer<span class="hint">Path of the template after the content. Empty uses the built-in one.</span></label>
+<input id="chrome_footer" name="footer" type="text" class="mono" value="${escapeHtml(settings.footer)}"></div>
+<button type="submit">Save</button>
+</form>
 <form method="post" action="/admin/settings/password" class="panel">
 <h2 style="margin-top:0">Password</h2>
   <input type="text" name="username" value="admin" autocomplete="username"
@@ -1297,6 +1314,20 @@ export async function handleAdmin(request: Request, url: URL): Promise<Response>
         const body = await form(request);
         await saveSettings({ title: body.site_title ?? "Pages", description: body.site_description ?? "" });
         return back("/admin/settings", { ok: "Site updated." });
+      }
+      case "/admin/settings/chrome": {
+        const body = await form(request);
+        try {
+          await saveSettings({
+            theme: body.theme === "none" ? "none" : "default",
+            head: body.head ?? "",
+            header: await templatePath("header", body.header ?? ""),
+            footer: await templatePath("footer", body.footer ?? ""),
+          });
+        } catch (error) {
+          return back("/admin/settings", { error: (error as Error).message });
+        }
+        return back("/admin/settings", { ok: "Chrome updated." });
       }
       case "/admin/settings/password": {
         const body = await form(request);
