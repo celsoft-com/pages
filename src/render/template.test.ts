@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { handle } from "../app";
+import { describeBuild } from "../build";
+import { escapeHtml } from "./theme";
 import { completeSetup } from "../auth/setup";
 import { saveCollection } from "../data/service";
 import { TOOLS, type ToolContext } from "../mcp/tools";
@@ -193,6 +195,7 @@ describe("reading time and the build", () => {
 
   it("puts the deploy in scope as build", async () => {
     await markdown("/foot", fence("{{ build.description }}"));
-    expect(await visit("/foot")).toContain("Running locally, not from a deploy build.");
+    // Whatever this run's stamp says: a deploy build writes one, a local run has none.
+    expect(await visit("/foot")).toContain(escapeHtml(describeBuild()));
   });
 });
