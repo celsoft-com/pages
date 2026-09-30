@@ -84,6 +84,14 @@ describe("page results", () => {
     expect(keys(await raw("discard_draft", { path: "/trip" }))).toEqual(["discarded", "path"]);
   });
 
+  it("check_links, both branches", async () => {
+    expect(keys(await raw("check_links"))).toEqual(["broken", "links", "pages", "warning"]);
+    await raw("publish_page", { path: "/linker", content: "[gone](/nowhere)" });
+    const r = await raw("check_links");
+    expect(keys(r)).toEqual(["broken", "links", "pages"]);
+    expect(keys(r.broken[0])).toEqual(["line", "link", "path"]);
+  });
+
   it("edit_page", async () => {
     const r = await raw("edit_page", { path: "/trip", find: "A line.", replace: "A change." });
     expect(keys(r)).toEqual(["lines", "path", "replaced", "url"]);
@@ -387,7 +395,7 @@ describe("coverage of the registry", () => {
   it("pins a result shape for every tool", () => {
     const pinned = new Set(
       [
-        "list_pages", "get_page", "edit_page", "publish_page", "update_page", "publish_draft", "discard_draft",
+        "list_pages", "get_page", "edit_page", "publish_page", "update_page", "publish_draft", "discard_draft", "check_links",
         "upload_asset", "list_assets", "list_bundle",
         "list_collections", "list_items", "count_items", "get_item", "put_item", "delete_item",
         "reorder_items", "search_items", "match_names", "set_collection_refs", "check_refs",

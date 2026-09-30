@@ -108,6 +108,7 @@ describe("tool definitions", () => {
         .sort(),
     ).toEqual(
       [
+        "check_links",
         "check_refs",
         "count_items",
         "geocode",

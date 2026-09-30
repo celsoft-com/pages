@@ -41,6 +41,7 @@ import {
   type Transfer,
   type Verb,
 } from "../transfer";
+import { checkLinks } from "../pages/links";
 import { ROOT_BUNDLE, isValidPath, normalizePath } from "../pages/path";
 import {
   getPrivacy,
@@ -1666,6 +1667,57 @@ export const TOOLS: AnyTool[] = [
           `Note that ${r.missing.join(" and ")} does not exist yet, so every value will be rejected until it does.`,
         );
       return lines.join(" ");
+    },
+  }),
+  tool({
+    name: "check_links",
+    title: "Find broken links between pages",
+    access: "read",
+    group: "Pages",
+    description:
+      "Find links in page bodies that point at nothing on this site: a page, an asset under /assets or a collection " +
+      "under /data that does not exist. It reads what a page wrote out whole, markdown links and href and src " +
+      "attributes starting with /, in live pages only, stored templates included. A URL a template, a script or a " +
+      "fetch assembles from pieces is not seen, so an empty result means none of the links it found are broken, " +
+      "not that the site has none; the reply says how many it checked. Run it after any move or delete: nothing " +
+      "else checks links, and a broken one shows nowhere until somebody clicks it.",
+    inputSchema: object({}),
+    outputSchema: either(
+      branch("Links were found, so something was checked", {
+        pages: num("Pages read"),
+        links: num("Links checked"),
+        broken: list(
+          shape({
+            path: str("The page holding the link"),
+            line: num("1 based"),
+            link: str("The link as written"),
+          }),
+        ),
+      }),
+      branch("No links were found, so nothing was checked", {
+        pages: num("Pages read"),
+        links: num("0"),
+        broken: list(anyValue(), "Empty, and it means nothing was looked at"),
+        warning: str("Says so, so an empty broken list is not read as a clean bill of health"),
+      }),
+    ),
+    handler: async () => {
+      const report = await checkLinks();
+      if (report.links > 0) return report;
+      return {
+        ...report,
+        warning:
+          "No links written out whole were found in any page, so nothing was checked. Links a template or a script " +
+          "assembles are not seen.",
+      };
+    },
+    render: (r) => {
+      if ("warning" in r) return r.warning;
+      if (r.broken.length === 0) return `Checked ${r.links} links in ${r.pages} pages. None points at nothing.`;
+      return [
+        `Checked ${r.links} links in ${r.pages} pages. ${r.broken.length} point at nothing:`,
+        ...r.broken.map((b) => `${b.path}:${b.line}  ${b.link}`),
+      ].join("\n");
     },
   }),
   tool({
