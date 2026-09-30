@@ -232,16 +232,26 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   ways, through `savePage`/`saveCollection` and through the transfer engine writing blobs itself to keep ids and
   revs exact, and a rule that each write path must announce itself is one a write path will forget. The bounded
   `s-maxage` is the backstop, so the worst case of a purge that never lands is five minutes, not forever.
+- **Templates are Liquid, and they run on the server.** [template.ts](src/render/template.ts) is the whole engine:
+  a ```` ```pages ```` fence in a markdown page, and the header and footer templates, render through `liquidjs`
+  with `page`, `site.pages` and `collections[...]` in scope, each read lazily and once per render. Liquid was
+  chosen over Handlebars because a template has to query the site and iterate, which Liquid's filters and tags do
+  and Handlebars could only reach through helpers we would own. Output is escaped by default, because a `<` in a
+  collection field would otherwise be markup. A template reads only what its response may show: a public page is
+  cached for everyone, so it sees public resources only, and a page in a private scope also sees that scope; this
+  is the contents rule applied to every read, and a stored template under a private path is refused the same way.
+  A fence renders into a comment marked leaves alone and is put back after, because marked would otherwise read
+  rendered HTML as code or paragraphs. A failing template renders its error in place and costs its own block.
+  HTML pages never run templates: verbatim is verbatim. Because a template reads the rest of the site, a page's
+  ETag is a hash of the bytes sent; no timestamp moves when everything a template read does.
 - **The themed layout reads settings and nothing else.** There is no site nav. A page that wants links to
   other pages writes them, and an owner who wants a nav puts one in the chrome; the layout is the site title,
   the description, the chrome and the content. Chrome is `head`, the owner's HTML placed verbatim, `header` and
   `footer`, which are paths of stored templates, and `theme: none` to drop the built-in styles and wrapper. A
   template is an ordinary page, so there is one template mechanism and chrome is only which template wraps
   every page; a name is refused unless a page is stored there, and one whose page has gone renders the built-in
-  piece rather than breaking the site. [chrome.ts](src/render/chrome.ts) reads all of it. It never reaches an
-  HTML page. A themed page's ETag carries the chrome's tag beside its own `updatedAt`, because a chrome or
-  template change moves nothing on the page and a tag from the page alone would revalidate the old header into
-  a 304. Drawing eight nav links cost a full read of every page blob, body included, on
+  piece rather than breaking the site. [chrome.ts](src/render/chrome.ts) reads and renders it. It never reaches
+  an HTML page. Drawing eight nav links cost a full read of every page blob, body included, on
   every request, and it decided for the owner what their site looked like.
 - **Repeating content belongs in a collection.** A page that lists things fetches `/data/<path>.json`; it does not
   bake the list into its HTML. The MCP instructions in [handler.ts](src/mcp/handler.ts) tell clients to offer the
@@ -283,7 +293,7 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   [docs/tools.md](docs/tools.md) is the one topic that is not a page of its own: it introduces the generated
   reference at `/docs/tools` and takes that sidebar entry, which is how the reference gets prose without any
   being written into the handler. The set of topics is one per subsystem and is meant to stay that way: getting
-  started and working with Claude for somebody who just pressed the button, connecting a client, then pages,
+  started and working with Claude for somebody who just pressed the button, connecting a client, then pages, templates,
   collections, assets, private paths, bundles, transfers and maps, each answering to a rule in this file. A new
   subsystem earns a topic; a new feature inside one belongs in the topic that already covers it. A topic is
   reader-facing prose, so it carries no status line, no acceptance criteria and no non-goals list: the reasoning
@@ -308,7 +318,8 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 - **A topic may take a value from the code, never a sentence.** `fills` in [topics.ts](src/docs/topics.ts) is the
   whole list: the site's own URLs, the MCP protocol version, and the `INSTRUCTIONS` string. A placeholder outside
   that table fails [docs.test.ts](src/docs/docs.test.ts) rather than printing `{{whatever}}` on a page, and the
-  same test fails on any `{{` surviving into the HTML. That table is how prose states a fact the code decides
+  same test fails on any placeholder-shaped `{{name}}` surviving into the HTML (a spaced `{{ page.path }}`
+  is Liquid in the templates topic, and content). That table is how prose states a fact the code decides
   without restating it: never write the connector URL, the protocol version or a copy of the instructions into
   markdown.
 - **`outputSchema` is required for the same reason `access` is.** A handler's result is the REST body byte for

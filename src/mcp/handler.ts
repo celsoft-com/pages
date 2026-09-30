@@ -55,6 +55,8 @@ export const INSTRUCTIONS = [
   "",
   "Publish that page once, then keep editing items. The page never needs rewriting.",
   "",
+  "A markdown page can also render a collection on the server, with no script, in a pages fence: a fenced code block whose language is pages, holding a Liquid template. collections[\"/products\"] is the same array the url serves, site.pages lists every public page with its path, title and meta, and page is the page being rendered. The output is HTML placed where the fence was, and it is escaped unless piped through raw. {% render \"/root/templates/card\", item: item %} renders a template stored as an html page at that path. A template reads only what the page's response may show, so a public page never sees a private page or collection. HTML pages are verbatim and run no templates.",
+  "",
   "",
   "A path can be closed to the public. set_privacy makes a path private and it covers everything at or under it, the same folder rule as a bundle: the pages, the collections served under /data, and the assets. To anyone without a link every one of those answers exactly as if nothing were published there, so a private path never reveals that it exists, and nothing private is ever cached where the next visitor could be handed it.",
   "share_path returns the link that opens it. The secret rides in the URL fragment, after the #, which browsers never send to a server: it reaches no access log, no proxy log and no Referer header, and a chat or mail app previewing the link cannot open it. Pass the link on exactly as returned, because a link with the fragment trimmed opens nothing, and it is shown once since only its hash is stored.",

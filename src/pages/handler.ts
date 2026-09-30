@@ -4,17 +4,22 @@ import { getPrivacy, privateScope } from "../private/service";
 import { UNLOCK_HEAD } from "../private/unlock";
 import { renderMarkdown } from "../render/markdown";
 import { escapeHtml, layout } from "../render/theme";
+import { sha256Hex } from "../crypto/hmac";
 import { loadChrome } from "../render/chrome";
+import { expandFences, templateInput } from "../render/template";
 import type { Page } from "../types";
-import { contentsEtag, contentsHtml, listable } from "./contents";
+import { contentsHtml, listable } from "./contents";
 import { ROOT_BUNDLE, normalizePath } from "./path";
 import { getPage, listPages } from "./service";
 
-function html(body: string, access: Access, etag: string): Response {
+// The tag is taken from the bytes sent. A themed page is its body, the chrome and whatever its
+// templates read from the rest of the site, so no one timestamp moves when all of them do, and a tag
+// that stood still would let a browser revalidate a stale page into a 304.
+async function html(body: string, access: Access): Promise<Response> {
   const headers: Record<string, string> = {
     "content-type": "text/html; charset=utf-8",
     ...(access.scope ? privateHeaders() : contentHeaders()),
-    etag: `"${etag}"`,
+    etag: `"${(await sha256Hex(body)).slice(0, 16)}"`,
   };
   if (access.cookie) headers["set-cookie"] = access.cookie;
   return new Response(body, { headers });
@@ -28,7 +33,7 @@ function html(body: string, access: Access, etag: string): Response {
 async function closed(path: string): Promise<Response> {
   const body = layout({
     title: "Not found",
-    chrome: await loadChrome(),
+    chrome: (await loadChrome(await templateInput(null))).chrome,
     head: UNLOCK_HEAD,
     content: `<h1>Not found</h1><p>Nothing is published at <code>${escapeHtml(path)}</code>.</p>`,
   });
@@ -49,10 +54,9 @@ async function home(request: Request): Promise<Response> {
   const stored = await getPage(ROOT_BUNDLE);
   if (stored) return served(stored, access);
 
-  const chrome = await loadChrome();
+  const { chrome } = await loadChrome({ page: null, privacy });
   const pages = listable(await listPages()).filter((page) => !privateScope(privacy, page.path));
-  const body = contentsHtml({ chrome, pages });
-  return html(body, access, `${contentsEtag(pages)}-${chrome.tag}`);
+  return html(contentsHtml({ chrome, pages }), access);
 }
 
 export async function handlePage(request: Request): Promise<Response> {
@@ -74,8 +78,8 @@ export async function handlePage(request: Request): Promise<Response> {
 }
 
 async function served(page: Page, access: Access): Promise<Response> {
-  if (page.contentType === "html") return html(page.body, access, String(page.updatedAt));
-  const chrome = await loadChrome();
-  const body = layout({ title: page.title, chrome, content: renderMarkdown(page.body) });
-  return html(body, access, `${page.updatedAt}-${chrome.tag}`);
+  if (page.contentType === "html") return html(page.body, access);
+  const { chrome, context } = await loadChrome(await templateInput(page));
+  const content = await expandFences(page.body, context, renderMarkdown);
+  return html(layout({ title: page.title, chrome, content }), access);
 }

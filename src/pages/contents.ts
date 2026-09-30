@@ -31,9 +31,3 @@ export function contentsHtml(input: { chrome: Chrome; pages: PageSummary[] }): s
     content: `<h1>Contents</h1>${list}`,
   });
 }
-
-// A browser asks again whenever the cache says to, so the tag has to change when the list does:
-// a page published, unpublished, renamed or made private all move one of these two numbers.
-export function contentsEtag(pages: PageSummary[]): string {
-  return `${pages.length}-${pages.reduce((latest, page) => Math.max(latest, page.updatedAt), 0)}`;
-}

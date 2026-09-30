@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@netlify/blobs": "^11.0.3",
+    "liquidjs": "^10.29.0",
     "marked": "^18.0.11"
   }
 }
