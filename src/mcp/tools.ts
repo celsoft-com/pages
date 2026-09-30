@@ -15,7 +15,17 @@ import {
 } from "../data/service";
 import { geocodeQuery, parsePrefer, parseProfile, parseStops, routeToAsset } from "../geo/service";
 import { PREFERS, PROFILES } from "../geo/providers";
-import { deriveTitle, editPage, getPage, listPages, noPageAt, savePage, slicePage } from "../pages/service";
+import {
+  deriveTitle,
+  editPage,
+  getPage,
+  listPages,
+  mergeMeta,
+  noPageAt,
+  savePage,
+  slicePage,
+  validateMeta,
+} from "../pages/service";
 import {
   privacyChanges,
   restOfBundle,
@@ -151,6 +161,8 @@ function either(...branches: Record<string, unknown>[]) {
 function branch(title: string, properties: Record<string, unknown>, optional: string[] = []) {
   return { title, ...shape(properties, optional) };
 }
+
+const PAGE_META = map(str(), "Facts about the page beside its body, all strings. Empty when none are set.");
 
 const COLLECTION_ENTRY = shape({
   path: str(),
@@ -469,6 +481,7 @@ export const TOOLS: AnyTool[] = [
           path: str(),
           title: str(),
           format: str("markdown or html"),
+          meta: PAGE_META,
           url: str("Where a browser reads it"),
         }),
       ),
@@ -478,6 +491,7 @@ export const TOOLS: AnyTool[] = [
         path: p.path,
         title: p.title,
         format: p.contentType,
+        meta: p.meta,
         url: urlFor(ctx, p.path),
       })),
     }),
@@ -510,12 +524,14 @@ export const TOOLS: AnyTool[] = [
         path: str(),
         title: str(),
         format: str("markdown or html"),
+        meta: PAGE_META,
         content: str("The stored source, byte for byte"),
       }),
       branch("Numbered lines, when find, offset or limit was passed", {
         path: str(),
         title: str(),
         format: str("markdown or html"),
+        meta: PAGE_META,
         total: num("Lines in the whole page"),
         more: num("Matching lines beyond the ones returned"),
         lines: list(shape({ line: num("1 based"), text: str() })),
@@ -527,7 +543,8 @@ export const TOOLS: AnyTool[] = [
       if (!page) throw new Error(noPageAt(path));
 
       const whole = args.find === undefined && args.offset === undefined && args.limit === undefined;
-      if (whole) return { path: page.path, title: page.title, format: page.contentType, content: page.body };
+      if (whole)
+        return { path: page.path, title: page.title, format: page.contentType, meta: page.meta, content: page.body };
 
       const slice = slicePage(page, {
         find: args.find === undefined ? undefined : String(args.find),
@@ -538,6 +555,7 @@ export const TOOLS: AnyTool[] = [
         path: page.path,
         title: page.title,
         format: page.contentType,
+        meta: page.meta,
         total: slice.total,
         more: slice.more,
         lines: slice.lines,
@@ -612,7 +630,15 @@ export const TOOLS: AnyTool[] = [
         content: { type: "string", description: "Markdown or a full HTML document" },
         format: { type: "string", enum: ["markdown", "html"], description: "Defaults to auto-detect" },
         title: { type: "string", description: "Defaults to the first heading" },
-        overwrite: { type: "boolean", description: "Replace an existing page at this path" },
+        meta: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description:
+            "Facts about the page that are not its body, such as a date or a kind, as string values. Stored beside " +
+            "the body rather than inside it, and returned by list_pages without reading any page. Keys start with a " +
+            "letter; path and title are refused because the page already has them.",
+        },
+        overwrite: { type: "boolean", description: "Replace an existing page at this path, meta included" },
       },
       ["path", "content"],
     ),
@@ -621,6 +647,7 @@ export const TOOLS: AnyTool[] = [
       url: str("Where a browser reads it"),
       title: str(),
       format: str("markdown or html"),
+      meta: PAGE_META,
     }),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
@@ -634,8 +661,9 @@ export const TOOLS: AnyTool[] = [
         contentType: detectFormat(args.content, args.format),
         title: typeof args.title === "string" && args.title ? args.title : deriveTitle(args.content, path),
         body: args.content,
+        meta: args.meta === undefined ? {} : validateMeta(args.meta),
       });
-      return { path: page.path, url: urlFor(ctx, page.path), title: page.title, format: page.contentType };
+      return { path: page.path, url: urlFor(ctx, page.path), title: page.title, format: page.contentType, meta: page.meta };
     },
     render: (r) => `Published ${r.title} at ${r.url}`,
   }),
@@ -645,32 +673,49 @@ export const TOOLS: AnyTool[] = [
     access: "write",
     group: "Pages",
     description:
-      "Replace the content of an existing page. If you are rewriting the page only to change items in a list, move that list into a data collection instead and let the page fetch it. " +
+      "Replace the content of an existing page, or change its title or meta without sending the body at all. " +
+      "If you are rewriting the page only to change items in a list, move that list into a data collection instead and let the page fetch it. " +
       BUNDLES,
-    inputSchema: object({ path: { type: "string" }, content: { type: "string" }, title: { type: "string" } }, [
-      "path",
-      "content",
-    ]),
+    inputSchema: object(
+      {
+        path: { type: "string", description: "Page path, for example /about" },
+        content: { type: "string", description: "The new body. Leave it out to keep the body as it is." },
+        title: { type: "string", description: "Leave it out to keep the title" },
+        meta: {
+          type: "object",
+          additionalProperties: { type: ["string", "null"] },
+          description:
+            "Keys to set, merged into what the page already has. A key set to null is removed; a key left out " +
+            "is kept, so changing one fact costs one key.",
+        },
+      },
+      ["path"],
+    ),
     outputSchema: shape({
       path: str(),
       url: str("Where a browser reads it"),
       title: str(),
       format: str("markdown or html"),
+      meta: PAGE_META,
     }),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       const existing = await getPage(path);
       if (!existing) throw new Error(`${noPageAt(path)}. Use publish_page to create it.`);
-      if (typeof args.content !== "string" || args.content.length === 0)
-        throw new Error("content is required");
+      if (args.content === undefined && args.title === undefined && args.meta === undefined)
+        throw new Error("Pass content, title or meta: there is nothing to update");
+      if (args.content !== undefined && (typeof args.content !== "string" || args.content.length === 0))
+        throw new Error("content must not be empty");
 
+      const body = args.content === undefined ? existing.body : String(args.content);
       const page = await savePage({
         path,
-        contentType: detectFormat(args.content, existing.contentType),
+        contentType: args.content === undefined ? existing.contentType : detectFormat(body, existing.contentType),
         title: typeof args.title === "string" && args.title ? args.title : existing.title,
-        body: args.content,
+        body,
+        meta: args.meta === undefined ? existing.meta : mergeMeta(existing.meta, args.meta),
       });
-      return { path: page.path, url: urlFor(ctx, page.path), title: page.title, format: page.contentType };
+      return { path: page.path, url: urlFor(ctx, page.path), title: page.title, format: page.contentType, meta: page.meta };
     },
     render: (r) => `Updated ${r.url}`,
   }),

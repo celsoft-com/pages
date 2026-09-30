@@ -65,7 +65,12 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   carrying it, and there is more than one way into storage: `listCollections` reads raw blobs, not `getCollection`.
   Adding a field to `Collection` means defaulting it in [hydrate](src/data/service.ts) and nowhere else. Skipping
   that shipped a `list_collections` that threw on every pre-existing collection while every test passed, because
-  the tests only ever read blobs this code had just written.
+  the tests only ever read blobs this code had just written. Pages have the same rule in `hydratePage`
+  ([service.ts](src/pages/service.ts)), which is where `meta` is defaulted for a page stored before it existed.
+- **Page meta is strings, beside the body.** `meta` is facts about a page that are not its content, returned in
+  the summary so a listing reads no bodies. Values are strings only, so nothing changes type on an admin
+  round trip; `path` and `title` are refused as keys because the page already has them. `update_page` merges
+  meta and a `null` removes a key, so changing one fact never sends the body.
 - **Organization is a filesystem, and nothing more.** A path is a bundle holding everything at or under it;
   [bundle.ts](src/bundle.ts) is the whole rule, twelve lines, and it stores nothing. Pages, collections and assets
   are all just things at paths, with no ownership relation between them. Matching is on segment arrays, never

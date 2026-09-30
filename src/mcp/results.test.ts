@@ -52,22 +52,22 @@ describe("page results", () => {
   it("list_pages", async () => {
     const r = await raw("list_pages");
     expect(keys(r)).toEqual(["pages"]);
-    expect(keys(r.pages[0])).toEqual(["format", "path", "title", "url"]);
+    expect(keys(r.pages[0])).toEqual(["format", "meta", "path", "title", "url"]);
   });
 
   it("get_page whole", async () => {
-    expect(keys(await raw("get_page", { path: "/trip" }))).toEqual(["content", "format", "path", "title"]);
+    expect(keys(await raw("get_page", { path: "/trip" }))).toEqual(["content", "format", "meta", "path", "title"]);
   });
 
   it("get_page sliced", async () => {
     const r = await raw("get_page", { path: "/trip", find: "line" });
-    expect(keys(r)).toEqual(["format", "lines", "more", "path", "title", "total"]);
+    expect(keys(r)).toEqual(["format", "lines", "meta", "more", "path", "title", "total"]);
   });
 
   it("publish_page and update_page share one shape", async () => {
     const published = await raw("publish_page", { path: "/new", content: "# New" });
     const updated = await raw("update_page", { path: "/new", content: "# Newer" });
-    expect(keys(published)).toEqual(["format", "path", "title", "url"]);
+    expect(keys(published)).toEqual(["format", "meta", "path", "title", "url"]);
     expect(keys(updated)).toEqual(keys(published));
   });
 
