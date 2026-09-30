@@ -1,5 +1,5 @@
 import { encodeKey, stores } from "../store";
-import type { ContentType, Page, PageMeta, PageSummary } from "../types";
+import type { ContentType, Page, PageDraft, PageMeta, PageSummary } from "../types";
 import { HOME_IS_AT_ROOT, HOME_IS_GENERATED, ROOT_BUNDLE, normalizePath } from "./path";
 
 // What to say when a page is not there. At /root the answer is what / is serving instead.
@@ -10,7 +10,7 @@ export function noPageAt(path: string): string {
 // A blob written before a field existed still comes back carrying it. Every page read goes
 // through here, listPages' fallback included, so a new field is defaulted once.
 function hydratePage(stored: Page | null): Page | null {
-  return stored ? { ...stored, meta: stored.meta ?? {} } : null;
+  return stored ? { ...stored, meta: stored.meta ?? {}, draft: stored.draft ?? null } : null;
 }
 
 export async function getPage(path: string): Promise<Page | null> {
@@ -50,7 +50,7 @@ export function mergeMeta(existing: PageMeta, raw: unknown): PageMeta {
 
 // Bumped whenever PageSummary gains a field. Metadata written under an older number is not trusted
 // or patched up: the blob is read and the summary derived, which is slower and always right.
-const SUMMARY_VERSION = 2;
+const SUMMARY_VERSION = 3;
 
 function summarize(page: Page): PageSummary & { v: number } {
   return {
@@ -59,6 +59,7 @@ function summarize(page: Page): PageSummary & { v: number } {
     contentType: page.contentType,
     title: page.title,
     meta: page.meta,
+    hasDraft: page.draft !== null,
     updatedAt: page.updatedAt,
   };
 }
@@ -116,6 +117,8 @@ export async function savePage(input: {
     title: input.title,
     body: input.body,
     meta: input.meta ?? existing?.meta ?? {},
+    // A direct write to the live page leaves a working copy alone: it is somebody's unpublished work.
+    draft: existing?.draft ?? null,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -189,13 +192,16 @@ export async function editPage(input: {
   find: string;
   replace: string;
   all: boolean;
+  // Edits the working copy, starting one from the live page if there is none yet.
+  draft?: boolean;
 }): Promise<{ page: Page; replaced: number; lines: number[] }> {
   const path = normalizePath(input.path);
   const page = await getPage(path);
   if (!page) throw new Error(noPageAt(path));
   if (input.find === "") throw new Error("find must not be empty");
+  const source = input.draft ? workingCopy(page).body : page.body;
 
-  const occurrences = page.body.split(input.find).length - 1;
+  const occurrences = source.split(input.find).length - 1;
   if (occurrences === 0)
     throw new Error(
       `Nothing in ${path} matches that text exactly. Read the part you are editing with get_page, ` +
@@ -207,15 +213,69 @@ export async function editPage(input: {
         `or all: true to replace every occurrence.`,
     );
 
-  const body = input.all ? page.body.split(input.find).join(input.replace) : page.body.replace(input.find, input.replace);
+  const body = input.all ? source.split(input.find).join(input.replace) : source.replace(input.find, input.replace);
   const lines: number[] = [];
   let cursor = 0;
   for (let n = 0; n < (input.all ? occurrences : 1); n++) {
-    const at = page.body.indexOf(input.find, cursor);
-    lines.push(page.body.slice(0, at).split("\n").length);
+    const at = source.indexOf(input.find, cursor);
+    lines.push(source.slice(0, at).split("\n").length);
     cursor = at + input.find.length;
   }
 
-  const saved = await savePage({ path, contentType: page.contentType, title: page.title, body });
+  const saved = input.draft
+    ? await saveDraft(path, { body })
+    : await savePage({ path, contentType: page.contentType, title: page.title, body });
   return { page: saved, replaced: input.all ? occurrences : 1, lines };
+}
+
+// The working copy as it stands, or the live page when none has been started, which is what the
+// first draft edit starts from.
+export function workingCopy(page: Page): PageDraft {
+  return (
+    page.draft ?? {
+      contentType: page.contentType,
+      title: page.title,
+      body: page.body,
+      meta: page.meta,
+      updatedAt: page.updatedAt,
+    }
+  );
+}
+
+// What a preview renders: the page with its working copy in place of the live fields.
+export function previewOf(page: Page): Page {
+  const { contentType, title, body, meta, updatedAt } = workingCopy(page);
+  return { ...page, contentType, title, body, meta, updatedAt };
+}
+
+export async function saveDraft(
+  path: string,
+  fields: Partial<Omit<PageDraft, "updatedAt">>,
+): Promise<Page> {
+  const normalized = normalizePath(path);
+  const page = await getPage(normalized);
+  if (!page) throw new Error(`${noPageAt(normalized)}. A working copy is kept for a published page; publish_page it first.`);
+  const next: Page = { ...page, draft: { ...workingCopy(page), ...fields, updatedAt: Date.now() } };
+  await writePageBlob(encodeKey(normalized), next);
+  return next;
+}
+
+export async function publishDraft(path: string): Promise<Page> {
+  const normalized = normalizePath(path);
+  const page = await getPage(normalized);
+  if (!page) throw new Error(noPageAt(normalized));
+  if (!page.draft) throw new Error(`${normalized} has no working copy to publish. Its live page is already what readers see.`);
+  const { contentType, title, body, meta } = page.draft;
+  const next: Page = { ...page, contentType, title, body, meta, draft: null, updatedAt: Date.now() };
+  await writePageBlob(encodeKey(normalized), next);
+  return next;
+}
+
+export async function discardDraft(path: string): Promise<boolean> {
+  const normalized = normalizePath(path);
+  const page = await getPage(normalized);
+  if (!page) throw new Error(noPageAt(normalized));
+  if (!page.draft) return false;
+  await writePageBlob(encodeKey(normalized), { ...page, draft: null });
+  return true;
 }

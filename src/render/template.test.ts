@@ -151,6 +151,22 @@ describe("chrome templates", () => {
 });
 
 // The bytes change when anything a template read changes, and nothing on the page itself did.
+// A page that lists other pages is rendered on the server, so its edge copy has to go when any
+// other page changes. It does because every public response carries the one tag the blind purge
+// clears, and a write anywhere fires that purge; this pins both halves of that.
+describe("a page built from other pages", () => {
+  it("shares the one cache tag every write clears, and renders the change on its next request", async () => {
+    await markdown("/list", fence(`{% for p in site.pages %}{{ p.path }};{% endfor %}`));
+    const before = await handlePage(new Request("https://example.com/list"));
+    const other = await handlePage(new Request("https://example.com/essay/one"));
+    expect(before.headers.get("netlify-cache-tag")).toBe(other.headers.get("netlify-cache-tag"));
+    expect(await before.text()).not.toContain("/essay/four");
+
+    await raw("publish_page", { path: "/essay/four", content: "# Four" });
+    expect(await visit("/list")).toContain("/essay/four;");
+  });
+});
+
 describe("the tag of a page with a fence", () => {
   it("moves when another page is published", async () => {
     await markdown("/list", fence(`{% for p in site.pages %}{{ p.path }};{% endfor %}`));

@@ -21,7 +21,12 @@ import {
   getPage,
   listPages,
   mergeMeta,
+  discardDraft,
   noPageAt,
+  previewOf,
+  publishDraft,
+  workingCopy,
+  saveDraft,
   savePage,
   slicePage,
   validateMeta,
@@ -208,6 +213,13 @@ function requirePath(raw: unknown): string {
       `path "${raw}" is not usable. Use lowercase letters, numbers, dashes and slashes, for example /about`,
     );
   return path;
+}
+
+// ?preview renders the working copy for the owner at the page's own URL. / needs its slash back, or
+// the query would hang off the bare origin.
+function previewUrlFor(ctx: ToolContext, path: string): string {
+  const url = urlFor(ctx, path);
+  return `${url === ctx.siteUrl ? `${url}/` : url}?preview`;
 }
 
 function detectFormat(content: string, declared?: string): "markdown" | "html" {
@@ -491,6 +503,7 @@ export const TOOLS: AnyTool[] = [
           title: str(),
           format: str("markdown or html"),
           meta: PAGE_META,
+          has_draft: bool("An unpublished working copy exists. Readers still see the live page."),
           url: str("Where a browser reads it"),
         }),
       ),
@@ -501,6 +514,7 @@ export const TOOLS: AnyTool[] = [
         title: p.title,
         format: p.contentType,
         meta: p.meta,
+        has_draft: p.hasDraft,
         url: urlFor(ctx, p.path),
       })),
     }),
@@ -518,10 +532,15 @@ export const TOOLS: AnyTool[] = [
       "Return the stored source of one page so it can be edited. Pass find, or offset and limit, to read only the " +
       "part you are working on: the reply is then numbered lines rather than the whole document, which is what " +
       "edit_page wants and costs a fraction of reading a long page to change one line of it. " +
+      "Pass draft true to read the working copy instead of the live page. " +
       BUNDLES,
     inputSchema: object(
       {
         path: { type: "string", description: "Page path, for example /about" },
+        draft: {
+          type: "boolean",
+          description: "Read the unpublished working copy rather than what readers see. Refused when there is none.",
+        },
         find: { type: "string", description: "Return only lines containing this text, ignoring case" },
         offset: { type: "number", description: "First line to return, 1 based. Ignored when find is given." },
         limit: { type: "number", description: "Maximum lines to return. Defaults to 200, which is also the cap." },
@@ -534,6 +553,7 @@ export const TOOLS: AnyTool[] = [
         title: str(),
         format: str("markdown or html"),
         meta: PAGE_META,
+        has_draft: bool("An unpublished working copy exists"),
         content: str("The stored source, byte for byte"),
       }),
       branch("Numbered lines, when find, offset or limit was passed", {
@@ -541,6 +561,7 @@ export const TOOLS: AnyTool[] = [
         title: str(),
         format: str("markdown or html"),
         meta: PAGE_META,
+        has_draft: bool("An unpublished working copy exists"),
         total: num("Lines in the whole page"),
         more: num("Matching lines beyond the ones returned"),
         lines: list(shape({ line: num("1 based"), text: str() })),
@@ -548,12 +569,23 @@ export const TOOLS: AnyTool[] = [
     ),
     handler: async (args) => {
       const path = requirePath(args.path);
-      const page = await getPage(path);
-      if (!page) throw new Error(noPageAt(path));
+      const stored = await getPage(path);
+      if (!stored) throw new Error(noPageAt(path));
+      if (args.draft === true && !stored.draft)
+        throw new Error(`${path} has no working copy. Read it without draft to get the live page.`);
+      const page = args.draft === true ? previewOf(stored) : stored;
+      const has_draft = stored.draft !== null;
 
       const whole = args.find === undefined && args.offset === undefined && args.limit === undefined;
       if (whole)
-        return { path: page.path, title: page.title, format: page.contentType, meta: page.meta, content: page.body };
+        return {
+          path: page.path,
+          title: page.title,
+          format: page.contentType,
+          meta: page.meta,
+          has_draft,
+          content: page.body,
+        };
 
       const slice = slicePage(page, {
         find: args.find === undefined ? undefined : String(args.find),
@@ -565,6 +597,7 @@ export const TOOLS: AnyTool[] = [
         title: page.title,
         format: page.contentType,
         meta: page.meta,
+        has_draft,
         total: slice.total,
         more: slice.more,
         lines: slice.lines,
@@ -582,6 +615,8 @@ export const TOOLS: AnyTool[] = [
       "changing with get_page first, passing find or offset and limit, and copy the snippet from what it returns. " +
       "The edit is refused if the snippet matches nothing, and refused with a count if it matches more than once, " +
       "so pass enough surrounding text to name one spot, or all true to change every occurrence. " +
+      "Pass draft true to edit the working copy instead, starting one from the live page if there is none, so a " +
+      "published page can be revised without readers seeing the change until publish_draft. " +
       "If you are editing the page to change items in a list, move that list into a data collection instead and " +
       "let the page fetch it. " +
       BUNDLES,
@@ -591,15 +626,20 @@ export const TOOLS: AnyTool[] = [
         find: { type: "string", description: "Exact text to replace, copied from get_page" },
         replace: { type: "string", description: "Text to put in its place. Empty string deletes the match." },
         all: { type: "boolean", description: "Replace every occurrence instead of refusing an ambiguous match" },
+        draft: { type: "boolean", description: "Edit the working copy, which readers do not see, instead of the live page" },
       },
       ["path", "find", "replace"],
     ),
-    outputSchema: shape({
-      path: str(),
-      url: str(),
-      replaced: num("Occurrences replaced"),
-      lines: list(num(), "Line numbers that changed"),
-    }),
+    outputSchema: shape(
+      {
+        path: str(),
+        url: str(),
+        replaced: num("Occurrences replaced"),
+        lines: list(num(), "Line numbers that changed"),
+        preview_url: str("Where the owner sees the working copy rendered. Present only for a draft edit."),
+      },
+      ["preview_url"],
+    ),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       if (typeof args.find !== "string") throw new Error("find is required");
@@ -610,13 +650,21 @@ export const TOOLS: AnyTool[] = [
         find: args.find,
         replace: args.replace,
         all: args.all === true,
+        draft: args.draft === true,
       });
-      return { path: page.path, url: urlFor(ctx, page.path), replaced, lines };
+      return {
+        path: page.path,
+        url: urlFor(ctx, page.path),
+        replaced,
+        lines,
+        ...(args.draft === true ? { preview_url: previewUrlFor(ctx, page.path) } : {}),
+      };
     },
     render: (r) => {
       const where =
         r.lines.length > 3 ? `${r.lines.slice(0, 3).join(", ")} and ${r.lines.length - 3} more` : r.lines.join(", ");
-      return `Replaced ${r.replaced} occurrence${r.replaced === 1 ? "" : "s"} at line ${where} in ${r.url}`;
+      const done = `Replaced ${r.replaced} occurrence${r.replaced === 1 ? "" : "s"} at line ${where}`;
+      return r.preview_url ? `${done} in the working copy. Preview it at ${r.preview_url}` : `${done} in ${r.url}`;
     },
   }),
   tool({
@@ -683,6 +731,9 @@ export const TOOLS: AnyTool[] = [
     group: "Pages",
     description:
       "Replace the content of an existing page, or change its title or meta without sending the body at all. " +
+      "Pass draft true to write the working copy instead: readers keep seeing the live page, the owner sees the " +
+      "change at preview_url, and publish_draft makes it live. Revise a published page that way whenever a " +
+      "half-finished change must not be seen. " +
       "If you are rewriting the page only to change items in a list, move that list into a data collection instead and let the page fetch it. " +
       BUNDLES,
     inputSchema: object(
@@ -697,16 +748,25 @@ export const TOOLS: AnyTool[] = [
             "Keys to set, merged into what the page already has. A key set to null is removed; a key left out " +
             "is kept, so changing one fact costs one key.",
         },
+        draft: {
+          type: "boolean",
+          description:
+            "Write the working copy, starting one from the live page if there is none, and leave the live page alone",
+        },
       },
       ["path"],
     ),
-    outputSchema: shape({
-      path: str(),
-      url: str("Where a browser reads it"),
-      title: str(),
-      format: str("markdown or html"),
-      meta: PAGE_META,
-    }),
+    outputSchema: shape(
+      {
+        path: str(),
+        url: str("Where a browser reads it"),
+        title: str("As written, in the working copy for a draft update"),
+        format: str("markdown or html"),
+        meta: PAGE_META,
+        preview_url: str("Where the owner sees the working copy rendered. Present only for a draft update."),
+      },
+      ["preview_url"],
+    ),
     handler: async (args, ctx) => {
       const path = requirePath(args.path);
       const existing = await getPage(path);
@@ -716,17 +776,70 @@ export const TOOLS: AnyTool[] = [
       if (args.content !== undefined && (typeof args.content !== "string" || args.content.length === 0))
         throw new Error("content must not be empty");
 
-      const body = args.content === undefined ? existing.body : String(args.content);
-      const page = await savePage({
-        path,
-        contentType: args.content === undefined ? existing.contentType : detectFormat(body, existing.contentType),
-        title: typeof args.title === "string" && args.title ? args.title : existing.title,
+      const base = args.draft === true ? workingCopy(existing) : existing;
+      const body = args.content === undefined ? base.body : String(args.content);
+      const fields = {
+        contentType: args.content === undefined ? base.contentType : detectFormat(body, base.contentType),
+        title: typeof args.title === "string" && args.title ? args.title : base.title,
         body,
-        meta: args.meta === undefined ? existing.meta : mergeMeta(existing.meta, args.meta),
-      });
+        meta: args.meta === undefined ? base.meta : mergeMeta(base.meta, args.meta),
+      };
+      if (args.draft === true) {
+        const draft = workingCopy(await saveDraft(path, fields));
+        return {
+          path,
+          url: urlFor(ctx, path),
+          title: draft.title,
+          format: draft.contentType,
+          meta: draft.meta,
+          preview_url: previewUrlFor(ctx, path),
+        };
+      }
+      const page = await savePage({ path, ...fields });
       return { path: page.path, url: urlFor(ctx, page.path), title: page.title, format: page.contentType, meta: page.meta };
     },
-    render: (r) => `Updated ${r.url}`,
+    render: (r) => (r.preview_url ? `Saved the working copy. Preview it at ${r.preview_url}` : `Updated ${r.url}`),
+  }),
+  tool({
+    name: "publish_draft",
+    title: "Publish a working copy",
+    access: "write",
+    group: "Pages",
+    description:
+      "Make a page's working copy live: its body, title, format and meta replace what readers see, and the working " +
+      "copy is cleared. Look at preview_url first: with no build, the preview is the only place a broken template or " +
+      "a bad fence is seen before a reader sees it. " +
+      BUNDLES,
+    inputSchema: object({ path: { type: "string", description: "Page path, for example /about" } }, ["path"]),
+    outputSchema: shape({
+      path: str(),
+      url: str("Where a browser reads it"),
+      title: str(),
+      format: str("markdown or html"),
+      meta: PAGE_META,
+    }),
+    handler: async (args, ctx) => {
+      const page = await publishDraft(requirePath(args.path));
+      return { path: page.path, url: urlFor(ctx, page.path), title: page.title, format: page.contentType, meta: page.meta };
+    },
+    render: (r) => `Published the working copy of ${r.path} at ${r.url}`,
+  }),
+  tool({
+    name: "discard_draft",
+    title: "Discard a working copy",
+    access: "write",
+    group: "Pages",
+    description: "Throw away a page's working copy and keep the live page exactly as it is. " + BUNDLES,
+    inputSchema: object({ path: { type: "string", description: "Page path, for example /about" } }, ["path"]),
+    outputSchema: shape({
+      path: str(),
+      discarded: bool("false when there was no working copy to throw away"),
+    }),
+    handler: async (args) => {
+      const path = requirePath(args.path);
+      return { path, discarded: await discardDraft(path) };
+    },
+    render: (r) => (r.discarded ? `Discarded the working copy of ${r.path}` : `${r.path} had no working copy`),
   }),
   transferTool("page", "copy", {
     title: "Copy a page",

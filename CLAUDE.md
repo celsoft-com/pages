@@ -67,6 +67,15 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   that shipped a `list_collections` that threw on every pre-existing collection while every test passed, because
   the tests only ever read blobs this code had just written. Pages have the same rule in `hydratePage`
   ([service.ts](src/pages/service.ts)), which is where `meta` is defaulted for a page stored before it existed.
+- **A page has a live copy and at most one working copy.** `draft` on `Page` holds the body, title, format and
+  meta being written; readers, listings, templates and the transfer scan see only the live fields, so revising a
+  published page never takes it off the site. `?preview` renders the working copy at the page's own URL, chrome
+  and templates included, for the owner's session or a credential (`canPreview` in [gate.ts](src/private/gate.ts))
+  and never stored at the edge; anybody else asking for it gets the ordinary response byte for byte, because a
+  preview that answered differently would announce that a draft exists. With no build, the preview is the only
+  gate a template meets before a reader, which is why `publish_draft` says to look at it first. A direct write to
+  the live page leaves a working copy alone, since it is somebody's unpublished work. `set_privacy` keeps the
+  other job: a page that has never been public.
 - **Page meta is strings, beside the body.** `meta` is facts about a page that are not its content, returned in
   the summary so a listing reads no bodies. Values are strings only, so nothing changes type on an admin
   round trip; `path` and `title` are refused as keys because the page already has them. `update_page` merges

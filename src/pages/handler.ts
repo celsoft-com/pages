@@ -1,5 +1,5 @@
 import { contentHeaders, privateHeaders } from "../cache";
-import { accessTo, accessToScope, type Access } from "../private/gate";
+import { accessTo, accessToScope, canPreview, type Access } from "../private/gate";
 import { getPrivacy, privateScope } from "../private/service";
 import { UNLOCK_HEAD } from "../private/unlock";
 import { renderMarkdown } from "../render/markdown";
@@ -10,15 +10,15 @@ import { expandFences, templateInput } from "../render/template";
 import type { Page } from "../types";
 import { contentsHtml, listable } from "./contents";
 import { ROOT_BUNDLE, normalizePath } from "./path";
-import { getPage, listPages } from "./service";
+import { getPage, listPages, previewOf } from "./service";
 
 // The tag is taken from the bytes sent. A themed page is its body, the chrome and whatever its
 // templates read from the rest of the site, so no one timestamp moves when all of them do, and a tag
 // that stood still would let a browser revalidate a stale page into a 304.
-async function html(body: string, access: Access): Promise<Response> {
+async function html(body: string, access: Access, stored = access.scope === null): Promise<Response> {
   const headers: Record<string, string> = {
     "content-type": "text/html; charset=utf-8",
-    ...(access.scope ? privateHeaders() : contentHeaders()),
+    ...(stored ? contentHeaders() : privateHeaders()),
     etag: `"${(await sha256Hex(body)).slice(0, 16)}"`,
   };
   if (access.cookie) headers["set-cookie"] = access.cookie;
@@ -66,6 +66,8 @@ export async function handlePage(request: Request): Promise<Response> {
   // The home page is served at /, so it has one URL, not two.
   if (path === ROOT_BUNDLE) return new Response(null, { status: 301, headers: { location: "/" } });
 
+  if (url.searchParams.has("preview") && (await canPreview(request))) return preview(path === "/" ? ROOT_BUNDLE : path);
+
   if (path === "/") return home(request);
 
   // Before the page is read, so a stranger's request costs one blob read and reveals nothing.
@@ -77,9 +79,18 @@ export async function handlePage(request: Request): Promise<Response> {
   return served(page, access);
 }
 
-async function served(page: Page, access: Access): Promise<Response> {
-  if (page.contentType === "html") return html(page.body, access);
+// The working copy rendered exactly as it would be served, templates and chrome included, because
+// with no build this is the only look a change gets before a reader has it. It is the owner's alone,
+// so it is stored nowhere: not at the edge, and never under the URL a reader is cached at.
+async function preview(path: string): Promise<Response> {
+  const page = await getPage(path);
+  if (!page) return closed(path === ROOT_BUNDLE ? "/" : path);
+  return served(previewOf(page), { scope: null, open: true }, false);
+}
+
+async function served(page: Page, access: Access, stored = access.scope === null): Promise<Response> {
+  if (page.contentType === "html") return html(page.body, access, stored);
   const { chrome, context } = await loadChrome(await templateInput(page));
   const content = await expandFences(page.body, context, renderMarkdown);
-  return html(layout({ title: page.title, chrome, content }), access);
+  return html(layout({ title: page.title, chrome, content }), access, stored);
 }
