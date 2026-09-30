@@ -5,15 +5,21 @@ order: 5
 
 # Getting started
 
-Four steps, no checkout, no command line. If you can click a button and pick a password, you can run
+Four steps, no checkout, no command line. If you can fork a repository and pick a password, you can run
 this site.
 
 ## 1. Deploy it
 
-Press the deploy button in the [overview](/docs). Netlify asks for an account, copies the repository
-into it and builds the site. That takes a minute or two and happens once.
+1. Fork the [repository](https://github.com/celsoft-com/pages) on GitHub.
+2. In Netlify: **Add new project → Import an existing project**, and pick your fork.
 
 You get an address ending in `netlify.app`. That is your site.
+
+Want another site? Import the same fork again. Each site is separate.
+
+To update, press **Sync fork** on GitHub. Every site redeploys. Your content is safe.
+
+Don't edit your fork. Only sync it.
 
 ## 2. Pick a password
 
