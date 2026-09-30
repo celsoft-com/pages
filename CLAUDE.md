@@ -55,7 +55,11 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
 ## Rules
 
 - **Custom domains are the user's job.** They add the domain in Netlify. The app does nothing and says nothing about it.
-- **No local tooling for users.** Deploy is the button. Never add a step needing a CLI or a checkout.
+- **No local tooling for users.** Deploy is a GitHub fork imported as a Netlify project. Never add a step needing
+  a CLI or a checkout. A fork is code, not a site: one fork backs any number of Netlify projects, each with its own
+  blobs and owner, and Sync fork redeploys them all. Never write docs that treat a fork as dedicated to one site.
+  The fork is never edited: a sync from upstream is the only change it takes, and the docs tell users so, because
+  their own commit turns every later sync into a merge and nothing of theirs belongs in the repo.
 - **One path normalizer, two kinds of path.** [path.ts](src/pages/path.ts) is the only place any path is
   normalized. `normalizePath` is for pages and collections; `normalizeAssetPath` is for assets and exists because
   the page rules would eat a filename: they strip `.html`/`.md` and pop a trailing `index`, so an asset at
@@ -316,7 +320,7 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   [docs/tools.md](docs/tools.md) is the one topic that is not a page of its own: it introduces the generated
   reference at `/docs/tools` and takes that sidebar entry, which is how the reference gets prose without any
   being written into the handler. The set of topics is one per subsystem and is meant to stay that way: getting
-  started and working with Claude for somebody who just pressed the button, connecting a client, then pages, templates,
+  started and working with Claude for somebody who just deployed, connecting a client, then pages, templates,
   collections, assets, private paths, bundles, transfers and maps, each answering to a rule in this file. A new
   subsystem earns a topic; a new feature inside one belongs in the topic that already covers it. A topic is
   reader-facing prose, so it carries no status line, no acceptance criteria and no non-goals list: the reasoning
@@ -415,7 +419,7 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   client that assumes a static site generator reaches for a commit and a push to publish, which would put somebody's
   page into the site's source code. So `INSTRUCTIONS` states it in the site's own voice, names the tools a client
   must not reach for, and [handler.test.ts](src/mcp/handler.test.ts) pins those sentences. The README says the same
-  thing before the deploy button, because the button is where the wrong model comes from.
+  thing before the deploy steps, because deploying is where the wrong model comes from.
 - **A number in prose drifts away from the header that means it.** The instructions told clients a collection was
   cached for sixty seconds while `MAX_AGE` in [cache.ts](src/cache.ts) said five minutes, and the purge on every
   write meant neither figure described what a reader actually saw. `MAX_AGE` is exported so a test can hold the

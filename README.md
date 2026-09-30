@@ -17,15 +17,15 @@ is when you take an upstream update. Writing a page is not a code change and doe
 
 ## Deploy
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/celsoft-com/pages)
+1. Fork this repo on GitHub.
+2. In Netlify: **Add new project → Import an existing project**, and pick your fork.
+3. Open the site and pick a password.
 
-Open your site and pick an admin password. That's the whole setup.
+Done. Want another site? Repeat step 2 with the same fork. Each site is separate.
 
-### Deploying from a fork
+To update, press **Sync fork** on GitHub. Every site redeploys. Your content is safe.
 
-The button copies this repo into your account with no link back, so later improvements never reach you. If you want them, fork the repo first and point Netlify at your fork instead (**Add new project → Import an existing project**).
-
-GitHub's **Sync fork** button then pulls in upstream changes, and Netlify redeploys on push. Still no checkout, no CLI.
+Don't edit your fork. Only sync it.
 
 ## Connect Claude
 
