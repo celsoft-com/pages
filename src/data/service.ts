@@ -90,8 +90,7 @@ export async function listCollections(): Promise<CollectionSummary[]> {
   const { blobs } = await stores.data().list();
   const summaries = await Promise.all(
     blobs.map(async (blob) => {
-      const found = await stores.data().getMetadata(blob.key);
-      const summary = found?.metadata as unknown as (CollectionSummary & { v?: number }) | undefined;
+      const summary = blob.metadata as unknown as (CollectionSummary & { v?: number }) | undefined;
       if (summary?.v === SUMMARY_VERSION) {
         const { v: _version, ...rest } = summary;
         return rest satisfies CollectionSummary;

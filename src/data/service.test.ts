@@ -485,7 +485,7 @@ describe("collection summaries", () => {
     const real = stores.data();
     const spy = vi.spyOn(stores, "data").mockReturnValue({
       ...real,
-      getMetadata: async () => null,
+      list: async () => ({ blobs: (await real.list()).blobs.map((blob) => ({ ...blob, metadata: null })) }),
       get: async () => null,
     } as unknown as ReturnType<typeof stores.data>);
 

@@ -81,7 +81,7 @@ describe("page summaries", () => {
     const real = stores.pages();
     const spy = vi.spyOn(stores, "pages").mockReturnValue({
       ...real,
-      getMetadata: async () => null,
+      list: async () => ({ blobs: (await real.list()).blobs.map((blob) => ({ ...blob, metadata: null })) }),
       get: async () => null,
     } as unknown as ReturnType<typeof stores.pages>);
 
