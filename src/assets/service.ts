@@ -72,8 +72,13 @@ export async function findAsset(raw: string): Promise<{ body: ArrayBuffer; asset
 
 export async function listAssets(): Promise<Asset[]> {
   const { blobs } = await stores.assets().list();
-  return blobs
-    .map((blob) => blob.metadata as unknown as Asset | null)
+  const assets = await Promise.all(
+    blobs.map(async (blob) => {
+      const meta = await stores.assets().getMetadata(blob.key);
+      return meta ? (meta.metadata as unknown as Asset) : null;
+    }),
+  );
+  return assets
     .filter((a): a is Asset => a !== null)
     .sort((a, b) => b.createdAt - a.createdAt);
 }

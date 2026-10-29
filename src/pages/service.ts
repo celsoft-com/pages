@@ -95,7 +95,8 @@ export async function listPages(): Promise<PageSummary[]> {
   const { blobs } = await stores.pages().list();
   const summaries = await Promise.all(
     blobs.map(async (blob) => {
-      const summary = blob.metadata as unknown as (PageSummary & { v?: number }) | undefined;
+      const found = await stores.pages().getMetadata(blob.key);
+      const summary = found?.metadata as unknown as (PageSummary & { v?: number }) | undefined;
       if (summary?.v === SUMMARY_VERSION) {
         const { v: _version, ...rest } = summary;
         return rest satisfies PageSummary;
