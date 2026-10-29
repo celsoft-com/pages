@@ -4,3 +4,9 @@ dist/
 # Local Netlify folder
 .netlify
 deno.lock
+.claude/skills/celsoft-platform*/
+.env.secrets
+.platform/
+.platform-*
+.dev.vars
+.wrangler

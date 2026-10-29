@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/@celsoft/platform/schema.json",
+  "name": "pages",
+  "hostname": "pages-dev.celsoft.com",
+  "worker": "src/worker.ts",
+  "frontend": "public",
+  "compatibilityDate": "2026-10-01",
+  "database": true,
+  "email": true,
+  "auth": { "signup": "invite", "apiTokens": true },
+  "files": true,
+  "mcp": true,
+  "access": true
+}
