@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Files } from "@celsoft/platform";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { resourceMeta, siteValues } from "./schema";
 import type * as schema from "./schema";
@@ -18,7 +18,8 @@ export interface BlobStore {
   // onlyIfNew leaves an existing value alone, which is how a race to create one is lost safely.
   setJSON(key: string, value: unknown, options?: { metadata?: Metadata; onlyIfNew?: boolean }): Promise<void>;
   delete(key: string): Promise<void>;
-  list(options?: { prefix?: string }): Promise<{ blobs: { key: string }[] }>;
+  // Each key comes back with its metadata, read in one query, so a listing never asks per key.
+  list(options?: { prefix?: string }): Promise<{ blobs: { key: string; metadata: Metadata | null }[] }>;
 }
 
 export interface Backend {
@@ -102,9 +103,9 @@ export function memoryBackend(): Backend {
       },
       delete: async (key) => void bucket(name).delete(key),
       list: async (options) => ({
-        blobs: [...bucket(name).keys()]
-          .filter((key) => key.startsWith(options?.prefix ?? ""))
-          .map((key) => ({ key })),
+        blobs: [...bucket(name).entries()]
+          .filter(([key]) => key.startsWith(options?.prefix ?? ""))
+          .map(([key, entry]) => ({ key, metadata: entry.metadata })),
       }),
     };
   };
@@ -166,11 +167,16 @@ function objectStore(files: Files, db: Db, name: "pages" | "data" | "assets"): B
     },
     list: async (options) => {
       const { files: found } = await files.list(name);
-      return {
-        blobs: found
-          .map((file) => ({ key: file.path.slice(name.length + 1) }))
-          .filter((blob) => blob.key.startsWith(options?.prefix ?? "")),
-      };
+      const keys = found
+        .map((file) => file.path.slice(name.length + 1))
+        .filter((key) => key.startsWith(options?.prefix ?? ""));
+      if (keys.length === 0) return { blobs: [] };
+      const rows = await db
+        .select({ key: resourceMeta.key, metadata: resourceMeta.metadata })
+        .from(resourceMeta)
+        .where(and(eq(resourceMeta.store, name), inArray(resourceMeta.key, keys)));
+      const metadata = new Map(rows.map((row) => [row.key, row.metadata]));
+      return { blobs: keys.map((key) => ({ key, metadata: metadata.get(key) ?? null })) };
     },
   };
 }
@@ -208,7 +214,7 @@ function valueStore(db: Db, name: "site" | "oauth"): BlobStore {
         .select({ key: siteValues.key })
         .from(siteValues)
         .where(like(siteValues.key, `${full(options?.prefix ?? "").replace(/[\\%_]/g, "\\$&")}%`));
-      return { blobs: rows.map((row) => ({ key: row.key.slice(name.length + 1) })) };
+      return { blobs: rows.map((row) => ({ key: row.key.slice(name.length + 1), metadata: {} })) };
     },
   };
 }
