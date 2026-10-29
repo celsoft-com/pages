@@ -6,6 +6,7 @@ import { setPrivate } from "../private/service";
 import { resetBlobs } from "../test/blobs";
 import { schemaProblems } from "../test/shapes";
 import { clearGeoFetch, stubGeoFetch } from "../test/http";
+import { endpoints } from "../endpoints";
 import { TOOLS, type ToolContext } from "./tools";
 
 // What a handler returns is the REST body, byte for byte, so its keys are published API: a service
@@ -19,7 +20,11 @@ beforeEach(resetBlobs);
 async function raw(name: string, args: Record<string, unknown> = {}): Promise<any> {
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool) throw new Error(`No tool named ${name}`);
+  // The platform checks both sides of every call against the Zod schemas made from these, so a
+  // reply the JSON Schema accepts and Zod refuses would be a 500 in production.
+  expect(endpoints[name].input.safeParse(args).error, `${name} input`).toBeUndefined();
   const result = await tool.handler(args, ctx);
+  expect(endpoints[name].output.safeParse(result).error, `${name} output`).toBeUndefined();
   // The shape is declared on the tool as well as asserted here, because /docs publishes that
   // declaration as the documented reply. Checking it on every call in this file means the
   // declaration is exercised by the tests that already cover each branch.
