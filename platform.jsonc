@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/@celsoft/platform/schema.json",
+  "name": "pages",
+  "hostname": "pages-dev.celsoft.com",
+  "worker": "src/worker.ts",
+  "frontend": "public",
+  "compatibilityDate": "2026-10-01",
+  "database": true
+  // Accounts and sign-in: uncomment both lines. Sign-up is invite-only once the app has its first
+  // account, which becomes the owner and invites people at /invites; "open" lets anyone sign up.
+  // "email": true,
+  // "auth": { "signup": "invite" }
+}
