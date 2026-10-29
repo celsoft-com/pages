@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "platform generate",
     "build": "tsc --noEmit && vitest run",
     "dev": "netlify dev",
     "docs": "node scripts/docs-content.mjs",
@@ -13,13 +14,16 @@
     "build:deploy": "node scripts/build-info.mjs && node scripts/docs-content.mjs && npm run build"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "typescript": "^7.0.2",
     "@netlify/functions": "^6.0.0",
     "@types/node": "^24.0.0",
-    "typescript": "^7.0.2",
     "vitest": "^5.0.0"
   },
   "dependencies": {
     "@celsoft/platform": "^0.30.0",
+    "drizzle-orm": "^0",
+    "zod": "^4.6.7",
     "@netlify/blobs": "^11.0.3",
     "liquidjs": "^10.29.0",
     "marked": "^18.0.11",
