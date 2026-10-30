@@ -1,0 +1,5 @@
+#!/usr/bin/env zsh
+#MISE description="Run a @celsoft/platform command, e.g. mise run platform -- upgrade"
+set -euo pipefail
+
+exec npx @celsoft/platform "$@"

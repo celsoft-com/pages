@@ -9,4 +9,3 @@
 
 [tools]
 node = "24"
-"conda:postgresql" = "18.6"
