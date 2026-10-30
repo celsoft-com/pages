@@ -15,6 +15,13 @@
       "when": 1793369604501,
       "tag": "20261030141324_deep_blink",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793398920464,
+      "tag": "20261030222200_smooth_serpent_society",
+      "breakpoints": true
     }
   ]
 }
