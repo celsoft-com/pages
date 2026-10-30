@@ -1,5 +1,5 @@
 import { testApp } from "@celsoft/platform/testing";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MAX_INSTRUCTIONS } from "./instructions";
 import app from "./worker";
 
@@ -10,7 +10,7 @@ beforeEach(async () => {
   t = await testApp(app);
   owner = await t.signUp("owner@example.com");
 });
-afterAll(() => t.close());
+afterEach(() => t.close());
 
 async function status(call: Promise<unknown>): Promise<number | null> {
   return call.then(
