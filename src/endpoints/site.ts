@@ -53,7 +53,10 @@ export const siteEndpoints = {
       access: { point: site, level: "write" },
       input: z.object({
         text: z.string().describe("The whole of the new instructions, markdown"),
-        if_rev: z.number().optional().describe("The rev get_instructions returned. Required once any instructions exist."),
+        if_rev: z
+          .number()
+          .optional()
+          .describe("The rev get_instructions returned. Required once any instructions exist."),
       }),
       output: z.object({
         rev: z.number().describe("The rev now stored, unchanged when the text was"),
