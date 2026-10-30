@@ -1,4 +1,6 @@
+import { EndpointError } from "@celsoft/platform";
 import { normalizePath } from "../pages/path";
+import type { PagesApp } from "../pages-app";
 import { getPage } from "../pages/service";
 import { getSettings } from "../settings";
 import type { Page, SiteSettings } from "../types";
@@ -12,25 +14,32 @@ export interface Chrome {
   footer: string;
 }
 
-async function template(path: string, context: TemplateContext): Promise<string> {
-  const stored = path ? await getPage(path) : null;
+async function template(app: PagesApp, path: string, context: TemplateContext): Promise<string> {
+  const stored = path ? await getPage(app, path) : null;
   return stored ? renderTemplate(stored.body, context) : "";
 }
 
-export async function loadChrome(input: TemplateContext["input"]): Promise<{ chrome: Chrome; context: TemplateContext }> {
-  const site = await getSettings();
-  const context = { input, site: { title: site.title, description: site.description } };
-  const [header, footer] = await Promise.all([template(site.header, context), template(site.footer, context)]);
+export async function loadChrome(
+  app: PagesApp,
+  input: TemplateContext["input"],
+): Promise<{ chrome: Chrome; context: TemplateContext }> {
+  const site = await getSettings(app);
+  const context = { app, input, site: { title: site.title, description: site.description } };
+  const [header, footer] = await Promise.all([
+    template(app, site.header, context),
+    template(app, site.footer, context),
+  ]);
   return { chrome: { site, header, footer }, context };
 }
 
 // A name that points at nothing would silently render the built-in piece on every page, so a path
 // is only accepted once a template is stored there.
-export async function templatePath(field: "header" | "footer", raw: string): Promise<string> {
+export async function templatePath(app: PagesApp, field: "header" | "footer", raw: string): Promise<string> {
   if (raw.trim() === "") return "";
   const path = normalizePath(raw);
-  if (!(await getPage(path)))
-    throw new Error(
+  if (!(await getPage(app, path)))
+    throw new EndpointError(
+      400,
       `No page is stored at ${path} to use as the ${field}. Publish the template there first, as an html page.`,
     );
   return path;

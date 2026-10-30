@@ -1,29 +1,16 @@
 import { Drop, Liquid } from "liquidjs";
 import { getCollection, normalizeCollectionPath } from "../data/service";
-import { getPrivacy, privateScope } from "../private/service";
 import { listable } from "../pages/contents";
 import { normalizePath } from "../pages/path";
 import { buildStamp, describeBuild } from "../build";
 import { countWords, getPage, listPages } from "../pages/service";
-import type { Page, PageSummary, Privacy } from "../types";
+import type { PagesApp } from "../pages-app";
+import type { Page, PageSummary } from "../types";
 import { escapeHtml } from "./theme";
 
-// What a template may see, and for whom. scope is the private scope the response is served under,
-// or null for a public one: a public response is cached at the edge for everyone, so it may read
-// only public pages and collections, while a page inside a private scope may also read what shares
-// that scope with it. The same rule as the contents list, applied to every read a template makes.
+// The page a template renders for, or null for chrome rendered around something that is not one.
 export interface TemplateScope {
   page: Page | null;
-  privacy: Privacy;
-}
-
-function scopeOf(input: TemplateScope): string | null {
-  return input.page ? (privateScope(input.privacy, input.page.path)?.path ?? null) : null;
-}
-
-function visible(input: TemplateScope, path: string): boolean {
-  const covering = privateScope(input.privacy, path);
-  return covering === null || covering.path === scopeOf(input);
 }
 
 // minutes is a reading time at a steady 230 words a minute, at least one; a page that wants another
@@ -57,7 +44,7 @@ class SiteDrop extends Drop {
   private cached: Promise<ReturnType<typeof pageValue>[]> | null = null;
 
   constructor(
-    private readonly input: TemplateScope,
+    private readonly app: PagesApp,
     readonly title: string,
     readonly description: string,
   ) {
@@ -65,11 +52,7 @@ class SiteDrop extends Drop {
   }
 
   get pages() {
-    this.cached ??= listPages().then((all) =>
-      listable(all)
-        .filter((page) => visible(this.input, page.path))
-        .map(pageValue),
-    );
+    this.cached ??= listPages(this.app).then((all) => listable(all).map(pageValue));
     return this.cached;
   }
 }
@@ -79,7 +62,7 @@ class SiteDrop extends Drop {
 class CollectionsDrop extends Drop {
   private readonly cache = new Map<string, Promise<unknown[] | undefined>>();
 
-  constructor(private readonly input: TemplateScope) {
+  constructor(private readonly app: PagesApp) {
     super();
   }
 
@@ -88,7 +71,7 @@ class CollectionsDrop extends Drop {
     if (!this.cache.has(path))
       this.cache.set(
         path,
-        visible(this.input, path) ? getCollection(path).then((found) => found?.items) : Promise.resolve(undefined),
+        getCollection(this.app, path).then((found) => found?.items),
       );
     return this.cache.get(path);
   }
@@ -96,11 +79,8 @@ class CollectionsDrop extends Drop {
 
 // Every limit is generous for a page and finite for a loop nobody meant to write: a template runs on
 // the request path, and one that never finishes takes the site down with it.
-function engine(input: TemplateScope): Liquid {
-  const named = async (file: string): Promise<Page | null> => {
-    const path = normalizePath(file);
-    return visible(input, path) ? getPage(path) : null;
-  };
+function engine(app: PagesApp): Liquid {
+  const named = (file: string): Promise<Page | null> => getPage(app, normalizePath(file));
   return new Liquid({
     fs: {
       exists: async (file) => (await named(file)) !== null,
@@ -124,6 +104,7 @@ function engine(input: TemplateScope): Liquid {
 }
 
 export interface TemplateContext {
+  app: PagesApp;
   input: TemplateScope;
   site: { title: string; description: string };
 }
@@ -132,10 +113,10 @@ export interface TemplateContext {
 // its own block and not the page around it, and whoever looks at the page sees why.
 export async function renderTemplate(source: string, context: TemplateContext): Promise<string> {
   try {
-    return await engine(context.input).parseAndRender(source, {
+    return await engine(context.app).parseAndRender(source, {
       page: context.input.page ? pageValue(context.input.page) : null,
-      site: new SiteDrop(context.input, context.site.title, context.site.description),
-      collections: new CollectionsDrop(context.input),
+      site: new SiteDrop(context.app, context.site.title, context.site.description),
+      collections: new CollectionsDrop(context.app),
       build: buildValue(),
     });
   } catch (error) {
@@ -162,6 +143,6 @@ export async function expandFences(
   return render(marked).replace(/<!--pages-fence-(\d+)-->/g, (_whole, index: string) => rendered[Number(index)]);
 }
 
-export async function templateInput(page: Page | null): Promise<TemplateScope> {
-  return { page, privacy: await getPrivacy() };
+export function templateInput(page: Page | null): TemplateScope {
+  return { page };
 }

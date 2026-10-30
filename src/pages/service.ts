@@ -1,4 +1,8 @@
-import { encodeKey, stores } from "../store";
+import { EndpointError } from "@celsoft/platform";
+import { asc, eq } from "drizzle-orm";
+import type { PagesApp } from "../pages-app";
+import { pageSummaries } from "../schema";
+import { pageFile } from "../store";
 import type { ContentType, Page, PageDraft, PageMeta, PageSummary } from "../types";
 import { HOME_IS_AT_ROOT, HOME_IS_GENERATED, ROOT_BUNDLE, normalizePath } from "./path";
 
@@ -7,15 +11,14 @@ export function noPageAt(path: string): string {
   return path === ROOT_BUNDLE ? HOME_IS_GENERATED : `No page exists at ${path}`;
 }
 
-// A blob written before a field existed still comes back carrying it. Every page read goes
-// through here, listPages' fallback included, so a new field is defaulted once.
+// A file written before a field existed still comes back carrying it. Every page read goes
+// through here, so a new field is defaulted once.
 function hydratePage(stored: Page | null): Page | null {
   return stored ? { ...stored, meta: stored.meta ?? {}, draft: stored.draft ?? null } : null;
 }
 
-export async function getPage(path: string): Promise<Page | null> {
-  const stored = await stores.pages().get(encodeKey(normalizePath(path)), { type: "json" });
-  return hydratePage(stored as Page | null);
+export async function getPage(app: PagesApp, path: string): Promise<Page | null> {
+  return hydratePage(await app.files.getJson<Page>(pageFile(normalizePath(path))));
 }
 
 // path and title are fields of the page itself, and a second copy of either in meta would be two
@@ -25,13 +28,14 @@ const PAGE_FIELDS = ["path", "title"];
 
 export function validateMeta(raw: unknown): PageMeta {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw))
-    throw new Error("meta must be an object of string values");
+    throw new EndpointError(400, "meta must be an object of string values");
   const meta: PageMeta = {};
   for (const [key, value] of Object.entries(raw)) {
     if (!META_KEY.test(key))
-      throw new Error(`meta key "${key}" must start with a letter and hold only letters, digits, - and _`);
-    if (PAGE_FIELDS.includes(key)) throw new Error(`meta cannot hold "${key}": it is a field of the page itself`);
-    if (typeof value !== "string") throw new Error(`meta.${key} must be a string`);
+      throw new EndpointError(400, `meta key "${key}" must start with a letter and hold only letters, digits, - and _`);
+    if (PAGE_FIELDS.includes(key))
+      throw new EndpointError(400, `meta cannot hold "${key}": it is a field of the page itself`);
+    if (typeof value !== "string") throw new EndpointError(400, `meta.${key} must be a string`);
     meta[key] = value;
   }
   return meta;
@@ -39,7 +43,7 @@ export function validateMeta(raw: unknown): PageMeta {
 
 export function mergeMeta(existing: PageMeta, raw: unknown): PageMeta {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw))
-    throw new Error("meta must be an object of string or null values");
+    throw new EndpointError(400, "meta must be an object of string or null values");
   const entries = Object.entries(raw);
   const removed = entries.filter(([, value]) => value === null).map(([key]) => key);
   const set = validateMeta(Object.fromEntries(entries.filter(([, value]) => value !== null)));
@@ -47,10 +51,6 @@ export function mergeMeta(existing: PageMeta, raw: unknown): PageMeta {
   for (const key of removed) delete merged[key];
   return merged;
 }
-
-// Bumped whenever PageSummary gains a field. Metadata written under an older number is not trusted
-// or patched up: the blob is read and the summary derived, which is slower and always right.
-const SUMMARY_VERSION = 4;
 
 // Prose only: code, tags, template tags and markdown punctuation are not read, so they are not counted.
 export function countWords(body: string): number {
@@ -62,9 +62,8 @@ export function countWords(body: string): number {
   return prose.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0;
 }
 
-function summarize(page: Page): PageSummary & { v: number } {
+function summarize(page: Page): PageSummary {
   return {
-    v: SUMMARY_VERSION,
     path: page.path,
     contentType: page.contentType,
     title: page.title,
@@ -75,52 +74,45 @@ function summarize(page: Page): PageSummary & { v: number } {
   };
 }
 
-// Netlify caps blob metadata at 2 KB and rejects the whole write past it, so a long title or a big
-// refs map must not be able to fail a save. Over the limit the summary is simply not written, and a
-// missing summary is a miss like any other: the blob is read.
-const METADATA_LIMIT = 1800;
-
-function metadataFor(summary: Record<string, unknown>): Record<string, unknown> | undefined {
-  return JSON.stringify(summary).length <= METADATA_LIMIT ? summary : undefined;
+// The only way a page file is written, transfer.ts included. Its summary row follows it so
+// listPages can answer from one query without opening every page, and it cannot drift from the
+// file because nothing else writes either.
+export async function writePageFile(app: PagesApp, page: Page): Promise<void> {
+  await app.files.putJson(pageFile(page.path), page);
+  const summary = summarize(page);
+  await app.db
+    .insert(pageSummaries)
+    .values({ path: page.path, summary })
+    .onConflictDoUpdate({ target: pageSummaries.path, set: { summary } });
 }
 
-// The only way a page blob is written, transfer.ts included. The summary rides along as metadata so
-// listPages can answer without reading every page body, and it cannot drift from the blob because
-// nothing else writes one.
-export async function writePageBlob(key: string, page: Page): Promise<void> {
-  await stores.pages().setJSON(key, page, { metadata: metadataFor({ ...summarize(page) }) });
+export async function removePageFile(app: PagesApp, path: string): Promise<void> {
+  await app.files.delete(pageFile(path));
+  await app.db.delete(pageSummaries).where(eq(pageSummaries.path, path));
 }
 
-export async function listPages(): Promise<PageSummary[]> {
-  const { blobs } = await stores.pages().list();
-  const summaries = await Promise.all(
-    blobs.map(async (blob) => {
-      const found = await stores.pages().getMetadata(blob.key);
-      const summary = found?.metadata as unknown as (PageSummary & { v?: number }) | undefined;
-      if (summary?.v === SUMMARY_VERSION) {
-        const { v: _version, ...rest } = summary;
-        return rest satisfies PageSummary;
-      }
-      const page = hydratePage((await stores.pages().get(blob.key, { type: "json" })) as Page | null);
-      if (!page) return null;
-      const { v: _v, ...rest } = summarize(page);
-      return rest satisfies PageSummary;
-    }),
-  );
-  return summaries.filter((p): p is PageSummary => p !== null).sort((a, b) => a.path.localeCompare(b.path));
+export async function listPages(app: PagesApp): Promise<PageSummary[]> {
+  const rows = await app.db
+    .select({ summary: pageSummaries.summary })
+    .from(pageSummaries)
+    .orderBy(asc(pageSummaries.path));
+  return rows.map((row) => row.summary);
 }
 
-export async function savePage(input: {
-  path: string;
-  contentType: ContentType;
-  title: string;
-  body: string;
-  // Left out, the page keeps what it had: an edit to the body is not a decision about its meta.
-  meta?: PageMeta;
-}): Promise<Page> {
+export async function savePage(
+  app: PagesApp,
+  input: {
+    path: string;
+    contentType: ContentType;
+    title: string;
+    body: string;
+    // Left out, the page keeps what it had: an edit to the body is not a decision about its meta.
+    meta?: PageMeta;
+  },
+): Promise<Page> {
   const path = normalizePath(input.path);
-  if (path === "/") throw new Error(HOME_IS_AT_ROOT);
-  const existing = await getPage(path);
+  if (path === "/") throw new EndpointError(400, HOME_IS_AT_ROOT);
+  const existing = await getPage(app, path);
   const now = Date.now();
   const page: Page = {
     path,
@@ -133,14 +125,14 @@ export async function savePage(input: {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-  await writePageBlob(encodeKey(path), page);
+  await writePageFile(app, page);
   return page;
 }
 
-export async function deletePage(path: string): Promise<boolean> {
+export async function deletePage(app: PagesApp, path: string): Promise<boolean> {
   const normalized = normalizePath(path);
-  if (!(await getPage(normalized))) return false;
-  await stores.pages().delete(encodeKey(normalized));
+  if (!(await getPage(app, normalized))) return false;
+  await removePageFile(app, normalized);
   return true;
 }
 
@@ -162,11 +154,11 @@ export interface PageMatch {
 
 const MATCH_CAP = 10;
 
-export async function findInPages(patterns: RegExp[]): Promise<PageMatch[]> {
+export async function findInPages(app: PagesApp, patterns: RegExp[]): Promise<PageMatch[]> {
   if (patterns.length === 0) return [];
   const found: PageMatch[] = [];
-  for (const summary of await listPages()) {
-    const page = await getPage(summary.path);
+  for (const summary of await listPages(app)) {
+    const page = await getPage(app, summary.path);
     if (!page) continue;
     const hits = page.body
       .split("\n")
@@ -198,28 +190,33 @@ export function slicePage(page: Page, options: { find?: string; offset?: number;
   return { page, lines: matched.slice(0, limit), total: all.length, more: Math.max(0, matched.length - limit) };
 }
 
-export async function editPage(input: {
-  path: string;
-  find: string;
-  replace: string;
-  all: boolean;
-  // Edits the working copy, starting one from the live page if there is none yet.
-  draft?: boolean;
-}): Promise<{ page: Page; replaced: number; lines: number[] }> {
+export async function editPage(
+  app: PagesApp,
+  input: {
+    path: string;
+    find: string;
+    replace: string;
+    all: boolean;
+    // Edits the working copy, starting one from the live page if there is none yet.
+    draft?: boolean;
+  },
+): Promise<{ page: Page; replaced: number; lines: number[] }> {
   const path = normalizePath(input.path);
-  const page = await getPage(path);
-  if (!page) throw new Error(noPageAt(path));
-  if (input.find === "") throw new Error("find must not be empty");
+  const page = await getPage(app, path);
+  if (!page) throw new EndpointError(400, noPageAt(path));
+  if (input.find === "") throw new EndpointError(400, "find must not be empty");
   const source = input.draft ? workingCopy(page).body : page.body;
 
   const occurrences = source.split(input.find).length - 1;
   if (occurrences === 0)
-    throw new Error(
+    throw new EndpointError(
+      400,
       `Nothing in ${path} matches that text exactly. Read the part you are editing with get_page, ` +
         `passing find or offset and limit, and copy the snippet from what it returns.`,
     );
   if (occurrences > 1 && !input.all)
-    throw new Error(
+    throw new EndpointError(
+      400,
       `That text appears ${occurrences} times in ${path}. Pass a longer snippet that appears once, ` +
         `or all: true to replace every occurrence.`,
     );
@@ -234,8 +231,8 @@ export async function editPage(input: {
   }
 
   const saved = input.draft
-    ? await saveDraft(path, { body })
-    : await savePage({ path, contentType: page.contentType, title: page.title, body });
+    ? await saveDraft(app, path, { body })
+    : await savePage(app, { path, contentType: page.contentType, title: page.title, body });
   return { page: saved, replaced: input.all ? occurrences : 1, lines };
 }
 
@@ -260,33 +257,42 @@ export function previewOf(page: Page): Page {
 }
 
 export async function saveDraft(
+  app: PagesApp,
   path: string,
   fields: Partial<Omit<PageDraft, "updatedAt">>,
 ): Promise<Page> {
   const normalized = normalizePath(path);
-  const page = await getPage(normalized);
-  if (!page) throw new Error(`${noPageAt(normalized)}. A working copy is kept for a published page; publish_page it first.`);
+  const page = await getPage(app, normalized);
+  if (!page)
+    throw new EndpointError(
+      400,
+      `${noPageAt(normalized)}. A working copy is kept for a published page; publish_page it first.`,
+    );
   const next: Page = { ...page, draft: { ...workingCopy(page), ...fields, updatedAt: Date.now() } };
-  await writePageBlob(encodeKey(normalized), next);
+  await writePageFile(app, next);
   return next;
 }
 
-export async function publishDraft(path: string): Promise<Page> {
+export async function publishDraft(app: PagesApp, path: string): Promise<Page> {
   const normalized = normalizePath(path);
-  const page = await getPage(normalized);
-  if (!page) throw new Error(noPageAt(normalized));
-  if (!page.draft) throw new Error(`${normalized} has no working copy to publish. Its live page is already what readers see.`);
+  const page = await getPage(app, normalized);
+  if (!page) throw new EndpointError(400, noPageAt(normalized));
+  if (!page.draft)
+    throw new EndpointError(
+      400,
+      `${normalized} has no working copy to publish. Its live page is already what readers see.`,
+    );
   const { contentType, title, body, meta } = page.draft;
   const next: Page = { ...page, contentType, title, body, meta, draft: null, updatedAt: Date.now() };
-  await writePageBlob(encodeKey(normalized), next);
+  await writePageFile(app, next);
   return next;
 }
 
-export async function discardDraft(path: string): Promise<boolean> {
+export async function discardDraft(app: PagesApp, path: string): Promise<boolean> {
   const normalized = normalizePath(path);
-  const page = await getPage(normalized);
-  if (!page) throw new Error(noPageAt(normalized));
+  const page = await getPage(app, normalized);
+  if (!page) throw new EndpointError(400, noPageAt(normalized));
   if (!page.draft) return false;
-  await writePageBlob(encodeKey(normalized), { ...page, draft: null });
+  await writePageFile(app, { ...page, draft: null });
   return true;
 }

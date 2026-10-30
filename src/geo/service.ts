@@ -1,5 +1,7 @@
+import { EndpointError } from "@celsoft/platform";
 import { assetUrlFor, putAsset } from "../assets/service";
 import { normalizeAssetPath } from "../pages/path";
+import type { PagesApp } from "../pages-app";
 import {
   PREFERS,
   PROFILES,
@@ -23,10 +25,13 @@ const METRES_PER_DEGREE = 111_320;
 
 export function parseStops(raw: unknown): Position[] {
   if (!Array.isArray(raw) || raw.length < 2) {
-    throw new Error("stops must be an array of at least two {lat, lon} objects, in the order they are visited.");
+    throw new EndpointError(
+      400,
+      "stops must be an array of at least two {lat, lon} objects, in the order they are visited.",
+    );
   }
   if (raw.length > MAX_STOPS) {
-    throw new Error(`stops is limited to ${MAX_STOPS}; ${raw.length} were given.`);
+    throw new EndpointError(400, `stops is limited to ${MAX_STOPS}; ${raw.length} were given.`);
   }
   // Named fields, never a bare pair. GeoJSON orders coordinates [lon, lat] and most map libraries
   // take [lat, lon], so a two-element array in an argument is a silent transposition waiting to
@@ -35,23 +40,26 @@ export function parseStops(raw: unknown): Position[] {
     const lat = Number((stop as { lat?: unknown })?.lat);
     const lon = Number((stop as { lon?: unknown })?.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      throw new Error(`stops[${index}] needs a numeric lat and lon.`);
+      throw new EndpointError(400, `stops[${index}] needs a numeric lat and lon.`);
     }
-    if (lat < -90 || lat > 90) throw new Error(`stops[${index}].lat is ${lat}; latitude runs from -90 to 90.`);
-    if (lon < -180 || lon > 180) throw new Error(`stops[${index}].lon is ${lon}; longitude runs from -180 to 180.`);
+    if (lat < -90 || lat > 90)
+      throw new EndpointError(400, `stops[${index}].lat is ${lat}; latitude runs from -90 to 90.`);
+    if (lon < -180 || lon > 180)
+      throw new EndpointError(400, `stops[${index}].lon is ${lon}; longitude runs from -180 to 180.`);
     return [lon, lat];
   });
 }
 
 export function parseProfile(raw: unknown): Profile {
   if (raw === undefined || raw === null || raw === "") return "cycling";
-  if (!PROFILES.includes(raw as Profile)) throw new Error(`profile must be one of ${PROFILES.join(", ")}.`);
+  if (!PROFILES.includes(raw as Profile))
+    throw new EndpointError(400, `profile must be one of ${PROFILES.join(", ")}.`);
   return raw as Profile;
 }
 
 export function parsePrefer(raw: unknown): Prefer {
   if (raw === undefined || raw === null || raw === "") return "balanced";
-  if (!PREFERS.includes(raw as Prefer)) throw new Error(`prefer must be one of ${PREFERS.join(", ")}.`);
+  if (!PREFERS.includes(raw as Prefer)) throw new EndpointError(400, `prefer must be one of ${PREFERS.join(", ")}.`);
   return raw as Prefer;
 }
 
@@ -127,16 +135,19 @@ export interface RouteWrite {
   ways: Ways;
 }
 
-export async function routeToAsset(input: {
-  stops: Position[];
-  profile: Profile;
-  prefer: Prefer;
-  to: string;
-  simplifyMetres: number;
-  siteUrl: string;
-}): Promise<RouteWrite> {
+export async function routeToAsset(
+  app: PagesApp,
+  input: {
+    stops: Position[];
+    profile: Profile;
+    prefer: Prefer;
+    to: string;
+    simplifyMetres: number;
+    siteUrl: string;
+  },
+): Promise<RouteWrite> {
   const path = normalizeAssetPath(input.to);
-  if (path === "/") throw new Error("to must name a file, for example /trip/route.geojson");
+  if (path === "/") throw new EndpointError(400, "to must name a file, for example /trip/route.geojson");
 
   const result = await providerRoute(input.stops, input.profile, input.prefer);
   const kept = simplifyIndices(result.coordinates, input.simplifyMetres);
@@ -172,12 +183,13 @@ export async function routeToAsset(input: {
 
   const bytes = new TextEncoder().encode(JSON.stringify(feature));
   if (bytes.byteLength > MAX_ASSET_BYTES) {
-    throw new Error(
+    throw new EndpointError(
+      400,
       `That route is ${Math.round(bytes.byteLength / (1024 * 1024))} MB of geometry. Pass simplify_m to reduce it.`,
     );
   }
 
-  const asset = await putAsset({
+  const asset = await putAsset(app, {
     filename: path.split("/").pop() || "route.geojson",
     contentType: "application/geo+json",
     bytes: bytes.buffer as ArrayBuffer,
@@ -211,7 +223,7 @@ export async function routeToAsset(input: {
 }
 
 export async function geocodeQuery(query: unknown, limit: unknown) {
-  if (typeof query !== "string" || query.trim() === "") throw new Error("query is required");
+  if (typeof query !== "string" || query.trim() === "") throw new EndpointError(400, "query is required");
   const capped = Math.max(1, Math.min(10, Math.trunc(Number(limit)) || 5));
   const result = await providerGeocode(query.trim(), capped);
   return {

@@ -1,7 +1,10 @@
-import { ConflictError } from "../errors";
+import { EndpointError } from "@celsoft/platform";
 import { similarity } from "./match";
 import { normalizePath } from "../pages/path";
-import { encodeKey, stores } from "../store";
+import { asc, eq } from "drizzle-orm";
+import type { PagesApp } from "../pages-app";
+import { collectionSummaries } from "../schema";
+import { collectionFile } from "../store";
 import type { Collection, CollectionSummary, Item } from "../types";
 
 const ID_PATTERN = /^[A-Za-z0-9._~-]{1,128}$/;
@@ -25,7 +28,7 @@ function slugify(input: string): string {
     .slice(0, 64);
 }
 
-// Every read goes through this. A blob written before a field existed still has to
+// Every read goes through this. A file written before a field existed still has to
 // come back with that field, and there is more than one way into storage.
 function hydrate(stored: Collection): Collection {
   return {
@@ -37,10 +40,8 @@ function hydrate(stored: Collection): Collection {
   };
 }
 
-export async function getCollection(path: string): Promise<Collection | null> {
-  const stored = (await stores.data().get(encodeKey(normalizeCollectionPath(path)), { type: "json" })) as
-    | Collection
-    | null;
+export async function getCollection(app: PagesApp, path: string): Promise<Collection | null> {
+  const stored = await app.files.getJson<Collection>(collectionFile(normalizeCollectionPath(path)));
   return stored ? hydrate(stored) : null;
 }
 
@@ -55,13 +56,8 @@ function canonical(value: unknown): string {
   return `{${entries.map(([key, inner]) => `${JSON.stringify(key)}:${canonical(inner)}`).join(",")}}`;
 }
 
-// Bumped whenever CollectionSummary gains a field. Metadata written under an older number is not
-// trusted or patched up: the blob is read and the summary derived, which is slower and always right.
-const SUMMARY_VERSION = 1;
-
-function summarize(collection: Collection): CollectionSummary & { v: number } {
+function summarize(collection: Collection): CollectionSummary {
   return {
-    v: SUMMARY_VERSION,
     path: collection.path,
     count: collection.items.length,
     refs: collection.refs,
@@ -70,47 +66,37 @@ function summarize(collection: Collection): CollectionSummary & { v: number } {
   };
 }
 
-// Netlify caps blob metadata at 2 KB and rejects the whole write past it, so a long title or a big
-// refs map must not be able to fail a save. Over the limit the summary is simply not written, and a
-// missing summary is a miss like any other: the blob is read.
-const METADATA_LIMIT = 1800;
-
-function metadataFor(summary: Record<string, unknown>): Record<string, unknown> | undefined {
-  return JSON.stringify(summary).length <= METADATA_LIMIT ? summary : undefined;
+// The only way a collection file is written, transfer.ts included. Its summary row follows it so
+// listCollections can answer from one query without reading every item of every collection, and it
+// cannot drift from the file because nothing else writes either.
+export async function writeCollectionFile(app: PagesApp, collection: Collection): Promise<void> {
+  await app.files.putJson(collectionFile(collection.path), collection);
+  const summary = summarize(collection);
+  await app.db
+    .insert(collectionSummaries)
+    .values({ path: collection.path, summary })
+    .onConflictDoUpdate({ target: collectionSummaries.path, set: { summary } });
 }
 
-// The only way a collection blob is written, transfer.ts included. The summary rides along as
-// metadata so listCollections can answer without reading every item of every collection, and it
-// cannot drift from the blob because nothing else writes one.
-export async function writeCollectionBlob(key: string, collection: Collection): Promise<void> {
-  await stores.data().setJSON(key, collection, { metadata: metadataFor({ ...summarize(collection) }) });
+export async function removeCollectionFile(app: PagesApp, path: string): Promise<void> {
+  await app.files.delete(collectionFile(path));
+  await app.db.delete(collectionSummaries).where(eq(collectionSummaries.path, path));
 }
 
-export async function listCollections(): Promise<CollectionSummary[]> {
-  const { blobs } = await stores.data().list();
-  const summaries = await Promise.all(
-    blobs.map(async (blob) => {
-      const found = await stores.data().getMetadata(blob.key);
-      const summary = found?.metadata as unknown as (CollectionSummary & { v?: number }) | undefined;
-      if (summary?.v === SUMMARY_VERSION) {
-        const { v: _version, ...rest } = summary;
-        return rest satisfies CollectionSummary;
-      }
-      const stored = (await stores.data().get(blob.key, { type: "json" })) as Collection | null;
-      if (!stored) return null;
-      const { v: _v, ...rest } = summarize(hydrate(stored));
-      return rest satisfies CollectionSummary;
-    }),
-  );
-  return summaries.filter((c): c is CollectionSummary => c !== null).sort((a, b) => a.path.localeCompare(b.path));
+export async function listCollections(app: PagesApp): Promise<CollectionSummary[]> {
+  const rows = await app.db
+    .select({ summary: collectionSummaries.summary })
+    .from(collectionSummaries)
+    .orderBy(asc(collectionSummaries.path));
+  return rows.map((row) => row.summary);
 }
 
-export async function saveCollection(path: string, items: Item[]): Promise<Collection> {
+export async function saveCollection(app: PagesApp, path: string, items: Item[]): Promise<Collection> {
   const normalized = normalizeCollectionPath(path);
   if (normalized === MANIFEST_PATH)
-    throw new Error(`${MANIFEST_PATH} is reserved for the index of collections. Pick another path.`);
+    throw new EndpointError(400, `${MANIFEST_PATH} is reserved for the index of collections. Pick another path.`);
 
-  const existing = await getCollection(normalized);
+  const existing = await getCollection(app, normalized);
   const now = Date.now();
   const rev = (existing?.rev ?? 0) + 1;
 
@@ -130,14 +116,14 @@ export async function saveCollection(path: string, items: Item[]): Promise<Colle
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-  await writeCollectionBlob(encodeKey(normalized), collection);
+  await writeCollectionFile(app, collection);
   return collection;
 }
 
-export async function manifest(): Promise<
-  { path: string; url: string; count: number; rev: number; updatedAt: number }[]
-> {
-  return (await listCollections()).map((c) => ({
+export async function manifest(
+  app: PagesApp,
+): Promise<{ path: string; url: string; count: number; rev: number; updatedAt: number }[]> {
+  return (await listCollections(app)).map((c) => ({
     path: c.path,
     url: `/data${c.path === "/" ? "/index" : c.path}.json`,
     count: c.count,
@@ -146,10 +132,10 @@ export async function manifest(): Promise<
   }));
 }
 
-export async function deleteCollection(path: string): Promise<boolean> {
+export async function deleteCollection(app: PagesApp, path: string): Promise<boolean> {
   const normalized = normalizeCollectionPath(path);
-  if (!(await getCollection(normalized))) return false;
-  await stores.data().delete(encodeKey(normalized));
+  if (!(await getCollection(app, normalized))) return false;
+  await removeCollectionFile(app, normalized);
   return true;
 }
 
@@ -165,30 +151,34 @@ function freshId(fields: Record<string, unknown>, taken: Set<string>): string {
   }
 }
 
-export async function putItem(input: {
-  path: string;
-  id?: string;
-  fields: Record<string, unknown>;
-  merge: boolean;
-  index?: number;
-  ifRev?: number;
-  overwrite?: boolean;
-}): Promise<{ item: Item; created: boolean; rev: number }> {
+export async function putItem(
+  app: PagesApp,
+  input: {
+    path: string;
+    id?: string;
+    fields: Record<string, unknown>;
+    merge: boolean;
+    index?: number;
+    ifRev?: number;
+    overwrite?: boolean;
+  },
+): Promise<{ item: Item; created: boolean; rev: number }> {
   const path = normalizeCollectionPath(input.path);
-  const collection = await getCollection(path);
+  const collection = await getCollection(app, path);
   const items = collection?.items ?? [];
   const taken = new Set(items.map((i) => i.id));
 
   const id = input.id ?? freshId(input.fields, taken);
   if (!isValidId(id))
-    throw new Error(`id "${id}" is not usable. Use letters, numbers, dashes, dots or underscores.`);
+    throw new EndpointError(400, `id "${id}" is not usable. Use letters, numbers, dashes, dots or underscores.`);
 
-  await validateRefs(path, input.fields);
+  await validateRefs(app, path, input.fields);
 
   const at = items.findIndex((i) => i.id === id);
 
   if (at === -1 && input.ifRev !== undefined)
-    throw new ConflictError(
+    throw new EndpointError(
+      409,
       `No item "${id}" in ${path} to match if_rev ${input.ifRev}. It may have been deleted. ` +
         `Call list_items to see what is there, then write without if_rev to create it.`,
     );
@@ -196,12 +186,14 @@ export async function putItem(input: {
   if (at !== -1) {
     const current = revOf(collection!, id);
     if (input.ifRev === undefined && input.overwrite !== true)
-      throw new ConflictError(
+      throw new EndpointError(
+        409,
         `Item "${id}" in ${path} already exists at rev ${current}. Read it with get_item and pass ` +
           `if_rev: ${current}, or pass overwrite: true to write without checking.`,
       );
     if (input.ifRev !== undefined && input.ifRev !== current)
-      throw new ConflictError(
+      throw new EndpointError(
+        409,
         `Item "${id}" in ${path} has changed since you read it: you have rev ${input.ifRev}, it is now ` +
           `rev ${current}. Read it again with get_item and reapply your change.`,
       );
@@ -220,18 +212,19 @@ export async function putItem(input: {
     }
   }
 
-  const saved = await saveCollection(path, items);
+  const saved = await saveCollection(app, path, items);
   return { item, created: at === -1, rev: revOf(saved, id) };
 }
 
 export async function deleteItem(
+  app: PagesApp,
   path: string,
   id: string,
   ifRev?: number,
   force = false,
 ): Promise<{ deleted: boolean; orphaned: Referrer[] }> {
   const normalized = normalizeCollectionPath(path);
-  const collection = await getCollection(normalized);
+  const collection = await getCollection(app, normalized);
   if (!collection) return { deleted: false, orphaned: [] };
 
   const remaining = collection.items.filter((i) => i.id !== id);
@@ -239,74 +232,81 @@ export async function deleteItem(
 
   const current = revOf(collection, id);
   if (ifRev !== undefined && ifRev !== current)
-    throw new ConflictError(
+    throw new EndpointError(
+      409,
       `Item "${id}" in ${normalized} has changed since you read it: you have rev ${ifRev}, it is now ` +
         `rev ${current}. Read it again with get_item before deleting it.`,
     );
 
-  const orphaned = await referrers(normalized, id);
+  const orphaned = await referrers(app, normalized, id);
   const total = orphaned.reduce((sum, entry) => sum + entry.count, 0);
   if (total > 0 && !force)
-    throw new Error(
+    throw new EndpointError(
+      400,
       `Deleting "${id}" from ${normalized} would orphan ${total} record${total === 1 ? "" : "s"} that reference it: ` +
         `${orphaned.map((e) => `${e.count} in ${e.path} via ${e.field}`).join(", ")}. ` +
         `Repoint them first, or pass force: true to delete anyway.`,
     );
 
-  await saveCollection(normalized, remaining);
+  await saveCollection(app, normalized, remaining);
   return { deleted: true, orphaned };
 }
 
-export async function reorderItems(path: string, ids: string[], ifRev?: number): Promise<Item[]> {
+export async function reorderItems(app: PagesApp, path: string, ids: string[], ifRev?: number): Promise<Item[]> {
   const normalized = normalizeCollectionPath(path);
-  const collection = await getCollection(normalized);
-  if (!collection) throw new Error(`No collection exists at ${normalized}`);
+  const collection = await getCollection(app, normalized);
+  if (!collection) throw new EndpointError(400, `No collection exists at ${normalized}`);
 
   if (ifRev !== undefined && ifRev !== collection.rev)
-    throw new ConflictError(
+    throw new EndpointError(
+      409,
       `Collection ${normalized} has changed since you read it: you have rev ${ifRev}, it is now ` +
         `rev ${collection.rev}. Call list_items again before reordering.`,
     );
 
   const byId = new Map(collection.items.map((i) => [i.id, i]));
   const missing = ids.filter((id) => !byId.has(id));
-  if (missing.length > 0) throw new Error(`No item with id ${missing.join(", ")} in ${normalized}`);
+  if (missing.length > 0) throw new EndpointError(400, `No item with id ${missing.join(", ")} in ${normalized}`);
 
   const named = ids.map((id) => byId.get(id)!);
   const rest = collection.items.filter((i) => !ids.includes(i.id));
   const items = [...named, ...rest];
 
-  await saveCollection(normalized, items);
+  await saveCollection(app, normalized, items);
   return items;
 }
 
 export async function setRefs(
+  app: PagesApp,
   path: string,
   refs: Record<string, string>,
 ): Promise<{ refs: Record<string, string>; violations: number; missing: string[] }> {
   const normalized = normalizeCollectionPath(path);
-  const collection = await getCollection(normalized);
-  if (!collection) throw new Error(`No collection exists at ${normalized}. Create it before constraining it.`);
+  const collection = await getCollection(app, normalized);
+  if (!collection)
+    throw new EndpointError(400, `No collection exists at ${normalized}. Create it before constraining it.`);
 
   const cleaned: Record<string, string> = {};
   for (const [field, target] of Object.entries(refs)) {
     if (typeof target !== "string" || target.trim() === "")
-      throw new Error(`refs.${field} must be the path of the collection its ids come from, for example /filters`);
+      throw new EndpointError(
+        400,
+        `refs.${field} must be the path of the collection its ids come from, for example /filters`,
+      );
     cleaned[field] = normalizeCollectionPath(target);
   }
 
-  await writeCollectionBlob(encodeKey(normalized), { ...collection, refs: cleaned, updatedAt: Date.now() });
+  await writeCollectionFile(app, { ...collection, refs: cleaned, updatedAt: Date.now() });
 
   const missing: string[] = [];
-  for (const target of new Set(Object.values(cleaned)))
-    if (!(await getCollection(target))) missing.push(target);
+  for (const target of new Set(Object.values(cleaned))) if (!(await getCollection(app, target))) missing.push(target);
 
-  const { broken } = await brokenRefs(normalized);
+  const { broken } = await brokenRefs(app, normalized);
   return { refs: cleaned, violations: broken.length, missing };
 }
 
-async function idsIn(path: string): Promise<Set<string>> {
-  return new Set(((await getCollection(path))?.items ?? []).map((item) => item.id));
+async function idsIn(app: PagesApp, path: string): Promise<Set<string>> {
+  return new Set(((await getCollection(app, path))?.items ?? []).map((item) => item.id));
 }
 
 function suggest(value: unknown, ids: Set<string>): string {
@@ -323,24 +323,26 @@ function suggest(value: unknown, ids: Set<string>): string {
   return `Ids there include: ${[...ids].slice(0, 5).join(", ")}.`;
 }
 
-export async function validateRefs(path: string, fields: Record<string, unknown>): Promise<void> {
-  const collection = await getCollection(normalizeCollectionPath(path));
+export async function validateRefs(app: PagesApp, path: string, fields: Record<string, unknown>): Promise<void> {
+  const collection = await getCollection(app, normalizeCollectionPath(path));
   for (const [field, target] of Object.entries(collection?.refs ?? {})) {
     if (!(field in fields)) continue;
 
     const value = fields[field];
     if (value === null || value === undefined) continue;
 
-    const ids = await idsIn(target);
+    const ids = await idsIn(app, target);
     if (typeof value === "string" && ids.has(value)) continue;
 
-    throw new Error(
+    throw new EndpointError(
+      400,
       `Field "${field}" value ${JSON.stringify(value)} is not an id in ${target}. ${suggest(value, ids)}`,
     );
   }
 }
 
 export async function brokenRefs(
+  app: PagesApp,
   path: string,
   field?: string,
 ): Promise<{
@@ -351,11 +353,12 @@ export async function brokenRefs(
   warning?: string;
 }> {
   const normalized = normalizeCollectionPath(path);
-  const collection = await getCollection(normalized);
-  if (!collection) throw new Error(`No collection exists at ${normalized}`);
+  const collection = await getCollection(app, normalized);
+  if (!collection) throw new EndpointError(400, `No collection exists at ${normalized}`);
 
   if (field !== undefined && !(field in collection.refs))
-    throw new Error(
+    throw new EndpointError(
+      400,
       `Field "${field}" on ${normalized} does not reference another collection. ` +
         `Declared references: ${Object.keys(collection.refs).join(", ") || "none"}.`,
     );
@@ -376,7 +379,7 @@ export async function brokenRefs(
 
   const known = new Map<string, Set<string>>();
   for (const target of new Set(fields.map((name) => collection.refs[name])))
-    known.set(target, await idsIn(target));
+    known.set(target, await idsIn(app, target));
 
   const broken: { id: string; field: string; value: unknown; references: string }[] = [];
   for (const item of collection.items)
@@ -405,12 +408,12 @@ export interface Referrer {
   ids: string[];
 }
 
-export async function referrers(target: string, id: string): Promise<Referrer[]> {
+export async function referrers(app: PagesApp, target: string, id: string): Promise<Referrer[]> {
   const normalized = normalizeCollectionPath(target);
   const found: Referrer[] = [];
 
-  for (const summary of await listCollections()) {
-    const collection = await getCollection(summary.path);
+  for (const summary of await listCollections(app)) {
+    const collection = await getCollection(app, summary.path);
     if (!collection) continue;
     for (const [field, points] of Object.entries(collection.refs)) {
       if (points !== normalized) continue;

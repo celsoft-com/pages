@@ -1,5 +1,9 @@
+import { EndpointError } from "@celsoft/platform";
+import { eq, or } from "drizzle-orm";
 import { normalizeAssetPath } from "../pages/path";
-import { encodeKey, stores } from "../store";
+import type { PagesApp } from "../pages-app";
+import { assets } from "../schema";
+import { assetFile, encodeKey } from "../store";
 import type { Asset } from "../types";
 
 function extensionFor(filename: string, contentType: string): string {
@@ -33,14 +37,32 @@ export function assetUrlFor(asset: Asset): string {
   return `/assets/${asset.path ? asset.path.replace(/^\//, "") : asset.key}`;
 }
 
-export async function putAsset(input: {
-  filename: string;
-  contentType: string;
-  bytes: ArrayBuffer;
-  path?: string;
-}): Promise<Asset> {
+// The only way an asset is written, transfer.ts included: the bytes first, then the row a listing
+// reads, so a listing never names bytes that were not stored.
+export async function writeAsset(app: PagesApp, asset: Asset, body: ArrayBuffer | ReadableStream): Promise<void> {
+  await app.files.put(assetFile(asset.key), body, asset.contentType);
+  await app.db
+    .insert(assets)
+    .values({ key: asset.key, path: asset.path ?? null, asset })
+    .onConflictDoUpdate({ target: assets.key, set: { path: asset.path ?? null, asset } });
+}
+
+export async function removeAsset(app: PagesApp, key: string): Promise<void> {
+  await app.files.delete(assetFile(key));
+  await app.db.delete(assets).where(eq(assets.key, key));
+}
+
+export async function putAsset(
+  app: PagesApp,
+  input: {
+    filename: string;
+    contentType: string;
+    bytes: ArrayBuffer;
+    path?: string;
+  },
+): Promise<Asset> {
   const rooted = input.path === undefined ? null : normalizeAssetPath(input.path);
-  if (rooted === "/") throw new Error("path must name a file, for example /gallery/images/photo.jpg");
+  if (rooted === "/") throw new EndpointError(400, "path must name a file, for example /gallery/images/photo.jpg");
 
   const key = rooted
     ? assetKeyFor(rooted)
@@ -54,41 +76,38 @@ export async function putAsset(input: {
     size: input.bytes.byteLength,
     createdAt: Date.now(),
   };
-  await stores.assets().set(key, input.bytes, { metadata: { ...asset } });
+  await writeAsset(app, asset, input.bytes);
   return asset;
 }
 
-export async function getAsset(key: string): Promise<{ body: ArrayBuffer; asset: Asset } | null> {
-  const result = await stores.assets().getWithMetadata(key, { type: "arrayBuffer" });
-  if (!result) return null;
-  return { body: result.data, asset: result.metadata as unknown as Asset };
+export async function getAsset(app: PagesApp, key: string): Promise<Asset | null> {
+  const [row] = await app.db.select({ asset: assets.asset }).from(assets).where(eq(assets.key, key));
+  return row?.asset ?? null;
+}
+
+// The stored bytes as a stream, read once, for a write that copies them elsewhere.
+export async function assetBody(app: PagesApp, key: string): Promise<ReadableStream | null> {
+  return (await app.files.get(assetFile(key)))?.body ?? null;
 }
 
 // A URL under /assets/ is either a legacy hash key, stored verbatim, or a rooted path.
 // Verbatim wins so that every URL handed out before paths existed keeps resolving.
-export async function findAsset(raw: string): Promise<{ body: ArrayBuffer; asset: Asset } | null> {
-  return (await getAsset(raw)) ?? (await getAsset(assetKeyFor(raw)));
+export async function findAsset(app: PagesApp, raw: string): Promise<Asset | null> {
+  const rows = await app.db
+    .select({ asset: assets.asset })
+    .from(assets)
+    .where(or(eq(assets.key, raw), eq(assets.key, assetKeyFor(raw))));
+  return rows.find((row) => row.asset.key === raw)?.asset ?? rows[0]?.asset ?? null;
 }
 
-export async function listAssets(): Promise<Asset[]> {
-  const { blobs } = await stores.assets().list();
-  const assets = await Promise.all(
-    blobs.map(async (blob) => {
-      const meta = await stores.assets().getMetadata(blob.key);
-      return meta ? (meta.metadata as unknown as Asset) : null;
-    }),
-  );
-  return assets
-    .filter((a): a is Asset => a !== null)
-    .sort((a, b) => b.createdAt - a.createdAt);
+export async function listAssets(app: PagesApp): Promise<Asset[]> {
+  const rows = await app.db.select({ asset: assets.asset }).from(assets);
+  return rows.map((row) => row.asset).sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export async function deleteAsset(raw: string): Promise<boolean> {
-  for (const key of [raw, assetKeyFor(raw)]) {
-    if (await stores.assets().getMetadata(key)) {
-      await stores.assets().delete(key);
-      return true;
-    }
-  }
-  return false;
+export async function deleteAsset(app: PagesApp, raw: string): Promise<boolean> {
+  const asset = await findAsset(app, raw);
+  if (!asset) return false;
+  await removeAsset(app, asset.key);
+  return true;
 }

@@ -1,3 +1,4 @@
+import { EndpointError } from "@celsoft/platform";
 // The only outbound calls the site makes. Every one of them runs while a page is being authored and
 // its answer is stored: a coordinate in a collection, a line in an asset. Nothing here is ever
 // reached by a visitor, and that is the whole reason it is allowed to exist. A provider in the
@@ -91,13 +92,16 @@ async function request(url: string, init: RequestInit = {}): Promise<Response> {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!response.ok) {
-      throw new Error(`The ${new URL(url).host} service answered ${response.status}. Nothing was written.`);
+      throw new EndpointError(
+        400,
+        `The ${new URL(url).host} service answered ${response.status}. Nothing was written.`,
+      );
     }
     return response;
   } catch (error) {
     if (error instanceof Error && /answered \d+/.test(error.message)) throw error;
     const reason = error instanceof Error && error.name === "TimeoutError" ? "timed out" : "could not be reached";
-    throw new Error(`The ${new URL(url).host} service ${reason}. Nothing was written; try again.`);
+    throw new EndpointError(400, `The ${new URL(url).host} service ${reason}. Nothing was written; try again.`);
   }
 }
 
@@ -179,7 +183,7 @@ async function osrmRoute(stops: Position[]): Promise<RouteResult> {
     new URLSearchParams({ overview: "full", geometries: "geojson" });
   const body = await getJson(url);
   const route = body?.routes?.[0];
-  if (!route) throw new Error("No route was found between those stops.");
+  if (!route) throw new EndpointError(400, "No route was found between those stops.");
   return {
     provider: "osrm",
     attribution: `${OSM}; routing by OSRM`,
@@ -210,10 +214,10 @@ const BROUTER_CYCLING: Record<Prefer, string> = {
 function brouterProfile(profile: Profile, prefer: Prefer): string {
   if (profile === "cycling") return BROUTER_CYCLING[prefer];
   if (prefer !== "balanced") {
-    throw new Error(`prefer "${prefer}" applies to cycling only; a ${profile} route has no such variant.`);
+    throw new EndpointError(400, `prefer "${prefer}" applies to cycling only; a ${profile} route has no such variant.`);
   }
   if (profile === "walking") return "hiking-beta";
-  throw new Error(`BRouter has no profile for ${profile}.`);
+  throw new EndpointError(400, `BRouter has no profile for ${profile}.`);
 }
 
 async function brouterRoute(stops: Position[], profile: Profile, prefer: Prefer): Promise<RouteResult> {
@@ -228,7 +232,7 @@ async function brouterRoute(stops: Position[], profile: Profile, prefer: Prefer)
     });
   const body = await getJson(url);
   const feature = body?.features?.[0];
-  if (!feature?.geometry?.coordinates?.length) throw new Error("No route was found between those stops.");
+  if (!feature?.geometry?.coordinates?.length) throw new EndpointError(400, "No route was found between those stops.");
   const p = feature.properties ?? {};
   const distance = num(p["track-length"]);
   const duration = num(p["total-time"]);
@@ -259,7 +263,7 @@ async function orsRoute(stops: Position[], profile: Profile): Promise<RouteResul
     body: JSON.stringify({ coordinates: stops.map(([lon, lat]) => [lon, lat]), elevation: true }),
   });
   const feature = body?.features?.[0];
-  if (!feature) throw new Error("No route was found between those stops.");
+  if (!feature) throw new EndpointError(400, "No route was found between those stops.");
   const summary = feature.properties?.summary ?? {};
   return {
     provider: "openrouteservice",
@@ -283,14 +287,15 @@ async function orsRoute(stops: Position[], profile: Profile): Promise<RouteResul
 export async function route(stops: Position[], profile: Profile, prefer: Prefer): Promise<RouteResult> {
   if (keyed()) {
     if (prefer !== "balanced") {
-      throw new Error(
+      throw new EndpointError(
+        400,
         `prefer "${prefer}" is not available through openrouteservice; unset ORS_API_KEY to use it, or pass balanced.`,
       );
     }
     return orsRoute(stops, profile);
   }
   if (profile === "driving") {
-    if (prefer !== "balanced") throw new Error(`prefer "${prefer}" applies to cycling only.`);
+    if (prefer !== "balanced") throw new EndpointError(400, `prefer "${prefer}" applies to cycling only.`);
     return osrmRoute(stops);
   }
   return brouterRoute(stops, profile, prefer);

@@ -2,6 +2,7 @@ import { listAssets } from "./assets/service";
 import { contains } from "./bundle";
 import { getCollection, listCollections, MANIFEST_PATH } from "./data/service";
 import { ROOT_BUNDLE } from "./pages/path";
+import type { PagesApp } from "./pages-app";
 import { listPages } from "./pages/service";
 
 export const ROOT_IS_NOT_A_BUNDLE =
@@ -43,14 +44,14 @@ export interface BrokenReference {
   count: number;
 }
 
-export async function collectionEntries(): Promise<CollectionEntry[]> {
-  return (await listCollections())
+export async function collectionEntries(app: PagesApp): Promise<CollectionEntry[]> {
+  return (await listCollections(app))
     .filter((c) => c.path !== MANIFEST_PATH)
     .map((c) => ({ path: c.path, count: c.count, rev: c.rev, refs: c.refs }));
 }
 
-export async function assetEntries(): Promise<AssetEntry[]> {
-  return (await listAssets()).map((a) => ({
+export async function assetEntries(app: PagesApp): Promise<AssetEntry[]> {
+  return (await listAssets(app)).map((a) => ({
     path: a.path ?? null,
     key: a.key,
     filename: a.filename,
@@ -58,8 +59,8 @@ export async function assetEntries(): Promise<AssetEntry[]> {
   }));
 }
 
-export async function bundleContents(path: string): Promise<BundleContents> {
-  const [pages, collections, assets] = await Promise.all([listPages(), collectionEntries(), assetEntries()]);
+export async function bundleContents(app: PagesApp, path: string): Promise<BundleContents> {
+  const [pages, collections, assets] = await Promise.all([listPages(app), collectionEntries(app), assetEntries(app)]);
 
   return {
     path,
@@ -72,13 +73,13 @@ export async function bundleContents(path: string): Promise<BundleContents> {
 // Records outside the bundle that point at a collection inside it. Every one of them breaks
 // when the bundle goes, and the caller who reached for a bundle delete is the least likely
 // to audit afterwards.
-export async function referencesInto(doomed: Set<string>): Promise<BrokenReference[]> {
+export async function referencesInto(app: PagesApp, doomed: Set<string>): Promise<BrokenReference[]> {
   const broken: BrokenReference[] = [];
-  for (const summary of await listCollections()) {
+  for (const summary of await listCollections(app)) {
     if (doomed.has(summary.path)) continue;
     for (const [field, target] of Object.entries(summary.refs)) {
       if (!doomed.has(target)) continue;
-      const collection = await getCollection(summary.path);
+      const collection = await getCollection(app, summary.path);
       const count = (collection?.items ?? []).filter(
         (item) => item[field] !== null && item[field] !== undefined,
       ).length;

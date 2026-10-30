@@ -1,6 +1,7 @@
 import { listAssets } from "../assets/service";
 import { listCollections, MANIFEST_PATH, normalizeCollectionPath } from "../data/service";
 import { ROOT_BUNDLE, normalizeAssetPath, normalizePath } from "./path";
+import type { PagesApp } from "../pages-app";
 import { getPage, listPages } from "./service";
 
 export interface BrokenLink {
@@ -38,8 +39,8 @@ function pathOf(link: string): string | null {
   }
 }
 
-export async function checkLinks(): Promise<LinkReport> {
-  const [summaries, assets, collections] = await Promise.all([listPages(), listAssets(), listCollections()]);
+export async function checkLinks(app: PagesApp): Promise<LinkReport> {
+  const [summaries, assets, collections] = await Promise.all([listPages(app), listAssets(app), listCollections(app)]);
   const pages = new Set(summaries.map((page) => page.path));
   const assetKeys = new Set(assets.flatMap((asset) => [asset.key, ...(asset.path ? [asset.path] : [])]));
   const collectionPaths = new Set(collections.map((collection) => collection.path));
@@ -60,7 +61,7 @@ export async function checkLinks(): Promise<LinkReport> {
   const broken: BrokenLink[] = [];
   let links = 0;
   for (const summary of summaries) {
-    const page = await getPage(summary.path);
+    const page = await getPage(app, summary.path);
     if (!page) continue;
     for (const [index, text] of page.body.split("\n").entries())
       for (const match of text.matchAll(LINK)) {

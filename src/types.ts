@@ -1,19 +1,5 @@
 export type ContentType = "markdown" | "html";
 
-// What a credential may do. It rides on the credential rather than on the surface, so the same
-// token is read-only at both doors.
-export type Access = "read" | "write";
-
-export interface Owner {
-  id: string;
-  passwordHash: string;
-  passwordSalt: string;
-  recoveryHash: string;
-  recoverySalt: string;
-  sessionKey: string;
-  createdAt: number;
-}
-
 export interface Page {
   path: string;
   contentType: ContentType;
@@ -78,26 +64,6 @@ export interface CollectionSummary {
   refs: Record<string, string>;
   rev: number;
   updatedAt: number;
-}
-
-// A share link is stored as a hash, never as the token itself: the blob is a list of what may be
-// revoked, not a list of live credentials.
-export interface Share {
-  id: string;
-  hash: string;
-  label: string;
-  createdAt: number;
-  lastUsedAt?: number;
-}
-
-export interface PrivateScope {
-  path: string;
-  createdAt: number;
-  shares: Share[];
-}
-
-export interface Privacy {
-  scopes: PrivateScope[];
 }
 
 export type Theme = "default" | "none";
