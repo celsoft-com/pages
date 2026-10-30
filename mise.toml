@@ -8,4 +8,5 @@
 # machine (`brew install netlify-cli`), not a global npm one scattered outside mise.
 
 [tools]
-node = "22"
+node = "24"
+"conda:postgresql" = "18.6"
