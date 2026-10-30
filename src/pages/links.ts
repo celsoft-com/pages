@@ -1,7 +1,5 @@
-import { API_PREFIX } from "../api/handler";
 import { listAssets } from "../assets/service";
 import { listCollections, MANIFEST_PATH, normalizeCollectionPath } from "../data/service";
-import { DOCS_PREFIX } from "../docs/handler";
 import { ROOT_BUNDLE, normalizeAssetPath, normalizePath } from "./path";
 import { getPage, listPages } from "./service";
 
@@ -26,7 +24,7 @@ const LINK = /\]\((\/[^)\s]*)|\b(?:href|src)=["'](\/[^"']*)["']|["'`](\/(?:data|
 // rather than at load, because the API handler imports the tool registry that imports this.
 function served(path: string): boolean {
   const exact = ["/", ROOT_BUNDLE, "/mcp", "/favicon.ico", "/robots.txt", "/_unlock"];
-  const prefixes = ["/admin", "/oauth", "/.well-known", DOCS_PREFIX, API_PREFIX];
+  const prefixes = ["/api", "/mcp", "/.well-known", "/docs"];
   return exact.includes(path) || prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 

@@ -8,7 +8,7 @@ if [[ ! -d node_modules ]]; then
   exec npm ci
 fi
 
-if [[ package-lock.json -nt node_modules ]]; then
-  header "Lockfile changed, syncing dependencies"
+if [[ package-lock.json -nt node_modules || package.json -nt node_modules ]]; then
+  header "Dependencies changed, syncing them"
   exec npm install
 fi

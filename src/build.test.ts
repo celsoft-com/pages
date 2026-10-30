@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { buildStamp, describeBuild } from "./build";
-import { page } from "./admin/ui";
 
 const deployed = {
   builtAt: "2026-09-05T22:14:37.000Z",
@@ -40,19 +39,5 @@ describe("buildStamp", () => {
     const stamp = buildStamp();
     expect(typeof stamp.builtAt).toBe("string");
     expect(typeof stamp.commit).toBe("string");
-  });
-});
-
-describe("where it renders", () => {
-  async function html(options: Parameters<typeof page>[0]): Promise<string> {
-    return page(options).text();
-  }
-
-  it("appears on a chromed admin page", async () => {
-    expect(await html({ title: "Pages", body: "<h1>Pages</h1>" })).toContain('<footer class="build">');
-  });
-
-  it("stays off the login and setup screens", async () => {
-    expect(await html({ title: "Log in", body: "<h1>Log in</h1>", chrome: false })).not.toContain("<footer");
   });
 });

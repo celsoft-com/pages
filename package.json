@@ -6,16 +6,12 @@
   "scripts": {
     "postinstall": "platform generate",
     "build": "tsc --noEmit && vitest run",
-    "dev": "netlify dev",
-    "docs": "node scripts/docs-content.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "build:deploy": "node scripts/build-info.mjs && node scripts/docs-content.mjs && npm run build"
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261023.1",
-    "@netlify/functions": "^6.0.0",
     "@types/node": "^24.0.0",
     "embedded-postgres": "^18.4.0-beta.17",
     "typescript": "^7.0.2",

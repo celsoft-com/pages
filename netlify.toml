@@ -1,6 +1,0 @@
-[build]
-  command = "npm run build:deploy"
-  publish = "public"
-
-[functions]
-  node_bundler = "esbuild"
