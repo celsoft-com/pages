@@ -55,9 +55,11 @@ given. The title is what the home page lists it as.
 
 A published page can be revised without anyone seeing the half-finished version. Save a draft in
 the editor, or ask Claude to work on a draft, and the change goes to the page's working copy while
-readers keep getting the live page. Add `?preview` to the page's address, signed in to the admin,
-to see the working copy exactly as it would be served, templates and all; anybody else asking for
-`?preview` just gets the live page. Publish makes the working copy live, and discard throws it away.
+readers keep getting the live page. The working copy is served at `/preview` followed by the page's
+path, so `/about` previews at `/preview/about`, exactly as it would be served, templates and all. Only
+someone who may write the page sees it; anybody else gets the same not-found page as a path with
+nothing there, so nobody learns that a draft exists. Publish makes the working copy live, and
+discard throws it away.
 
 Look at the preview before publishing. Nothing builds the site, so the preview is the only place a
 broken [template](templates.md) shows up before a reader finds it.

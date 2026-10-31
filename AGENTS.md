@@ -84,11 +84,13 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   ([service.ts](src/pages/service.ts)), which is where `meta` is defaulted for a page stored before it existed.
 - **A page has a live copy and at most one working copy.** `draft` on `Page` holds the body, title, format and
   meta being written; readers, listings, templates and the transfer scan see only the live fields, so revising a
-  published page never takes it off the site. `?preview` renders the working copy at the page's own URL, chrome
-  and templates included, for the owner's session or a credential (`canPreview` in [gate.ts](src/private/gate.ts))
-  and never stored at the edge; anybody else asking for it gets the ordinary response byte for byte, because a
-  preview that answered differently would announce that a draft exists. With no build, the preview is the only
-  gate a template meets before a reader, which is why `publish_draft` says to look at it first. A direct write to
+  published page never takes it off the site. `/preview/<path>` renders the working copy, chrome and templates
+  included, as a route of its own gated at `write` on the page's path ([serve.ts](src/serve.ts)) and never cached.
+  It replaced `?preview` at the page's own URL because a platform page handler is blind: it cannot tell the owner
+  from a stranger, and the cache keys on the query string, so a query cannot choose who sees what. Anybody who may
+  not write the page gets the platform's one 404 page, the same as for a path with nothing there, so a draft's
+  existence never shows. With no build, the preview is the only gate a template meets before a reader, which is
+  why `publish_draft` says to look at it first. A direct write to
   the live page leaves a working copy alone, since it is somebody's unpublished work. `set_privacy` keeps the
   other job: a page that has never been public.
 - **Page meta is strings, beside the body.** `meta` is facts about a page that are not its content, returned in
@@ -165,6 +167,14 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   well-known URL is what carries it: a stored HTML page is verbatim and can be given no `link` tag, so the themed
   layout and the admin chrome link `/favicon.ico` and everything else falls back to it. Never add a settings field
   for this, and never wrap a page to inject an icon.
+- **A path is gated by the nearest private path at or above it.** A private path is the only path with a control
+  point of its own, `path:<path>`, and `pointsFor` in [pages-app.ts](src/pages-app.ts) names a path's point, the
+  point of every folder above it and then the site; the platform checks the first that exists, so `/trip/day1`,
+  `/data/trip/stops.json` and `/assets/trip/map.jpg` are all gated by `path:/trip` once `/trip` is private, and by
+  the site until then. Every served route and every tool that names a path is gated that way, a transfer on both
+  its source and its target, so a tool refuses exactly what a reader would be refused. Never give a public path a
+  point: a point per stored path and folder would have to be created, moved and removed by every write and
+  transfer, and the list already says everything one would.
 - **A private path is a path, and the fragment is why it works.** [set_privacy](src/private/service.ts) closes a
   path and everything at or under it through the same `contains()` rule as a bundle, so the page, the collections
   under `/data` and the assets are all gated by one scope; a share link's secret rides in the URL fragment, which

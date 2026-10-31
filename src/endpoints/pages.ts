@@ -17,7 +17,7 @@ import {
   workingCopy,
 } from "../pages/service";
 import type { PagesApp } from "../pages-app";
-import { BUNDLES, requirePath, site, urlFor } from "./shared";
+import { atPath, BUNDLES, requirePath, site, urlFor } from "./shared";
 
 const PATH = z.string().describe("Page path, for example /about");
 const FORMAT = z.enum(["markdown", "html"]);
@@ -38,8 +38,9 @@ function detectFormat(content: string, declared?: string): "markdown" | "html" {
   return /^\s*(<!doctype html|<html[\s>])/i.test(content) ? "html" : "markdown";
 }
 
+// The working copy is served under /preview, gated to whoever may write the page.
 function previewUrlFor(app: PagesApp, path: string): string {
-  return `${urlFor(app, path)}?preview`;
+  return `${app.env.APP_URL}/preview${path}`;
 }
 
 export const pageEndpoints = {
@@ -87,7 +88,7 @@ export const pageEndpoints = {
         "edit_page wants and costs a fraction of reading a long page to change one line of it. " +
         "Pass draft true to read the working copy instead of the live page. " +
         BUNDLES,
-      access: { point: site, level: "read" },
+      access: { point: atPath(), level: "read" },
       input: z.object({
         path: PATH,
         draft: z
@@ -158,7 +159,7 @@ export const pageEndpoints = {
         "If you are editing the page to change items in a list, move that list into a data collection instead and " +
         "let the page fetch it. " +
         BUNDLES,
-      access: { point: site, level: "write" },
+      access: { point: atPath(), level: "write" },
       input: z.object({
         path: PATH,
         find: z.string().describe("Exact text to replace, copied from get_page"),
@@ -177,7 +178,9 @@ export const pageEndpoints = {
         preview_url: z
           .string()
           .optional()
-          .describe("Where the owner sees the working copy rendered. Present only for a draft edit."),
+          .describe(
+            "Where the working copy is rendered, for anyone who may write the page. Present only for a draft edit.",
+          ),
       }),
     },
     async ({ path: raw, find, replace, all, draft }, app) => {
@@ -207,7 +210,7 @@ export const pageEndpoints = {
         "Create a page at a path. Markdown is rendered into the site theme; HTML is served exactly as written. Fails if the path is taken unless overwrite is true. " +
         "If the page lists repeating things, offer the owner a data collection first: keep the items in one with put_item and have the page fetch /data/<path>.json, so editing one of them later does not mean rewriting the page. " +
         BUNDLES,
-      access: { point: site, level: "write" },
+      access: { point: atPath(), level: "write" },
       input: z.object({
         path: z
           .string()
@@ -259,12 +262,12 @@ export const pageEndpoints = {
       path: "/api/v1/update_page",
       description:
         "Replace the content of an existing page, or change its title or meta without sending the body at all. " +
-        "Pass draft true to write the working copy instead: readers keep seeing the live page, the owner sees the " +
+        "Pass draft true to write the working copy instead: readers keep seeing the live page, whoever may write it sees the " +
         "change at preview_url, and publish_draft makes it live. Revise a published page that way whenever a " +
         "half-finished change must not be seen. " +
         "If you are rewriting the page only to change items in a list, move that list into a data collection instead and let the page fetch it. " +
         BUNDLES,
-      access: { point: site, level: "write" },
+      access: { point: atPath(), level: "write" },
       input: z.object({
         path: PATH,
         content: z.string().optional().describe("The new body. Leave it out to keep the body as it is."),
@@ -289,7 +292,9 @@ export const pageEndpoints = {
         preview_url: z
           .string()
           .optional()
-          .describe("Where the owner sees the working copy rendered. Present only for a draft update."),
+          .describe(
+            "Where the working copy is rendered, for anyone who may write the page. Present only for a draft update.",
+          ),
       }),
     },
     async ({ path: raw, content, title, meta, draft }, app) => {
@@ -340,7 +345,7 @@ export const pageEndpoints = {
         "copy is cleared. Look at preview_url first: with no build, the preview is the only place a broken template or " +
         "a bad fence is seen before a reader sees it. " +
         BUNDLES,
-      access: { point: site, level: "write" },
+      access: { point: atPath(), level: "write" },
       input: z.object({ path: PATH }),
       output: z.object(PAGE),
     },
@@ -362,7 +367,7 @@ export const pageEndpoints = {
       method: "POST",
       path: "/api/v1/discard_draft",
       description: "Throw away a page's working copy and keep the live page exactly as it is. " + BUNDLES,
-      access: { point: site, level: "write" },
+      access: { point: atPath(), level: "write" },
       input: z.object({ path: PATH }),
       output: z.object({
         path: z.string(),

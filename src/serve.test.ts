@@ -53,6 +53,31 @@ describe("/p", () => {
   });
 });
 
+describe("/preview", () => {
+  it("renders the working copy for whoever may write the page", async () => {
+    await call("publish_page", { path: "/about", content: "# Live" });
+    await call("update_page", { path: "/about", content: "# Draft", draft: true });
+    const response = await t.as(owner).fetch("/preview/about");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = await response.text();
+    expect(body).toContain(">Draft</h1>");
+    expect(body).not.toContain(">Live</h1>");
+  });
+
+  it("answers anyone else exactly as it answers a path with nothing there", async () => {
+    await call("publish_page", { path: "/about", content: "# Live" });
+    await call("update_page", { path: "/about", content: "# Draft", draft: true });
+    const guest = await t.signUp("guest@example.com");
+    for (const caller of [t, t.as(guest)]) {
+      const drafted = await caller.fetch("/preview/about");
+      const missing = await caller.fetch("/preview/nothing");
+      expect(drafted.status).toBe(404);
+      expect((await drafted.text()).replaceAll("about", "nothing")).toBe(await missing.text());
+    }
+  });
+});
+
 describe("/", () => {
   it("lists public pages until /root is published", async () => {
     await call("publish_page", { path: "/about", content: "# About" });

@@ -7,7 +7,8 @@ export interface Page {
   body: string;
   meta: PageMeta;
   // The working copy, when one is being written. Readers, listings and templates only ever see the
-  // live fields; ?preview shows this in their place to the owner, and publishing copies it over.
+  // live fields; /preview shows this in their place to whoever may write the page, and publishing
+  // copies it over.
   draft: PageDraft | null;
   createdAt: number;
   updatedAt: number;

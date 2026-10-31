@@ -2,9 +2,10 @@ import { EndpointError, endpoint } from "@celsoft/platform";
 import { z } from "zod";
 import { bundleContents, ROOT_IS_NOT_A_BUNDLE } from "../inventory";
 import { getPage } from "../pages/service";
-import type { PagesApp } from "../pages-app";
+import { type PagesApp, pointsFor } from "../pages-app";
 import {
   type Kind,
+  normalizeFor,
   restOfBundle,
   runTransfer,
   type Scope,
@@ -12,7 +13,7 @@ import {
   type Transfer,
   type Verb,
 } from "../transfer";
-import { BUNDLES, dataUrl, requirePath, site, urlFor } from "./shared";
+import { atPath, BUNDLES, dataUrl, requirePath, urlFor } from "./shared";
 
 const TRANSFER =
   "One shape at every level: page, collection, asset and bundle take the same arguments and return the same reply. " +
@@ -131,7 +132,11 @@ function transferEndpoint(scope: Scope, verb: Verb, spec: { what: string; lead: 
       method: "POST",
       path: `/api/v1/${name}`,
       description: `${spec.lead} ${TRANSFER}${scope === "bundle" ? ` ${BUNDLES}` : ""}`,
-      access: { point: site, level: verb === "delete" ? "delete" : "write" },
+      access: {
+        point: (input: { path?: string; from?: string }) =>
+          pointsFor(normalizeFor(scope, input.path ?? input.from ?? "")),
+        level: verb === "delete" ? "delete" : "write",
+      },
       input: z.object({
         ...(verb === "delete"
           ? { path: z.string().describe(`The ${spec.what} to delete`) }
@@ -156,8 +161,10 @@ function transferEndpoint(scope: Scope, verb: Verb, spec: { what: string; lead: 
       }),
       output: TRANSFER_OUTPUT,
     },
-    async (input: Record<string, unknown>, app) =>
-      transferResult(
+    async (input: Record<string, unknown>, app) => {
+      // The gate saw where it comes from; where it lands is checked here, at the same level a write there needs.
+      if (verb !== "delete") await app.access.require(pointsFor(normalizeFor(scope, String(input.to))), "write");
+      return transferResult(
         app,
         await runTransfer(app, {
           scope,
@@ -168,7 +175,8 @@ function transferEndpoint(scope: Scope, verb: Verb, spec: { what: string; lead: 
           confirm: input.confirm === true,
           ifRev: typeof input.if_rev === "number" ? input.if_rev : undefined,
         }),
-      ),
+      );
+    },
   );
 }
 
@@ -182,7 +190,7 @@ export const transferEndpoints = {
         "List every page, collection and asset at or under one path, including deeper pages and everything under " +
         "them. Use it to see everything one page's content is made of. " +
         BUNDLES,
-      access: { point: site, level: "read" },
+      access: { point: atPath(), level: "read" },
       input: z.object({
         path: z.string().describe("Bundle path, for example /gallery. It need not have a page."),
       }),

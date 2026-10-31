@@ -3,9 +3,9 @@ import { z } from "zod";
 import { findAsset } from "./assets/service";
 import { getCollection, manifest, MANIFEST_PATH, normalizeCollectionPath } from "./data/service";
 import { contentsHtml, listable } from "./pages/contents";
-import { normalizePath, ROOT_BUNDLE } from "./pages/path";
-import { getPage, listPages } from "./pages/service";
-import { SITE_POINT, type PagesApp } from "./pages-app";
+import { normalizeAssetPath, normalizePath, ROOT_BUNDLE } from "./pages/path";
+import { getPage, listPages, previewOf } from "./pages/service";
+import { type PagesApp, pointsFor } from "./pages-app";
 import { loadChrome } from "./render/chrome";
 import { renderMarkdown } from "./render/markdown";
 import { expandFences, templateInput } from "./render/template";
@@ -13,10 +13,14 @@ import { layout } from "./render/theme";
 import { assetFile } from "./store";
 import type { Page } from "./types";
 
-// Every path is read through the site point until private paths give each one its own.
-const READ = { point: () => SITE_POINT, level: "read" } as const;
 export const CACHE = { seconds: 3600 };
 const REST = z.object({ path: z.string() });
+
+// Every route is gated where its path sits: by the private path at or above it, or by the site.
+const at = (normalize: (raw: string) => string, level: "read" | "write" = "read") => ({
+  point: ({ path }: { path: string }) => pointsFor(normalize(path)),
+  level,
+});
 
 const notFound = (path: string) => new EndpointError(404, `Nothing is published at ${path}.`);
 
@@ -32,19 +36,22 @@ async function rendered(app: PagesApp, stored: Page): Promise<string> {
 const home = page({
   path: "/",
   routes: {
-    "/": route({ access: READ, cache: CACHE }, async (_params, app) => {
-      const stored = await getPage(app, ROOT_BUNDLE);
-      if (stored) return rendered(app, stored);
-      const { chrome } = await loadChrome(app, templateInput(null));
-      return contentsHtml({ chrome, pages: listable(await listPages(app)) });
-    }),
+    "/": route(
+      { access: { point: () => pointsFor(ROOT_BUNDLE), level: "read" }, cache: CACHE },
+      async (_params, app) => {
+        const stored = await getPage(app, ROOT_BUNDLE);
+        if (stored) return rendered(app, stored);
+        const { chrome } = await loadChrome(app, templateInput(null));
+        return contentsHtml({ chrome, pages: listable(await listPages(app)) });
+      },
+    ),
   },
 });
 
 const pages = page({
   path: "/p",
   routes: {
-    "/*path": route({ params: REST, access: READ, cache: CACHE }, async ({ path: raw }, app) => {
+    "/*path": route({ params: REST, access: at(normalizePath), cache: CACHE }, async ({ path: raw }, app) => {
       const path = normalizePath(raw);
       // The home page is served at /, so it has one URL, not two.
       if (path === ROOT_BUNDLE) return new Response(null, { status: 301, headers: { location: "/" } });
@@ -55,11 +62,14 @@ const pages = page({
   },
 });
 
+// The index of every collection belongs to no path, so only the site gates it.
+const dataPath = (raw: string) => (normalizeCollectionPath(raw) === MANIFEST_PATH ? "/" : normalizeCollectionPath(raw));
+
 // Collection /a/b is served at /data/a/b.json as a bare array of its items, in collection order.
 const data = page({
   path: "/data",
   routes: {
-    "/*path": route({ params: REST, access: READ, cache: CACHE }, async ({ path: raw }, app) => {
+    "/*path": route({ params: REST, access: at(dataPath), cache: CACHE }, async ({ path: raw }, app) => {
       if (!/\.json$/i.test(raw)) throw notFound(`/data/${raw}`);
       const path = normalizeCollectionPath(raw);
       const headers = { "access-control-allow-origin": "*" };
@@ -74,7 +84,7 @@ const data = page({
 const assets = page({
   path: "/assets",
   routes: {
-    "/*path": route({ params: REST, access: READ, cache: CACHE }, async ({ path: raw }, app) => {
+    "/*path": route({ params: REST, access: at(normalizeAssetPath), cache: CACHE }, async ({ path: raw }, app) => {
       const asset = await findAsset(app, raw);
       if (!asset) throw notFound(`/assets/${raw}`);
       return app.files.response(assetFile(asset.key));
@@ -82,4 +92,18 @@ const assets = page({
   },
 });
 
-export const servedPages = [home, pages, data, assets];
+// The working copy, with chrome and templates, at the page's path under /preview. It is a route of its
+// own because a handler cannot tell who is asking: only someone who may write the page gets past the
+// gate, and the answer is never kept, so readers of /p never meet a draft or learn that one exists.
+const preview = page({
+  path: "/preview",
+  routes: {
+    "/*path": route({ params: REST, access: at(normalizePath, "write") }, async ({ path: raw }, app) => {
+      const stored = await getPage(app, normalizePath(raw));
+      if (!stored) throw notFound(`/preview/${raw}`);
+      return rendered(app, previewOf(stored));
+    }),
+  },
+});
+
+export const servedPages = [home, pages, data, assets, preview];

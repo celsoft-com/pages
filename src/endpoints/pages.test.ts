@@ -117,7 +117,7 @@ describe("working copy", () => {
     await call("publish_page", { path: "/a", content: "# Live" });
     const saved = await call("update_page", { path: "/a", content: "# Draft", title: "Draft", draft: true });
     expect(saved).toMatchObject({ title: "Draft" });
-    expect(saved.preview_url).toMatch(/\/p\/a\?preview$/);
+    expect(saved.preview_url).toMatch(/\/preview\/a$/);
     expect(await call("get_page", { path: "/a" })).toMatchObject({ content: "# Live", has_draft: true });
     expect(await call("get_page", { path: "/a", draft: true })).toMatchObject({ content: "# Draft" });
 

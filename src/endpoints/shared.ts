@@ -1,9 +1,15 @@
 import { EndpointError } from "@celsoft/platform";
 import { isValidPath, normalizePath, ROOT_BUNDLE } from "../pages/path";
 import type { PagesApp } from "../pages-app";
-import { SITE_POINT } from "../pages-app";
+import { pointsFor, SITE_POINT } from "../pages-app";
 
 export const site = () => SITE_POINT;
+
+// A tool naming one path is gated where that path is, so a private path refuses what it would refuse a reader.
+export const atPath =
+  (normalize: (input: string) => string = normalizePath) =>
+  ({ path }: { path: string }) =>
+    pointsFor(normalize(path));
 
 export const BUNDLES =
   "Organization is a folder tree and nothing more. A path is a bundle and holds everything at or under it: /trip " +

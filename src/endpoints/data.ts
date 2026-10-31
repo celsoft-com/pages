@@ -15,7 +15,7 @@ import {
 } from "../data/service";
 import { collectionEntries } from "../inventory";
 import type { Item } from "../types";
-import { BUNDLES, dataUrl, requirePath as requireAnyPath, site } from "./shared";
+import { atPath, BUNDLES, dataUrl, requirePath as requireAnyPath, site } from "./shared";
 
 const SERVING =
   "How it is served: take the collection path, prefix /data and add .json. Collection /a/b is served at /data/a/b.json, " +
@@ -72,6 +72,7 @@ function selectItems(items: Item[], filter: string | undefined): Item[] {
 
 // A collection path ignores a trailing .json, which a page path would keep.
 const requirePath = (raw: string) => requireAnyPath(raw, normalizeCollectionPath);
+const atCollection = atPath(normalizeCollectionPath);
 
 function rankOf(value: unknown): number {
   if (value === null) return 0;
@@ -144,7 +145,7 @@ export const dataEndpoints = {
         SERVING +
         " " +
         REVS,
-      access: { point: site, level: "read" },
+      access: { point: atCollection, level: "read" },
       input: z.object({
         path: COLLECTION,
         fields: z
@@ -205,7 +206,7 @@ export const dataEndpoints = {
         "Prefer it over list_items whenever you only need counts: on a collection of a few hundred records the response is a small table rather than tens of kilobytes, and it does not fill your context with prose you will not use. " +
         "Use list_items when you need record contents, search_items when looking for particular records, and match_names when checking whether one specific thing already exists. " +
         "On collections of only a few dozen records this is not worth it; the value scales with size and is substantial by a couple of hundred.",
-      access: { point: site, level: "read" },
+      access: { point: atCollection, level: "read" },
       input: z.object({
         path: z.string().describe("Collection to aggregate, for example /trip/items"),
         group_by: z
@@ -292,7 +293,7 @@ export const dataEndpoints = {
       path: "/api/v1/get_item",
       description:
         "Return a single item from a collection by its id, with the rev to pass back as if_rev when you write. " + REVS,
-      access: { point: site, level: "read" },
+      access: { point: atCollection, level: "read" },
       input: z.object({ path: z.string(), id: z.string() }),
       output: z.object({
         path: z.string(),
@@ -329,7 +330,7 @@ export const dataEndpoints = {
         SERVING +
         " " +
         REVS,
-      access: { point: site, level: "write" },
+      access: { point: atCollection, level: "write" },
       input: z.object({
         path: COLLECTION,
         id: z.string().optional().describe("Item id. Omit to create a new item."),
@@ -381,7 +382,7 @@ export const dataEndpoints = {
         "Remove one item from a collection by its id. The rest of the collection is untouched. Pass the rev you read as if_rev and the delete is refused if the item changed since. " +
         "If other records reference this id through a declared collection reference, the delete is refused and names how many; repoint those records first, or pass force true to orphan them deliberately. " +
         "When force orphans records, the reply lists what it broke, so they can be repointed without a separate check_refs.",
-      access: { point: site, level: "write" },
+      access: { point: atCollection, level: "write" },
       input: z.object({
         path: z.string(),
         id: z.string(),
@@ -415,7 +416,7 @@ export const dataEndpoints = {
       description:
         "Move the given ids to the front of the collection, in the order listed. Items left out keep their relative order behind them, so moving one item to the top only needs one id. " +
         "Pass the collection rev as if_rev and the reorder is refused if the collection changed since you read it.",
-      access: { point: site, level: "write" },
+      access: { point: atCollection, level: "write" },
       input: z.object({
         path: z.string(),
         ids: z.array(z.string()).min(1).describe("Ids in the order they should appear"),
@@ -518,7 +519,7 @@ export const dataEndpoints = {
         "A match carries the id and rev, so a duplicate can be updated with put_item instead of created. " +
         "Nothing here understands meaning, translation or transliteration between scripts: it compares how names are written. " +
         "Treat a result as a candidate to judge, not a verdict, and remember a missed match leaves a visible duplicate while a wrong one silently swallows a record that should have been created.",
-      access: { point: site, level: "read" },
+      access: { point: atCollection, level: "read" },
       input: z.object({
         path: z.string().describe("Collection to match against, for example /venues"),
         names: z.array(z.string()).min(1).max(50).describe("Candidate names to look for, at most 50 per call"),
@@ -605,7 +606,7 @@ export const dataEndpoints = {
         "Without it, a typo in such a field is silent at every level. The record stores, the JSON stays valid, the page renders, and the record simply stops appearing wherever that value is used to select it. " +
         "Nobody finds out until someone goes looking for something they know should be there. " +
         "Declare the constraint when you create the collection, before the records exist, because the cost of adopting it later is auditing everything already written.",
-      access: { point: site, level: "write" },
+      access: { point: atCollection, level: "write" },
       input: z.object({
         path: z.string().describe("Collection being constrained, for example /trip/items"),
         refs: z
@@ -645,7 +646,7 @@ export const dataEndpoints = {
         "Check refs_declared to see what was actually verified before trusting an empty result. " +
         "Run it after any bulk load, after deleting or renaming ids in a referenced collection, and whenever count_items shows an unexpected value in a grouping, since a group of one is usually a typo rather than a real category. " +
         "Declaring the reference is the stronger fix where the collection is new enough to allow it, because put_item then rejects the bad value at the moment it is written; this audit is for records created before the constraint existed.",
-      access: { point: site, level: "read" },
+      access: { point: atCollection, level: "read" },
       input: z.object({
         path: z.string().describe("Collection to audit"),
         field: z.string().optional().describe("One reference field. Omit to check every declared reference."),
