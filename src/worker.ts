@@ -12,6 +12,8 @@ export default defineApp(undefined, {
   schema,
   endpoints: { ...siteEndpoints, ...pageEndpoints, ...dataEndpoints, ...assetEndpoints, ...transferEndpoints },
   pages: servedPages,
+  // Templates read across the site, so no write can name every page it changed: each one empties them all.
+  invalidates: "all",
   access: {
     points: {
       [SITE_POINT]: {

@@ -264,14 +264,12 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   so a summary too big to fit is skipped rather than failing a save: a title is whatever an `h1` says and `refs` is
   caller supplied, and losing a page to write a summary of it would be the wrong trade. Adding a field to a summary
   means bumping that number, and [store.test.ts](src/store.test.ts) pins that nothing else writes those blobs.
-- **Caching is one module and one purge.** [cache.ts](src/cache.ts) owns every public cache header and the
-  clearing of them; a handler that writes a `cache-control` string by hand has started a second policy. A public
-  response is `no-cache` to browsers and durable at the edge, so a refresh always asks and always gets what a write
-  just made, while an asset URL that is a content hash is immutable instead because its bytes cannot change. The
-  purge fires once at the request boundary in [app.ts](src/app.ts), blind to what changed: writes reach storage two
-  ways, through `savePage`/`saveCollection` and through the transfer engine writing blobs itself to keep ids and
-  revs exact, and a rule that each write path must announce itself is one a write path will forget. The bounded
-  `s-maxage` is the backstop, so the worst case of a purge that never lands is five minutes, not forever.
+- **Caching is one setting and one purge.** Every served route is kept at the edge for `CACHE` in
+  [serve.ts](src/serve.ts), and `invalidates: "all"` in [worker.ts](src/worker.ts) empties every kept page
+  once any write endpoint succeeds, over the API and MCP alike. It is blind to what changed because a template
+  reads across the site, so no write can name every page it touched, and a rule that each write must announce
+  itself is one a write will forget. A GET endpoint empties nothing. The preview route is never kept. Never
+  call `app.cache` from an endpoint, and never write a `cache-control` header by hand: the platform owns both.
 - **Templates are Liquid, and they run on the server.** [template.ts](src/render/template.ts) is the whole engine:
   a ```` ```pages ```` fence in a markdown page, and the header and footer templates, render through `liquidjs`
   with `page`, `site.pages` and `collections[...]` in scope, each read lazily and once per render. Liquid was

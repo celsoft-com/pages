@@ -20,8 +20,7 @@ That also files it in the `/kitchens` [bundle](bundles.md), so it travels with t
 page moves.
 
 A file uploaded without a path is stored under a hash of its bytes instead. Those URLs keep working
-forever and are cached forever, since the bytes behind a hash cannot change, but they sit in no
-bundle and cannot be moved. Prefer a path.
+forever, but they sit in no bundle and cannot be moved. Prefer a path.
 
 ## The site icon
 
