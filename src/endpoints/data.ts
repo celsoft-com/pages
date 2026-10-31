@@ -16,12 +16,7 @@ import {
 } from "../data/service";
 import { collectionEntries } from "../inventory";
 import type { Item } from "../types";
-import {
-  BUNDLES,
-  dataUrl,
-  requirePath as requireAnyPath,
-  site,
-} from "./shared";
+import { BUNDLES, dataUrl, requirePath as requireAnyPath, site } from "./shared";
 
 const SERVING =
   "How it is served: take the collection path, prefix /data and add .json. Collection /a/b is served at /data/a/b.json, " +
@@ -34,17 +29,14 @@ const SERVING =
   "GET /data/_collections.json for the index of every collection: an array of {path, url, count, rev, updatedAt} " +
   "sorted by path, so a page can discover collections over plain HTTP with no access to these tools.";
 
-const ENVELOPE =
-  "GET the url returns just the items array, without this envelope";
+const ENVELOPE = "GET the url returns just the items array, without this envelope";
 
 const REVS =
   "Every item carries a rev, a number that changes whenever that item changes. It is kept outside the stored JSON, " +
   "so it never appears in what the url serves. Pass the rev you read back as if_rev when you write, and a write " +
   "built on a stale read is refused instead of silently clobbering someone else's edit.";
 
-const COLLECTION = z
-  .string()
-  .describe("Collection path, for example /products");
+const COLLECTION = z.string().describe("Collection path, for example /products");
 const FIELDS = z.record(z.string(), z.unknown());
 const FILTER = z
   .string()
@@ -67,10 +59,7 @@ function selectItems(items: Item[], filter: string | undefined): Item[] {
     nodes = query(filter, items as JSONValue);
   } catch (error) {
     if (error instanceof JSONPathError)
-      throw new EndpointError(
-        400,
-        `filter is not an RFC 9535 JSONPath query: ${error.message}`,
-      );
+      throw new EndpointError(400, `filter is not an RFC 9535 JSONPath query: ${error.message}`);
     throw error;
   }
   const picked = new Set<number>();
@@ -86,8 +75,7 @@ function selectItems(items: Item[], filter: string | undefined): Item[] {
 }
 
 // A collection path ignores a trailing .json, which a page path would keep.
-const requirePath = (raw: string) =>
-  requireAnyPath(raw, normalizeCollectionPath);
+const requirePath = (raw: string) => requireAnyPath(raw, normalizeCollectionPath);
 
 function rankOf(value: unknown): number {
   if (value === null) return 0;
@@ -105,10 +93,7 @@ function compareValues(a: unknown, b: unknown): number {
   return 0;
 }
 
-function project(
-  item: Item,
-  fields: string[] | undefined,
-): Record<string, unknown> {
+function project(item: Item, fields: string[] | undefined): Record<string, unknown> {
   if (!fields || fields.length === 0) return item;
   const picked: Record<string, unknown> = { id: item.id };
   for (const field of fields) if (field !== "id") picked[field] = item[field];
@@ -135,9 +120,7 @@ export const dataEndpoints = {
             path: z.string(),
             items: z.number().describe("How many items it holds"),
             rev: z.number().describe("The collection rev, for reorder_items"),
-            refs: z
-              .record(z.string(), z.string())
-              .describe("Field name to the collection its ids come from"),
+            refs: z.record(z.string(), z.string()).describe("Field name to the collection its ids come from"),
             url: z.string().describe("Serves the items as a bare JSON array"),
           }),
         ),
@@ -171,39 +154,22 @@ export const dataEndpoints = {
         fields: z
           .array(z.string())
           .optional()
-          .describe(
-            "Field names to include. Defaults to every field. id is always included.",
-          ),
-        limit: z
-          .number()
-          .optional()
-          .describe("Maximum items to return. Defaults to 50."),
+          .describe("Field names to include. Defaults to every field. id is always included."),
+        limit: z.number().optional().describe("Maximum items to return. Defaults to 50."),
         offset: z.number().optional().describe("Items to skip. Defaults to 0."),
       }),
       output: z.object({
         path: z.string(),
-        url: z
-          .string()
-          .describe("Serves the bare items array, without this envelope"),
-        served: z
-          .string()
-          .describe(
-            "Says so in the reply itself, because the two shapes are easy to confuse",
-          ),
+        url: z.string().describe("Serves the bare items array, without this envelope"),
+        served: z.string().describe("Says so in the reply itself, because the two shapes are easy to confuse"),
         rev: z.number().describe("The collection rev, for reorder_items"),
-        total: z
-          .number()
-          .describe("Items in the whole collection, not in this page of them"),
+        total: z.number().describe("Items in the whole collection, not in this page of them"),
         offset: z.number(),
         items: z.array(
           z.object({
             id: z.string(),
-            rev: z
-              .number()
-              .describe("Pass back as if_rev when you write this item"),
-            item: FIELDS.describe(
-              "The item's fields, cut down to the ones you asked for",
-            ),
+            rev: z.number().describe("Pass back as if_rev when you write this item"),
+            item: FIELDS.describe("The item's fields, cut down to the ones you asked for"),
           }),
         ),
       }),
@@ -211,16 +177,9 @@ export const dataEndpoints = {
     async ({ path: raw, fields, limit, offset }, app) => {
       const path = requirePath(raw);
       const collection = await getCollection(app, path);
-      if (!collection)
-        throw new EndpointError(
-          400,
-          `No collection exists at ${path}. Use put_item to create it.`,
-        );
+      if (!collection) throw new EndpointError(400, `No collection exists at ${path}. Use put_item to create it.`);
       const start = Math.max(0, offset ?? 0);
-      const page = collection.items.slice(
-        start,
-        start + Math.max(1, limit || 50),
-      );
+      const page = collection.items.slice(start, start + Math.max(1, limit || 50));
       return {
         path: collection.path,
         url: dataUrl(app, collection.path),
@@ -252,16 +211,12 @@ export const dataEndpoints = {
         "On collections of only a few dozen records this is not worth it; the value scales with size and is substantial by a couple of hundred.",
       access: { point: site, level: "read" },
       input: z.object({
-        path: z
-          .string()
-          .describe("Collection to aggregate, for example /trip/items"),
+        path: z.string().describe("Collection to aggregate, for example /trip/items"),
         group_by: z
           .array(z.string())
           .min(1)
           .max(3)
-          .describe(
-            "Field names to group by, at most 3, applied in the order given",
-          ),
+          .describe("Field names to group by, at most 3, applied in the order given"),
         filter: FILTER.optional().describe(
           "Count only the items this RFC 9535 JSONPath query selects, for example $[?@.stars >= 4]. Omit to count the whole collection.",
         ),
@@ -270,29 +225,16 @@ export const dataEndpoints = {
         path: z.string(),
         total: z.number().describe("Records counted, after any filter"),
         group_by: z.array(z.string()),
-        filter: z
-          .string()
-          .optional()
-          .describe("Echoed back when one was passed"),
+        filter: z.string().optional().describe("Echoed back when one was passed"),
         rows: z
-          .array(
-            FIELDS.describe(
-              "One row per combination: each grouped field, plus count",
-            ),
-          )
-          .describe(
-            "Sorted by the grouped values. A combination with no records has no row.",
-          ),
+          .array(FIELDS.describe("One row per combination: each grouped field, plus count"))
+          .describe("Sorted by the grouped values. A combination with no records has no row."),
       }),
     },
     async ({ path: raw, group_by: fields, filter }, app) => {
       const path = requirePath(raw);
       const collection = await getCollection(app, path);
-      if (!collection)
-        throw new EndpointError(
-          400,
-          `No collection exists at ${path}. Nothing to count.`,
-        );
+      if (!collection) throw new EndpointError(400, `No collection exists at ${path}. Nothing to count.`);
 
       const inScope = selectItems(collection.items, filter);
       for (const item of inScope)
@@ -308,9 +250,7 @@ export const dataEndpoints = {
 
       const groups = new Map<string, { values: unknown[]; count: number }>();
       for (const item of inScope) {
-        const values = fields.map((field) =>
-          item[field] === undefined ? null : item[field],
-        );
+        const values = fields.map((field) => (item[field] === undefined ? null : item[field]));
         const key = JSON.stringify(values);
         const found = groups.get(key);
         if (found) {
@@ -355,8 +295,7 @@ export const dataEndpoints = {
       method: "GET",
       path: "/api/v1/get_item",
       description:
-        "Return a single item from a collection by its id, with the rev to pass back as if_rev when you write. " +
-        REVS,
+        "Return a single item from a collection by its id, with the rev to pass back as if_rev when you write. " + REVS,
       access: { point: site, level: "read" },
       input: z.object({ path: z.string(), id: z.string() }),
       output: z.object({
@@ -371,8 +310,7 @@ export const dataEndpoints = {
       const path = requirePath(raw);
       const collection = await getCollection(app, path);
       const item = collection?.items.find((i) => i.id === id);
-      if (!collection || !item)
-        throw new EndpointError(400, `No item ${id} in ${path}`);
+      if (!collection || !item) throw new EndpointError(400, `No item ${id} in ${path}`);
       return {
         path,
         url: dataUrl(app, path),
@@ -398,21 +336,10 @@ export const dataEndpoints = {
       access: { point: site, level: "write" },
       input: z.object({
         path: COLLECTION,
-        id: z
-          .string()
-          .optional()
-          .describe("Item id. Omit to create a new item."),
+        id: z.string().optional().describe("Item id. Omit to create a new item."),
         fields: FIELDS.describe("Field values to write"),
-        merge: z
-          .boolean()
-          .optional()
-          .describe("Merge into the existing item. Defaults to true."),
-        index: z
-          .number()
-          .optional()
-          .describe(
-            "Position in the collection. Defaults to the end for new items.",
-          ),
+        merge: z.boolean().optional().describe("Merge into the existing item. Defaults to true."),
+        index: z.number().optional().describe("Position in the collection. Defaults to the end for new items."),
         if_rev: z
           .number()
           .optional()
@@ -431,9 +358,7 @@ export const dataEndpoints = {
         url: z.string(),
         id: z.string().describe("Generated when you did not pass one"),
         rev: z.number().describe("The item's new rev"),
-        created: z
-          .boolean()
-          .describe("False when an existing item was updated"),
+        created: z.boolean().describe("False when an existing item was updated"),
       }),
     },
     async ({ path: raw, id, fields, merge, index, if_rev, overwrite }, app) => {
@@ -464,36 +389,23 @@ export const dataEndpoints = {
       input: z.object({
         path: z.string(),
         id: z.string(),
-        if_rev: z
-          .number()
-          .optional()
-          .describe("The rev you read for this item"),
+        if_rev: z.number().optional().describe("The rev you read for this item"),
         force: z
           .boolean()
           .optional()
-          .describe(
-            "Delete even though other records reference this id, leaving them pointing at nothing",
-          ),
+          .describe("Delete even though other records reference this id, leaving them pointing at nothing"),
       }),
       output: z.object({
         deleted: z.string().describe("The id that was removed"),
         path: z.string(),
         orphaned: z
           .array(REFERRER)
-          .describe(
-            "Records left pointing at nothing, which only happens when force was passed. Empty otherwise.",
-          ),
+          .describe("Records left pointing at nothing, which only happens when force was passed. Empty otherwise."),
       }),
     },
     async ({ path: raw, id, if_rev, force }, app) => {
       const path = requirePath(raw);
-      const { deleted, orphaned } = await deleteItem(
-        app,
-        path,
-        id,
-        if_rev,
-        force === true,
-      );
+      const { deleted, orphaned } = await deleteItem(app, path, id, if_rev, force === true);
       if (!deleted) throw new EndpointError(400, `No item ${id} in ${path}`);
       return { deleted: id, path, orphaned };
     },
@@ -510,27 +422,13 @@ export const dataEndpoints = {
       access: { point: site, level: "write" },
       input: z.object({
         path: z.string(),
-        ids: z
-          .array(z.string())
-          .min(1)
-          .describe("Ids in the order they should appear"),
-        if_rev: z
-          .number()
-          .optional()
-          .describe(
-            "The collection rev you read from list_items or list_collections",
-          ),
+        ids: z.array(z.string()).min(1).describe("Ids in the order they should appear"),
+        if_rev: z.number().optional().describe("The collection rev you read from list_items or list_collections"),
       }),
       output: z.object({
         path: z.string(),
-        moved: z
-          .array(z.string())
-          .describe("The ids now at the front, in this order"),
-        rest: z
-          .number()
-          .describe(
-            "Items behind them, keeping their previous order. They are counted, not listed.",
-          ),
+        moved: z.array(z.string()).describe("The ids now at the front, in this order"),
+        rest: z.number().describe("Items behind them, keeping their previous order. They are counted, not listed."),
       }),
     },
     async ({ path: raw, ids, if_rev }, app) => {
@@ -552,29 +450,14 @@ export const dataEndpoints = {
         'field!=value excludes; has:field requires the field to be set; -term excludes matches; "quoted words" match a phrase. Terms combine with AND, and dotted paths reach nested fields.',
       access: { point: site, level: "read" },
       input: z.object({
-        query: z
-          .string()
-          .describe(
-            'For example: status=draft price>10 -sale has:image "winter coat"',
-          ),
-        path: z
-          .string()
-          .optional()
-          .describe("Collection to search. Defaults to every collection."),
-        fields: z
-          .array(z.string())
-          .optional()
-          .describe("Field names to include in results"),
-        limit: z
-          .number()
-          .optional()
-          .describe("Maximum matches to return. Defaults to 25."),
+        query: z.string().describe('For example: status=draft price>10 -sale has:image "winter coat"'),
+        path: z.string().optional().describe("Collection to search. Defaults to every collection."),
+        fields: z.array(z.string()).optional().describe("Field names to include in results"),
+        limit: z.number().optional().describe("Maximum matches to return. Defaults to 25."),
       }),
       output: z.object({
         query: z.string().describe("Echoed back"),
-        total: z
-          .number()
-          .describe("Matches found, which can exceed the number returned"),
+        total: z.number().describe("Matches found, which can exceed the number returned"),
         matches: z.array(
           z.object({
             path: z.string().describe("The collection it was found in"),
@@ -588,12 +471,9 @@ export const dataEndpoints = {
       }),
     },
     async ({ query, path, fields, limit }, app) => {
-      if (query.trim() === "")
-        throw new EndpointError(400, "query is required");
+      if (query.trim() === "") throw new EndpointError(400, "query is required");
       const terms = parseQuery(query);
-      const paths = path
-        ? [requirePath(path)]
-        : (await listCollections(app)).map((c) => c.path);
+      const paths = path ? [requirePath(path)] : (await listCollections(app)).map((c) => c.path);
 
       const matches: {
         path: string;
@@ -644,46 +524,22 @@ export const dataEndpoints = {
         "Treat a result as a candidate to judge, not a verdict, and remember a missed match leaves a visible duplicate while a wrong one silently swallows a record that should have been created.",
       access: { point: site, level: "read" },
       input: z.object({
-        path: z
-          .string()
-          .describe("Collection to match against, for example /venues"),
-        names: z
-          .array(z.string())
-          .min(1)
-          .max(50)
-          .describe("Candidate names to look for, at most 50 per call"),
-        field: z
-          .string()
-          .optional()
-          .describe("Field to compare against. Defaults to name."),
+        path: z.string().describe("Collection to match against, for example /venues"),
+        names: z.array(z.string()).min(1).max(50).describe("Candidate names to look for, at most 50 per call"),
+        field: z.string().optional().describe("Field to compare against. Defaults to name."),
         filter: FILTER.optional().describe(
           'Compare only the items this RFC 9535 JSONPath query selects, for example $[?@.section == "north"]. Its comparisons are exact and not normalized the way the match field is, because partition values are identifiers rather than prose. Omit to compare against the whole collection.',
         ),
-        threshold: z
-          .number()
-          .optional()
-          .describe("Lowest score worth returning, 0 to 1. Defaults to 0.6."),
-        limit_per_name: z
-          .number()
-          .optional()
-          .describe("Most matches to return per candidate. Defaults to 3."),
+        threshold: z.number().optional().describe("Lowest score worth returning, 0 to 1. Defaults to 0.6."),
+        limit_per_name: z.number().optional().describe("Most matches to return per candidate. Defaults to 3."),
       }),
       output: z.object({
         path: z.string(),
-        field: z
-          .string()
-          .describe("The field compared, name unless you said otherwise"),
-        filter: z
-          .string()
-          .optional()
-          .describe("Echoed back when one was passed"),
+        field: z.string().describe("The field compared, name unless you said otherwise"),
+        filter: z.string().optional().describe("Echoed back when one was passed"),
         threshold: z.number(),
-        compared: z
-          .number()
-          .describe("Records that carried the field and were compared"),
-        skipped: z
-          .number()
-          .describe("Records in scope with no string in that field"),
+        compared: z.number().describe("Records that carried the field and were compared"),
+        skipped: z.number().describe("Records in scope with no string in that field"),
         results: z
           .array(
             z.object({
@@ -694,51 +550,27 @@ export const dataEndpoints = {
                     id: z.string(),
                     value: z.string().describe("The stored name it matched"),
                     rev: z.number(),
-                    score: z
-                      .number()
-                      .describe("0 to 1. Judge it, rather than trusting it."),
+                    score: z.number().describe("0 to 1. Judge it, rather than trusting it."),
                   }),
                 )
-                .describe(
-                  "Best first, and empty where nothing was close enough",
-                ),
+                .describe("Best first, and empty where nothing was close enough"),
             }),
           )
           .describe("One entry per candidate, in the order given"),
       }),
     },
-    async (
-      {
-        path: raw,
-        names,
-        field: rawField,
-        filter,
-        threshold: rawThreshold,
-        limit_per_name,
-      },
-      app,
-    ) => {
+    async ({ path: raw, names, field: rawField, filter, threshold: rawThreshold, limit_per_name }, app) => {
       const path = requirePath(raw);
       const collection = await getCollection(app, path);
-      if (!collection)
-        throw new EndpointError(
-          400,
-          `No collection exists at ${path}. Nothing to match against.`,
-        );
+      if (!collection) throw new EndpointError(400, `No collection exists at ${path}. Nothing to match against.`);
 
       const field = rawField || "name";
-      const threshold =
-        rawThreshold === undefined
-          ? 0.6
-          : Math.min(1, Math.max(0, rawThreshold));
+      const threshold = rawThreshold === undefined ? 0.6 : Math.min(1, Math.max(0, rawThreshold));
       const limit = Math.max(1, limit_per_name || 3);
       const inScope = selectItems(collection.items, filter);
       const candidates = inScope
         .map((item) => ({ item, value: item[field] }))
-        .filter(
-          (entry): entry is { item: Item; value: string } =>
-            typeof entry.value === "string",
-        );
+        .filter((entry): entry is { item: Item; value: string } => typeof entry.value === "string");
 
       const results = names.map((name) => ({
         name,
@@ -779,9 +611,7 @@ export const dataEndpoints = {
         "Declare the constraint when you create the collection, before the records exist, because the cost of adopting it later is auditing everything already written.",
       access: { point: site, level: "write" },
       input: z.object({
-        path: z
-          .string()
-          .describe("Collection being constrained, for example /trip/items"),
+        path: z.string().describe("Collection being constrained, for example /trip/items"),
         refs: z
           .record(z.string(), z.string())
           .describe(
@@ -792,19 +622,13 @@ export const dataEndpoints = {
         path: z.string(),
         refs: z
           .record(z.string(), z.string())
-          .describe(
-            "Field name to the collection its ids come from, as now declared",
-          ),
+          .describe("Field name to the collection its ids come from, as now declared"),
         violations: z
           .number()
-          .describe(
-            "Records already holding a value the new constraint rejects. Run check_refs to see them.",
-          ),
+          .describe("Records already holding a value the new constraint rejects. Run check_refs to see them."),
         missing: z
           .array(z.string())
-          .describe(
-            "Referenced collections that do not exist yet, so every value is rejected until they do",
-          ),
+          .describe("Referenced collections that do not exist yet, so every value is rejected until they do"),
       }),
     },
     async ({ path: raw, refs: wanted }, app) => {
@@ -828,12 +652,7 @@ export const dataEndpoints = {
       access: { point: site, level: "read" },
       input: z.object({
         path: z.string().describe("Collection to audit"),
-        field: z
-          .string()
-          .optional()
-          .describe(
-            "One reference field. Omit to check every declared reference.",
-          ),
+        field: z.string().optional().describe("One reference field. Omit to check every declared reference."),
       }),
       output: z.union([
         z
@@ -841,33 +660,21 @@ export const dataEndpoints = {
             path: z.string(),
             checked: z.number().describe("0"),
             refs_declared: z.record(z.string(), z.string()).describe("Empty"),
-            broken: z
-              .array(z.unknown())
-              .describe("Empty, and it means nothing was looked at"),
-            warning: z
-              .string()
-              .describe(
-                "Says so, so an empty broken list is not read as a clean bill of health",
-              ),
+            broken: z.array(z.unknown()).describe("Empty, and it means nothing was looked at"),
+            warning: z.string().describe("Says so, so an empty broken list is not read as a clean bill of health"),
           })
           .describe("Nothing is declared, so nothing was checked"),
         z
           .object({
             path: z.string(),
             checked: z.number().describe("Records examined"),
-            refs_declared: z
-              .record(z.string(), z.string())
-              .describe("What was verified"),
+            refs_declared: z.record(z.string(), z.string()).describe("What was verified"),
             broken: z.array(
               z.object({
                 id: z.string(),
                 field: z.string(),
-                value: z
-                  .unknown()
-                  .describe("The stored value that matches no id"),
-                references: z
-                  .string()
-                  .describe("The collection it should have named"),
+                value: z.unknown().describe("The stored value that matches no id"),
+                references: z.string().describe("The collection it should have named"),
               }),
             ),
           })

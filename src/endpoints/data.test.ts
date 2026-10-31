@@ -18,8 +18,7 @@ async function status(call: Promise<unknown>): Promise<number | null> {
   );
 }
 
-const call = (name: string, input: Record<string, unknown>) =>
-  t.as(owner).call(name, input) as Promise<any>;
+const call = (name: string, input: Record<string, unknown>) => t.as(owner).call(name, input) as Promise<any>;
 
 async function seed() {
   await call("put_item", {
@@ -66,9 +65,7 @@ describe("put_item", () => {
 
   it("needs the rev to update, and refuses a stale one", async () => {
     await call("put_item", { path: "/t", id: "x", fields: { n: 1 } });
-    expect(
-      await status(call("put_item", { path: "/t", id: "x", fields: { n: 2 } })),
-    ).toBe(409);
+    expect(await status(call("put_item", { path: "/t", id: "x", fields: { n: 2 } }))).toBe(409);
     expect(
       await call("put_item", {
         path: "/t",
@@ -77,11 +74,7 @@ describe("put_item", () => {
         if_rev: 1,
       }),
     ).toMatchObject({ rev: 2 });
-    expect(
-      await status(
-        call("put_item", { path: "/t", id: "x", fields: { n: 3 }, if_rev: 1 }),
-      ),
-    ).toBe(409);
+    expect(await status(call("put_item", { path: "/t", id: "x", fields: { n: 3 }, if_rev: 1 }))).toBe(409);
   });
 
   it("merges by default and replaces when merge is false", async () => {
@@ -134,9 +127,7 @@ describe("list_items and list_collections", () => {
 describe("count_items", () => {
   it("groups and filters, numbers included", async () => {
     await seed();
-    expect(
-      await call("count_items", { path: "/venues", group_by: ["section"] }),
-    ).toMatchObject({
+    expect(await call("count_items", { path: "/venues", group_by: ["section"] })).toMatchObject({
       total: 3,
       rows: [
         { section: "north", count: 2 },
@@ -216,19 +207,13 @@ describe("search_items and match_names", () => {
 describe("delete_item and reorder_items", () => {
   it("reorders by naming the front", async () => {
     await seed();
-    expect(
-      await call("reorder_items", { path: "/venues", ids: ["c"] }),
-    ).toEqual({
+    expect(await call("reorder_items", { path: "/venues", ids: ["c"] })).toEqual({
       path: "/venues",
       moved: ["c"],
       rest: 2,
     });
     const listed = await call("list_items", { path: "/venues" });
-    expect(listed.items.map((i: { id: string }) => i.id)).toEqual([
-      "c",
-      "a",
-      "b",
-    ]);
+    expect(listed.items.map((i: { id: string }) => i.id)).toEqual(["c", "a", "b"]);
   });
 
   it("refuses to orphan a reference unless forced", async () => {
@@ -253,17 +238,13 @@ describe("delete_item and reorder_items", () => {
         }),
       ),
     ).toBe(400);
-    expect(
-      await status(call("delete_item", { path: "/kinds", id: "bar" })),
-    ).toBe(400);
+    expect(await status(call("delete_item", { path: "/kinds", id: "bar" }))).toBe(400);
     const forced = await call("delete_item", {
       path: "/kinds",
       id: "bar",
       force: true,
     });
-    expect(forced.orphaned).toMatchObject([
-      { path: "/drinks", field: "kind", count: 1 },
-    ]);
+    expect(forced.orphaned).toMatchObject([{ path: "/drinks", field: "kind", count: 1 }]);
     expect(await call("check_refs", { path: "/drinks" })).toMatchObject({
       checked: 1,
       broken: [{ id: "ale", value: "bar" }],
@@ -283,15 +264,7 @@ describe("access", () => {
   it("lets anyone signed in read but only the owner write", async () => {
     await seed();
     const guest = await t.signUp("guest@example.com");
-    expect(
-      await t.as(guest).call("get_item", { path: "/venues", id: "a" }),
-    ).toMatchObject({ id: "a" });
-    expect(
-      await status(
-        t
-          .as(guest)
-          .call("put_item", { path: "/venues", fields: { name: "x" } }),
-      ),
-    ).toBe(404);
+    expect(await t.as(guest).call("get_item", { path: "/venues", id: "a" })).toMatchObject({ id: "a" });
+    expect(await status(t.as(guest).call("put_item", { path: "/venues", fields: { name: "x" } }))).toBe(404);
   });
 });
