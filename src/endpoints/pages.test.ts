@@ -11,10 +11,10 @@ beforeEach(async () => {
 });
 afterEach(() => t.close());
 
-async function status(call: Promise<unknown>): Promise<number | null> {
+async function refusal(call: Promise<unknown>): Promise<string | null> {
   return call.then(
     () => null,
-    (error) => (error as { status: number }).status,
+    (error) => `${(error as { status: number }).status} ${(error as Error).message}`,
   );
 }
 
@@ -43,14 +43,20 @@ describe("publish_page", () => {
 
   it("refuses a taken path unless told to overwrite", async () => {
     await call("publish_page", { path: "/a", content: "one" });
-    expect(await status(call("publish_page", { path: "/a", content: "two" }))).toBe(400);
+    expect(await refusal(call("publish_page", { path: "/a", content: "two" }))).toMatch(
+      /^400 A page already exists at \/a/,
+    );
     await call("publish_page", { path: "/a", content: "two", overwrite: true });
     expect(await call("get_page", { path: "/a" })).toMatchObject({ content: "two" });
   });
 
   it("refuses / and meta that names a page field", async () => {
-    expect(await status(call("publish_page", { path: "/", content: "x" }))).toBe(400);
-    expect(await status(call("publish_page", { path: "/a", content: "x", meta: { title: "no" } }))).toBe(400);
+    expect(await refusal(call("publish_page", { path: "/", content: "x" }))).toMatch(
+      /^400 The home page is stored at \/root/,
+    );
+    expect(await refusal(call("publish_page", { path: "/a", content: "x", meta: { title: "no" } }))).toMatch(
+      /^400 .*meta cannot hold "title"/,
+    );
   });
 });
 
@@ -78,9 +84,9 @@ describe("get_page", () => {
   });
 
   it("refuses a missing page and a missing working copy", async () => {
-    expect(await status(call("get_page", { path: "/nope" }))).toBe(400);
+    expect(await refusal(call("get_page", { path: "/nope" }))).toMatch(/^400 No page exists at \/nope/);
     await call("publish_page", { path: "/a", content: "one" });
-    expect(await status(call("get_page", { path: "/a", draft: true }))).toBe(400);
+    expect(await refusal(call("get_page", { path: "/a", draft: true }))).toMatch(/^400 \/a has no working copy/);
   });
 });
 
@@ -96,8 +102,12 @@ describe("edit_page", () => {
 
   it("refuses no match and an ambiguous one, unless all", async () => {
     await call("publish_page", { path: "/a", content: "x x" });
-    expect(await status(call("edit_page", { path: "/a", find: "y", replace: "z" }))).toBe(400);
-    expect(await status(call("edit_page", { path: "/a", find: "x", replace: "z" }))).toBe(400);
+    expect(await refusal(call("edit_page", { path: "/a", find: "y", replace: "z" }))).toMatch(
+      /^400 Nothing in \/a matches that text/,
+    );
+    expect(await refusal(call("edit_page", { path: "/a", find: "x", replace: "z" }))).toMatch(
+      /^400 .*appears 2 times in \/a/,
+    );
     expect(await call("edit_page", { path: "/a", find: "x", replace: "z", all: true })).toMatchObject({ replaced: 2 });
   });
 });
@@ -125,7 +135,7 @@ describe("working copy", () => {
 
   it("refuses to publish when there is none", async () => {
     await call("publish_page", { path: "/a", content: "live" });
-    expect(await status(call("publish_draft", { path: "/a" }))).toBe(400);
+    expect(await refusal(call("publish_draft", { path: "/a" }))).toMatch(/^400 .*no working copy to publish/);
   });
 });
 
@@ -138,9 +148,11 @@ describe("update_page", () => {
   });
 
   it("refuses a missing page and an empty update", async () => {
-    expect(await status(call("update_page", { path: "/nope", content: "x" }))).toBe(400);
+    expect(await refusal(call("update_page", { path: "/nope", content: "x" }))).toMatch(
+      /^400 No page exists at \/nope\. Use publish_page/,
+    );
     await call("publish_page", { path: "/a", content: "x" });
-    expect(await status(call("update_page", { path: "/a" }))).toBe(400);
+    expect(await refusal(call("update_page", { path: "/a" }))).toMatch(/^400 .*there is nothing to update/);
   });
 });
 
@@ -149,6 +161,6 @@ describe("access", () => {
     const guest = await t.signUp("guest@example.com");
     await call("publish_page", { path: "/a", content: "x" });
     expect(await t.as(guest).call("get_page", { path: "/a" })).toMatchObject({ content: "x" });
-    expect(await status(t.as(guest).call("publish_page", { path: "/b", content: "x" }))).toBe(404);
+    expect(await refusal(t.as(guest).call("publish_page", { path: "/b", content: "x" }))).toMatch(/^404 not found/);
   });
 });

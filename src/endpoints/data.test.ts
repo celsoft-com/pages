@@ -11,10 +11,10 @@ beforeEach(async () => {
 });
 afterEach(() => t.close());
 
-async function status(call: Promise<unknown>): Promise<number | null> {
+async function refusal(call: Promise<unknown>): Promise<string | null> {
   return call.then(
     () => null,
-    (error) => (error as { status: number }).status,
+    (error) => `${(error as { status: number }).status} ${(error as Error).message}`,
   );
 }
 
@@ -65,7 +65,9 @@ describe("put_item", () => {
 
   it("needs the rev to update, and refuses a stale one", async () => {
     await call("put_item", { path: "/t", id: "x", fields: { n: 1 } });
-    expect(await status(call("put_item", { path: "/t", id: "x", fields: { n: 2 } }))).toBe(409);
+    expect(await refusal(call("put_item", { path: "/t", id: "x", fields: { n: 2 } }))).toMatch(
+      /^409 .*already exists at rev 1/,
+    );
     expect(
       await call("put_item", {
         path: "/t",
@@ -74,7 +76,9 @@ describe("put_item", () => {
         if_rev: 1,
       }),
     ).toMatchObject({ rev: 2 });
-    expect(await status(call("put_item", { path: "/t", id: "x", fields: { n: 3 }, if_rev: 1 }))).toBe(409);
+    expect(await refusal(call("put_item", { path: "/t", id: "x", fields: { n: 3 }, if_rev: 1 }))).toMatch(
+      /^409 .*has changed since you read it/,
+    );
   });
 
   it("merges by default and replaces when merge is false", async () => {
@@ -161,23 +165,23 @@ describe("count_items", () => {
   it("refuses a filter that is not a query or selects less than an item", async () => {
     await seed();
     expect(
-      await status(
+      await refusal(
         call("count_items", {
           path: "/venues",
           group_by: ["section"],
           filter: "$[?@.stars ==",
         }),
       ),
-    ).toBe(400);
+    ).toMatch(/^400 .*filter: unexpected/);
     expect(
-      await status(
+      await refusal(
         call("count_items", {
           path: "/venues",
           group_by: ["section"],
           filter: "$[*].name",
         }),
       ),
-    ).toBe(400);
+    ).toMatch(/^400 .*is not a whole item/);
   });
 });
 
@@ -230,15 +234,15 @@ describe("delete_item and reorder_items", () => {
       if_rev: 1,
     });
     expect(
-      await status(
+      await refusal(
         call("put_item", {
           path: "/drinks",
           id: "gin",
           fields: { kind: "baar" },
         }),
       ),
-    ).toBe(400);
-    expect(await status(call("delete_item", { path: "/kinds", id: "bar" }))).toBe(400);
+    ).toMatch(/^400 .*is not an id in \/kinds\. Closest ids: bar/);
+    expect(await refusal(call("delete_item", { path: "/kinds", id: "bar" }))).toMatch(/^400 .*would orphan 1 record/);
     const forced = await call("delete_item", {
       path: "/kinds",
       id: "bar",
@@ -265,6 +269,8 @@ describe("access", () => {
     await seed();
     const guest = await t.signUp("guest@example.com");
     expect(await t.as(guest).call("get_item", { path: "/venues", id: "a" })).toMatchObject({ id: "a" });
-    expect(await status(t.as(guest).call("put_item", { path: "/venues", fields: { name: "x" } }))).toBe(404);
+    expect(await refusal(t.as(guest).call("put_item", { path: "/venues", fields: { name: "x" } }))).toMatch(
+      /^404 not found/,
+    );
   });
 });

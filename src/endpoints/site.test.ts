@@ -11,10 +11,10 @@ beforeEach(async () => {
 });
 afterEach(() => t.close());
 
-async function status(call: Promise<unknown>): Promise<number | null> {
+async function refusal(call: Promise<unknown>): Promise<string | null> {
   return call.then(
     () => null,
-    (error) => (error as { status: number }).status,
+    (error) => `${(error as { status: number }).status} ${(error as Error).message}`,
   );
 }
 
@@ -46,7 +46,9 @@ describe("get_site and set_site_info", () => {
   });
 
   it("accepts a header only once a template is stored there", async () => {
-    expect(await status(call("set_site_info", { header: "/root/chrome/header" }))).toBe(400);
+    expect(await refusal(call("set_site_info", { header: "/root/chrome/header" }))).toMatch(
+      /^400 No page is stored at \/root\/chrome\/header/,
+    );
     await call("publish_page", { path: "/root/chrome/header", content: "<nav>Home</nav>", format: "html" });
     expect(await call("set_site_info", { header: "/Root/Chrome/Header" })).toMatchObject({
       header: "/root/chrome/header",
@@ -55,12 +57,12 @@ describe("get_site and set_site_info", () => {
   });
 
   it("refuses a theme it does not know", async () => {
-    expect(await status(call("set_site_info", { theme: "dark" }))).toBe(400);
+    expect(await refusal(call("set_site_info", { theme: "dark" }))).toMatch(/^400 .*theme: Invalid option/);
   });
 
   it("lets only the owner change it", async () => {
     const guest = await t.signUp("guest@example.com");
     expect((await t.as(guest).call("get_site", {})) as { title: string }).toMatchObject({ title: "Pages" });
-    expect(await status(t.as(guest).call("set_site_info", { title: "Mine" }))).toBe(404);
+    expect(await refusal(t.as(guest).call("set_site_info", { title: "Mine" }))).toMatch(/^404 not found/);
   });
 });

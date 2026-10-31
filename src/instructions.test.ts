@@ -12,10 +12,10 @@ beforeEach(async () => {
 });
 afterEach(() => t.close());
 
-async function status(call: Promise<unknown>): Promise<number | null> {
+async function refusal(call: Promise<unknown>): Promise<string | null> {
   return call.then(
     () => null,
-    (error) => (error as { status: number }).status,
+    (error) => `${(error as { status: number }).status} ${(error as Error).message}`,
   );
 }
 
@@ -37,13 +37,17 @@ describe("instructions", () => {
 
   it("refuse a write with no rev once some exist", async () => {
     await t.as(owner).call("set_instructions", { text: "one" });
-    expect(await status(t.as(owner).call("set_instructions", { text: "two" }))).toBe(409);
+    expect(await refusal(t.as(owner).call("set_instructions", { text: "two" }))).toMatch(
+      /^409 .*already exist at rev 1/,
+    );
   });
 
   it("refuse a stale rev", async () => {
     await t.as(owner).call("set_instructions", { text: "one" });
     await t.as(owner).call("set_instructions", { text: "two", if_rev: 1 });
-    expect(await status(t.as(owner).call("set_instructions", { text: "three", if_rev: 1 }))).toBe(409);
+    expect(await refusal(t.as(owner).call("set_instructions", { text: "three", if_rev: 1 }))).toMatch(
+      /^409 .*changed since you read them/,
+    );
   });
 
   it("keep the rev when the text is unchanged", async () => {
@@ -52,17 +56,19 @@ describe("instructions", () => {
   });
 
   it("refuse text over the limit", async () => {
-    expect(await status(t.as(owner).call("set_instructions", { text: "x".repeat(MAX_INSTRUCTIONS + 1) }))).toBe(400);
+    expect(await refusal(t.as(owner).call("set_instructions", { text: "x".repeat(MAX_INSTRUCTIONS + 1) }))).toMatch(
+      /^400 .*the limit is 16000/,
+    );
   });
 
   it("are readable but not writable by anyone else signed in", async () => {
     const guest = await t.signUp("guest@example.com");
     await t.as(owner).call("set_instructions", { text: "one" });
     expect(await t.as(guest).call("get_instructions", {})).toMatchObject({ text: "one" });
-    expect(await status(t.as(guest).call("set_instructions", { text: "two", if_rev: 1 }))).toBe(404);
+    expect(await refusal(t.as(guest).call("set_instructions", { text: "two", if_rev: 1 }))).toMatch(/^404 not found/);
   });
 
   it("need a sign-in", async () => {
-    expect(await status(t.call("get_instructions", {}))).toBe(401);
+    expect(await refusal(t.call("get_instructions", {}))).toMatch(/^401 Unauthorized/);
   });
 });

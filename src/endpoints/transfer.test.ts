@@ -11,10 +11,10 @@ beforeEach(async () => {
 });
 afterEach(() => t.close());
 
-async function status(call: Promise<unknown>): Promise<number | null> {
+async function refusal(call: Promise<unknown>): Promise<string | null> {
   return call.then(
     () => null,
-    (error) => (error as { status: number }).status,
+    (error) => `${(error as { status: number }).status} ${(error as Error).message}`,
   );
 }
 
@@ -67,7 +67,7 @@ describe("page transfers", () => {
       pages_to_update: [{ path: "/trip", lines: [{ line: 3 }] }],
     });
     expect(moved.resources[0].url).toMatch(/\/p\/trip\/first$/);
-    expect(await status(call("get_page", { path: "/trip/day1" }))).toBe(400);
+    expect(await refusal(call("get_page", { path: "/trip/day1" }))).toMatch(/^400 No page exists at \/trip\/day1/);
     expect((await call("get_page", { path: "/trip/first" })).title).toBe("Day one");
   });
 
@@ -85,7 +85,9 @@ describe("page transfers", () => {
   it("refuses an occupied target unless overwrite is passed", async () => {
     await seed();
     await call("publish_page", { path: "/other", content: "# Other" });
-    expect(await status(call("copy_page", { from: "/trip", to: "/other" }))).toBe(400);
+    expect(await refusal(call("copy_page", { from: "/trip", to: "/other" }))).toMatch(
+      /^400 .*a page already exists at \/other/,
+    );
     const copied = await call("copy_page", {
       from: "/trip",
       to: "/other",
@@ -163,8 +165,8 @@ describe("bundle transfers", () => {
 
   it("refuses / at either end", async () => {
     await seed();
-    expect(await status(call("delete_bundle", { path: "/", confirm: true }))).toBe(400);
-    expect(await status(call("list_bundle", { path: "/" }))).toBe(400);
+    expect(await refusal(call("delete_bundle", { path: "/", confirm: true }))).toMatch(/^400 \/ is not a bundle/);
+    expect(await refusal(call("list_bundle", { path: "/" }))).toMatch(/^400 \/ is not a bundle/);
   });
 });
 
@@ -186,6 +188,6 @@ describe("access", () => {
   it("lets only the owner move things", async () => {
     await seed();
     const guest = await t.signUp("guest@example.com");
-    expect(await status(t.as(guest).call("move_page", { from: "/trip", to: "/x" }))).toBe(404);
+    expect(await refusal(t.as(guest).call("move_page", { from: "/trip", to: "/x" }))).toMatch(/^404 not found/);
   });
 });
