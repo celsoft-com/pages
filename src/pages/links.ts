@@ -1,7 +1,7 @@
 import { listAssets } from "../assets/service";
 import { listCollections, MANIFEST_PATH, normalizeCollectionPath } from "../data/service";
-import { ROOT_BUNDLE, normalizeAssetPath, normalizePath } from "./path";
 import type { PagesApp } from "../pages-app";
+import { normalizeAssetPath, normalizePath, ROOT_BUNDLE } from "./path";
 import { getPage, listPages } from "./service";
 
 export interface BrokenLink {
@@ -21,14 +21,6 @@ export interface LinkReport {
 // which is why the report counts what it looked at.
 const LINK = /\]\((\/[^)\s]*)|\b(?:href|src)=["'](\/[^"']*)["']|["'`](\/(?:data|assets)\/[^"'`\s]*)["'`]/g;
 
-// Routes the app answers itself. Matched on a segment boundary, like the router. Built per call
-// rather than at load, because the API handler imports the tool registry that imports this.
-function served(path: string): boolean {
-  const exact = ["/", ROOT_BUNDLE, "/mcp", "/favicon.ico", "/robots.txt", "/_unlock"];
-  const prefixes = ["/api", "/mcp", "/.well-known", "/docs"];
-  return exact.includes(path) || prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
-}
-
 function pathOf(link: string): string | null {
   if (link.startsWith("//")) return null;
   const bare = link.split("#")[0].split("?")[0];
@@ -39,23 +31,32 @@ function pathOf(link: string): string | null {
   }
 }
 
+const under = (prefix: string, path: string) => (path.startsWith(`${prefix}/`) ? path.slice(prefix.length) : null);
+
 export async function checkLinks(app: PagesApp): Promise<LinkReport> {
   const [summaries, assets, collections] = await Promise.all([listPages(app), listAssets(app), listCollections(app)]);
   const pages = new Set(summaries.map((page) => page.path));
   const assetKeys = new Set(assets.flatMap((asset) => [asset.key, ...(asset.path ? [asset.path] : [])]));
   const collectionPaths = new Set(collections.map((collection) => collection.path));
 
+  // The platform knows every route, screen and file; the claims under /p, /preview, /data and
+  // /assets answer any path, so whether something is stored there is the app's question.
   const resolves = (path: string): boolean => {
-    if (served(path)) return true;
-    if (path.startsWith("/assets/")) {
-      const rest = path.slice("/assets".length);
-      return assetKeys.has(rest.slice(1)) || assetKeys.has(normalizeAssetPath(rest));
+    const answer = app.routes.serves(path);
+    if (answer !== "page") return answer !== null;
+    // /p/root always answers, with a redirect to the home page at /.
+    const live = under("/p", path);
+    if (live !== null && normalizePath(live) === ROOT_BUNDLE) return true;
+    const page = live ?? under("/preview", path);
+    if (page !== null) return pages.has(normalizePath(page));
+    const asset = under("/assets", path);
+    if (asset !== null) return assetKeys.has(asset.slice(1)) || assetKeys.has(normalizeAssetPath(asset));
+    const data = under("/data", path);
+    if (data !== null) {
+      const target = normalizeCollectionPath(data);
+      return /\.json$/i.test(data) && (target === MANIFEST_PATH || collectionPaths.has(target));
     }
-    if (path.startsWith("/data/")) {
-      const target = normalizeCollectionPath(path.slice("/data".length));
-      return target === MANIFEST_PATH || collectionPaths.has(target);
-    }
-    return pages.has(normalizePath(path));
+    return true;
   };
 
   const broken: BrokenLink[] = [];

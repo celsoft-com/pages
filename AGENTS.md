@@ -146,8 +146,11 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   content.
 - **Links are checked on demand, and the report states its scope.** `check_links`
   ([links.ts](src/pages/links.ts)) is what replaces a static build's dead-link gate: it resolves every link a live
-  page wrote out whole (markdown links, `href`, `src`, quoted `/data` and `/assets` literals) against pages,
-  assets, collections and the app's own routes. It counts what it checked and says so when that was nothing,
+  page wrote out whole (markdown links, `href`, `src`, quoted `/data` and `/assets` literals). The platform's
+  `app.routes.serves` answers for every route, screen and file it knows; the `/p`, `/preview`, `/data` and
+  `/assets` claims match any path below them, so for those the checker asks whether a page, collection or asset
+  is stored there. Never keep a list of the platform's routes in the app. It counts what it checked and says so
+  when that was nothing,
   the `check_refs` rule again, because a URL a template or script assembles cannot be seen and an empty list
   must not read as a clean site.
 - **A transfer never edits a page.** Pages hardcode their URLs and there is no reliable way to tell which strings

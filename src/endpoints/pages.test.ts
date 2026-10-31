@@ -164,3 +164,67 @@ describe("access", () => {
     expect(await refusal(t.as(guest).call("publish_page", { path: "/b", content: "x" }))).toMatch(/^404 not found/);
   });
 });
+
+describe("check_links", () => {
+  beforeEach(async () => {
+    await call("publish_page", { path: "/about", content: "# About" });
+    await call("put_item", { path: "/trip/stops", id: "a", fields: {} });
+    await call("upload_asset", {
+      file: new File(["JPEG"], "photo.jpg", { type: "image/jpeg" }),
+      path: "/trip/images/photo.jpg",
+    });
+  });
+
+  it("resolves pages, assets, collections and the platform's own routes", async () => {
+    await call("publish_page", {
+      path: "/trip",
+      content: [
+        "[about](/p/about#team) [home](/) [root](/p/root) [login](/login) [about again](/p/About.html?x=1)",
+        '<img src="/assets/trip/images/photo.jpg"> <a href="/preview/about">',
+        "fetch('/data/trip/stops.json') [index](/data/_collections.json) [tokens](/tokens)",
+      ].join("\n"),
+    });
+    const report = await call("check_links", {});
+    expect(report.broken).toEqual([]);
+    expect(report.links).toBe(10);
+  });
+
+  it("names the page, the line and the link as written for every miss", async () => {
+    await call("publish_page", {
+      path: "/trip",
+      content:
+        "fine [about](/p/about)\n[old](/p/trip/day1) and ![](/assets/trip/images/gone.jpg)\n" +
+        "<a href='/data/trip/nope.json'> [bare](/about) [no json](/data/trip/stops)",
+    });
+    expect((await call("check_links", {})).broken).toEqual([
+      { path: "/trip", line: 2, link: "/p/trip/day1" },
+      { path: "/trip", line: 2, link: "/assets/trip/images/gone.jpg" },
+      { path: "/trip", line: 3, link: "/data/trip/nope.json" },
+      { path: "/trip", line: 3, link: "/about" },
+      { path: "/trip", line: 3, link: "/data/trip/stops" },
+    ]);
+  });
+
+  it("reports a link a move left behind", async () => {
+    await call("publish_page", { path: "/index-page", content: "[trip](/p/trip)" });
+    await call("publish_page", { path: "/trip", content: "# Trip" });
+    await call("move_page", { from: "/trip", to: "/journey" });
+    expect((await call("check_links", {})).broken).toEqual([{ path: "/index-page", line: 1, link: "/p/trip" }]);
+  });
+
+  it("finds a collection a script fetches, but not one it builds from pieces", async () => {
+    await call("publish_page", {
+      path: "/x",
+      content: "fetch('/data/trip/gone.json'); fetch(BASE + 'items.json'); const u = `/data/trip/stops.json`;",
+    });
+    expect((await call("check_links", {})).broken).toEqual([{ path: "/x", line: 1, link: "/data/trip/gone.json" }]);
+  });
+
+  it("says nothing was checked when no link was written out whole", async () => {
+    await call("publish_page", {
+      path: "/x",
+      content: '[out](https://example.org/x) [proto](//cdn.example/x) <a href="{{ p.path }}">',
+    });
+    expect(await call("check_links", {})).toMatchObject({ links: 0, broken: [], warning: expect.any(String) });
+  });
+});

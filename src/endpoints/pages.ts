@@ -1,5 +1,6 @@
 import { EndpointError, endpoint } from "@celsoft/platform";
 import { z } from "zod";
+import { checkLinks } from "../pages/links";
 import {
   deriveTitle,
   discardDraft,
@@ -377,6 +378,57 @@ export const pageEndpoints = {
     async ({ path: raw }, app) => {
       const path = requirePath(raw);
       return { path, discarded: await discardDraft(app, path) };
+    },
+  ),
+
+  check_links: endpoint(
+    {
+      serve: ["api", "mcp"],
+      method: "GET",
+      path: "/api/v1/check_links",
+      description:
+        "Find links in page bodies that point at nothing on this site: a page under /p, an asset under /assets, a " +
+        "collection under /data, or any other path the site does not answer. It reads what a page wrote out whole, " +
+        "markdown links, href and src attributes starting with /, and quoted /data and /assets URLs, in live pages " +
+        "only, stored templates included. A URL a template, a script or a fetch assembles from pieces is not seen, " +
+        "so an empty result means none of the links it found are broken, not that the site has none; the reply says " +
+        "how many it checked. Run it after any move or delete: nothing else checks links, and a broken one shows " +
+        "nowhere until somebody clicks it.",
+      access: { point: site, level: "read" },
+      input: z.object({}),
+      output: z.union([
+        z
+          .object({
+            pages: z.number().describe("Pages read"),
+            links: z.number().describe("0"),
+            broken: z.array(z.unknown()).describe("Empty, and it means nothing was looked at"),
+            warning: z.string().describe("Says so, so an empty broken list is not read as a clean bill of health"),
+          })
+          .describe("No links were found, so nothing was checked"),
+        z
+          .object({
+            pages: z.number().describe("Pages read"),
+            links: z.number().describe("Links checked"),
+            broken: z.array(
+              z.object({
+                path: z.string().describe("The page holding the link"),
+                line: z.number().describe("1 based"),
+                link: z.string().describe("The link as written"),
+              }),
+            ),
+          })
+          .describe("Links were found, so something was checked"),
+      ]),
+    },
+    async (_input, app) => {
+      const report = await checkLinks(app);
+      if (report.links > 0) return report;
+      return {
+        ...report,
+        warning:
+          "No links written out whole were found in any page, so nothing was checked. Links a template or a script " +
+          "assembles are not seen.",
+      };
     },
   ),
 };
