@@ -1,5 +1,4 @@
-import { EndpointError, endpoint } from "@celsoft/platform";
-import { JSONPathError, type JSONValue, query } from "json-p3";
+import { EndpointError, endpoint, jsonPath, query } from "@celsoft/platform";
 import { z } from "zod";
 import { similarity } from "../data/match";
 import { matchItem, parseQuery } from "../data/query";
@@ -38,12 +37,10 @@ const REVS =
 
 const COLLECTION = z.string().describe("Collection path, for example /products");
 const FIELDS = z.record(z.string(), z.unknown());
-const FILTER = z
-  .string()
-  .describe(
-    "An RFC 9535 JSONPath query run against the collection's items array, selecting the items in scope, for example " +
-      '$[?@.stars == 4] or $[?@.section == "north" && @.open == true]. It must select whole items, never fields inside them.',
-  );
+const FILTER = jsonPath().describe(
+  "An RFC 9535 JSONPath query run against the collection's items array, selecting the items in scope, for example " +
+    '$[?@.stars == 4] or $[?@.section == "north" && @.open == true]. It must select whole items, never fields inside them.',
+);
 
 const REFERRER = z.object({
   path: z.string(),
@@ -52,24 +49,23 @@ const REFERRER = z.object({
   ids: z.array(z.string()).describe("Up to twenty of them"),
 });
 
+const PAGE = 1000;
+
 function selectItems(items: Item[], filter: string | undefined): Item[] {
   if (filter === undefined) return items;
-  let nodes;
-  try {
-    nodes = query(filter, items as JSONValue);
-  } catch (error) {
-    if (error instanceof JSONPathError)
-      throw new EndpointError(400, `filter is not an RFC 9535 JSONPath query: ${error.message}`);
-    throw error;
-  }
   const picked = new Set<number>();
-  for (const node of nodes) {
-    if (node.location.length !== 1)
-      throw new EndpointError(
-        400,
-        `filter selected ${node.normalizedPath()}, which is not a whole item. Select items, for example $[?@.stars == 4].`,
-      );
-    picked.add(node.location[0] as number);
+  for (let offset = 0, total = 1; offset < total; offset += PAGE) {
+    const page = query(items, filter, { limit: PAGE, offset });
+    total = page.total;
+    for (const { path } of page.items) {
+      const index = /^\$\[(\d+)\]$/.exec(path);
+      if (!index)
+        throw new EndpointError(
+          400,
+          `filter selected ${path}, which is not a whole item. Select items, for example $[?@.stars == 4].`,
+        );
+      picked.add(Number(index[1]));
+    }
   }
   return items.filter((_, index) => picked.has(index));
 }
