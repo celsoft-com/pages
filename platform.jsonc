@@ -3,7 +3,7 @@
   "name": "pages",
   "hostname": "pages-dev.celsoft.com",
   "worker": "src/worker.ts",
-  "frontend": "public",
+  "frontend": { "dir": "public" },
   "compatibilityDate": "2026-10-01",
   "database": true,
   "email": true,
