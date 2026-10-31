@@ -1,0 +1,12 @@
+User-agent: *
+Disallow: /preview/
+Disallow: /admin/
+Disallow: /api/
+Disallow: /mcp
+Disallow: /login
+Disallow: /signup
+Disallow: /forgot
+Disallow: /reset
+Disallow: /consent
+Disallow: /invites
+Disallow: /tokens
