@@ -165,10 +165,11 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   answer is to report the damage, never to refuse the move or to rewrite something the caller did not name.
 - **The site icon is a path, not a setting.** An asset named `favicon.ico`, `.svg`, `.png`, `.webp` or `.jpg` in
   the `ROOT_BUNDLE` folder is the site icon, first name in that order wins, and [favicon.ts](src/favicon.ts) serves
-  it at `/favicon.ico` with its own content type. Until one is uploaded the built-in default in
-  [favicon-default.ts](src/favicon-default.ts) is served, so a brand new site has an icon before setup. The
-  well-known URL is what carries it: a stored HTML page is verbatim and can be given no `link` tag, so the themed
-  layout and the admin chrome link `/favicon.ico` and everything else falls back to it. Never add a settings field
+  it at `/favicon.ico` with its own content type, through a page claiming that path in [serve.ts](src/serve.ts),
+  gated and cached like the home page. Until one is uploaded the built-in default in
+  [favicon-default.ts](src/favicon-default.ts) is served, so a brand new site has an icon before it has a page.
+  The well-known URL is what carries it: a stored HTML page is verbatim and can be given no `link` tag, so the
+  themed layout links `/favicon.ico` and everything else falls back to it. Never add a settings field
   for this, and never wrap a page to inject an icon.
 - **A path is gated by the nearest private path at or above it.** A private path is the only path with a control
   point of its own, `path:<path>`, and `pointsFor` in [pages-app.ts](src/pages-app.ts) names a path's point, the

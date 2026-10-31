@@ -51,7 +51,8 @@ export const assetEndpoints = {
       description:
         "Store an image or file and return its URL for use on any page. Pass path to file it into a bundle; " +
         "without one it is stored under a hash of its bytes, which keeps working forever but sits in no bundle. " +
-        "Over the API the file goes as multipart form data; an AI client sends it as base64. " +
+        "An image uploaded to /root/favicon.ico, .svg, .png, .webp or .jpg becomes the site icon, served at " +
+        "/favicon.ico. Over the API the file goes as multipart form data; an AI client sends it as base64. " +
         "The size ceiling is the host's, so there is no larger door and no way to send a file in pieces: " +
         "something bigger has to be made smaller first. " +
         BUNDLES,

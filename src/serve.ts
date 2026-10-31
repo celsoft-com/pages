@@ -1,6 +1,7 @@
 import { EndpointError, page, route } from "@celsoft/platform";
 import { z } from "zod";
 import { findAsset } from "./assets/service";
+import { favicon } from "./favicon";
 import { getCollection, manifest, MANIFEST_PATH, normalizeCollectionPath } from "./data/service";
 import { contentsHtml, listable } from "./pages/contents";
 import { normalizeAssetPath, normalizePath, ROOT_BUNDLE } from "./pages/path";
@@ -106,4 +107,14 @@ const preview = page({
   },
 });
 
-export const servedPages = [home, pages, data, assets, preview];
+// The icon sits in the /root folder, so it is gated where the home page is.
+const icon = page({
+  path: "/favicon.ico",
+  routes: {
+    "/": route({ access: { point: () => pointsFor(ROOT_BUNDLE), level: "read" }, cache: CACHE }, (_params, app) =>
+      favicon(app),
+    ),
+  },
+});
+
+export const servedPages = [home, pages, data, assets, preview, icon];

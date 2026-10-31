@@ -133,3 +133,21 @@ describe("/assets", () => {
     expect((await t.fetch("/assets/trip/none.svg")).status).toBe(404);
   });
 });
+
+describe("/favicon.ico", () => {
+  it("serves the built-in icon until one is uploaded to /root", async () => {
+    const response = await t.fetch("/favicon.ico");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+  });
+
+  it("serves the first favicon name found in /root, with its own type", async () => {
+    const upload = (name: string, type: string) =>
+      call("upload_asset", { file: new File([name], name, { type }), path: `/root/${name}` });
+    await upload("favicon.png", "image/png");
+    await upload("favicon.svg", "image/svg+xml");
+    const response = await t.fetch("/favicon.ico");
+    expect(response.headers.get("content-type")).toBe("image/svg+xml");
+    expect(await response.text()).toBe("favicon.svg");
+  });
+});
