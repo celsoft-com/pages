@@ -1,11 +1,116 @@
 import { endpoint } from "@celsoft/platform";
 import { z } from "zod";
 import { getInstructions, MAX_INSTRUCTIONS, saveInstructions } from "../instructions";
-import { SITE_POINT } from "../pages-app";
+import { listPages } from "../pages/service";
+import { templatePath } from "../render/chrome";
+import { getSettings, saveSettings } from "../settings";
+import type { SiteSettings } from "../types";
+import { site } from "./shared";
 
-const site = () => SITE_POINT;
+const CHROME = {
+  head: z.string().describe("HTML in every themed page's head. Empty when none is set."),
+  header: z.string().describe("Path of the template page placed before the content. Empty means the built-in header."),
+  footer: z.string().describe("Path of the template page placed after the content. Empty means the built-in footer."),
+  theme: z.enum(["default", "none"]).describe("default, or none when the built-in styles and chrome are dropped"),
+};
+
+const describeSite = (settings: SiteSettings) => ({
+  title: settings.title,
+  description: settings.description,
+  head: settings.head,
+  header: settings.header,
+  footer: settings.footer,
+  theme: settings.theme,
+});
 
 export const siteEndpoints = {
+  get_site: endpoint(
+    {
+      serve: ["api", "mcp"],
+      method: "GET",
+      path: "/api/v1/get_site",
+      description:
+        "Return the site title, description, chrome, address and page count. " +
+        "Read the chrome here before changing it with set_site_info, which replaces a field whole.",
+      access: { point: site, level: "read" },
+      input: z.object({}),
+      output: z.object({
+        title: z.string(),
+        description: z.string(),
+        ...CHROME,
+        url: z.string().describe("The site's own address"),
+        pages: z.number().describe("How many pages are published"),
+      }),
+    },
+    async (_input, app) => {
+      const [settings, pages] = await Promise.all([getSettings(app), listPages(app)]);
+      return { ...describeSite(settings), url: app.env.APP_URL, pages: pages.length };
+    },
+  ),
+
+  set_site_info: endpoint(
+    {
+      serve: ["api", "mcp"],
+      method: "POST",
+      path: "/api/v1/set_site_info",
+      description:
+        "Update the site title, the description, and the chrome around every markdown page: HTML for the head, the " +
+        "stored templates used as the header and the footer, and whether the built-in theme applies. A template is an " +
+        "ordinary html page holding a fragment, for example /root/chrome/header, named here by its path and edited " +
+        "like any other page. A field left out is kept, and a field passed is replaced whole, so read the current " +
+        "chrome with get_site first. " +
+        "Chrome is live code on every themed page the moment it is saved, with no preview and no validation: a broken " +
+        "tag in the header breaks every page at once. It never touches an HTML page, which is served exactly as written. " +
+        "Moving or deleting a template page does not update these names, and a name pointing at nothing renders the " +
+        "built-in piece. Links between pages belong in the header template if the owner wants a nav on every page; the " +
+        "site draws none of its own.",
+      access: { point: site, level: "manage" },
+      input: z.object({
+        title: z.string().optional().describe("The site's name, shown in the built-in header"),
+        description: z.string().optional().describe("One line under the name, and the page's meta description"),
+        head: z
+          .string()
+          .optional()
+          .describe(
+            "HTML placed in every themed page's head, after the built-in styles, for example a stylesheet link to an asset",
+          ),
+        header: z
+          .string()
+          .optional()
+          .describe(
+            "Path of the page whose body is placed before the content. Refused if no page is stored there. Empty " +
+              "restores the built-in header with the title and description.",
+          ),
+        footer: z
+          .string()
+          .optional()
+          .describe(
+            "Path of the page whose body is placed after the content. Refused if no page is stored there. Empty " +
+              "restores the built-in footer.",
+          ),
+        theme: z
+          .enum(["default", "none"])
+          .optional()
+          .describe(
+            "none drops the built-in styles, header, footer and wrapper, leaving head, header, content and footer as " +
+              "the whole page. For a site with its own stylesheet.",
+          ),
+      }),
+      output: z.object({ title: z.string(), description: z.string(), ...CHROME }),
+    },
+    async ({ title, description, head, header, footer, theme }, app) => {
+      const settings = await saveSettings(app, {
+        ...(title === undefined ? {} : { title }),
+        ...(description === undefined ? {} : { description }),
+        ...(head === undefined ? {} : { head }),
+        ...(header === undefined ? {} : { header: await templatePath(app, "header", header) }),
+        ...(footer === undefined ? {} : { footer: await templatePath(app, "footer", footer) }),
+        ...(theme === undefined ? {} : { theme }),
+      });
+      return describeSite(settings);
+    },
+  ),
+
   get_instructions: endpoint(
     {
       serve: ["api", "mcp"],
