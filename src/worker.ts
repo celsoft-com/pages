@@ -1,4 +1,5 @@
 import { defineApp } from "@celsoft/platform";
+import { assetEndpoints } from "./endpoints/assets";
 import { dataEndpoints } from "./endpoints/data";
 import { pageEndpoints } from "./endpoints/pages";
 import { siteEndpoints } from "./endpoints/site";
@@ -7,7 +8,7 @@ import * as schema from "./schema";
 
 export default defineApp(undefined, {
   schema,
-  endpoints: { ...siteEndpoints, ...pageEndpoints, ...dataEndpoints },
+  endpoints: { ...siteEndpoints, ...pageEndpoints, ...dataEndpoints, ...assetEndpoints },
   access: {
     points: {
       [SITE_POINT]: {
