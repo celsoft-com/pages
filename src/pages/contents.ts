@@ -19,7 +19,7 @@ export function contentsHtml(input: { chrome: Chrome; pages: PageSummary[] }): s
     ? `<ul class="index">${input.pages
         .map(
           (page) =>
-            `<li><a href="${escapeHtml(page.path)}">${escapeHtml(page.title)}</a>` +
+            `<li><a href="/p${escapeHtml(page.path)}">${escapeHtml(page.title)}</a>` +
             `<span>${escapeHtml(page.path)}</span></li>`,
         )
         .join("")}</ul>`

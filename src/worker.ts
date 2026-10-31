@@ -6,10 +6,12 @@ import { siteEndpoints } from "./endpoints/site";
 import { transferEndpoints } from "./endpoints/transfer";
 import { SITE_POINT } from "./pages-app";
 import * as schema from "./schema";
+import { servedPages } from "./serve";
 
 export default defineApp(undefined, {
   schema,
   endpoints: { ...siteEndpoints, ...pageEndpoints, ...dataEndpoints, ...assetEndpoints, ...transferEndpoints },
+  pages: servedPages,
   access: {
     points: {
       [SITE_POINT]: {
