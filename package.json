@@ -20,6 +20,7 @@
   "dependencies": {
     "@celsoft/platform": "^0.34.2",
     "drizzle-orm": "^0",
+    "json-p3": "^3.0.2",
     "liquidjs": "^10.29.0",
     "marked": "^18.0.11",
     "shiki": "^4.4.3",
