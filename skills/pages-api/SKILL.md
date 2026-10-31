@@ -53,7 +53,7 @@ Every call is one POST of a JSON object with a bearer token, and every reply is 
 does that with no dependencies, and reaching for a real HTTP client is usually the better move:
 
 ```python
-import base64, json, urllib.request
+import json, urllib.request
 
 def call(tool, **args):
     req = urllib.request.Request(
@@ -65,17 +65,18 @@ def call(tool, **args):
         return json.load(r)
 
 call("publish_page", path="/notes", content="# Notes")
-call("upload_asset", path="/notes/shot.png", filename="shot.png",
-     content_type="image/png",
-     content_base64=base64.b64encode(open("shot.png", "rb").read()).decode())
 ```
 
-**Prefer this for anything binary or bulky.** `upload_asset` takes the file base64 encoded in the
-field `content_base64`, which is one line in any language and genuinely awkward in a shell, where
-it means encoding to a temporary file and splicing it into JSON without a newline getting in. The
-field is base64 because one registry serves both this API and an MCP connector, and JSON-RPC has
-no way to carry bytes; a raw binary endpoint would be a second surface to keep in step with the
-first. Files are capped, and the discovery entry for `upload_asset` states the ceiling.
+**Prefer this for anything bulky.**
+
+**Uploading is the one call that is not JSON.** `upload_asset` takes the file as multipart form
+data, with `path` beside it, so curl sends it with nothing to encode. The header comes in on stdin
+so the token never reaches argv:
+
+```
+printf 'Authorization: Bearer %s\n' "$PAGES_API_TOKEN" |
+  curl -sS -H @- -F file=@shot.png -F path=/notes/shot.png "$PAGES_SITE_URL/api/v1/upload_asset"
+```
 
 Read the error status, not just the body: 409 means a revision moved and the write was refused,
 which a retry loop must handle by re-reading rather than resending.
@@ -109,14 +110,13 @@ under a path the owner has closed answers 404 to everybody without one, byte for
 404 as a file that was never uploaded, so an agent that omits the header cannot tell the two
 apart and will report the asset missing.
 
-**Uploading is the mirror image.** Build the base64 in a program and write the JSON to a file,
-then send that file. Never read a binary file into the conversation to encode it by hand, and
-never paste base64 into an argument: the file is the point at which the bytes stop being
-something anyone has to look at.
+**Uploading is the mirror image.** Send the file from disk as above. Never read a binary file into
+the conversation to encode it by hand: the file is the point at which the bytes stop being something
+anyone has to look at.
 
-**A file too big is a dead end, not a different door.** The cap the discovery entry states comes
-from the host's limit on a single request, so there is no bulk endpoint hiding somewhere, no way
-to send a file in pieces and nothing to be gained by trying another client. A photograph over the
+**A file too big is a dead end, not a different door.** The size ceiling is the host's, so there
+is no bulk endpoint hiding somewhere, no way to send a file in pieces and nothing to be gained by
+trying another client. A photograph over the
 limit has to be resized or recompressed before it goes up. Say that to the owner rather than
 retrying, and never quietly upload a cropped or degraded version of what they gave you.
 

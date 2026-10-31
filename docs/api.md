@@ -105,9 +105,9 @@ credential.
 
 No tool returns the contents of a file, at either door: a reply is text in the caller's context, and
 a photograph spent there is one nobody can look at. Read a stored file by fetching its `/assets` URL
-over HTTP, with the same bearer token if it sits under a private path. Uploads go the other way as
-base64 through `upload_asset`, because one registry serves both services and JSON-RPC carries no
-bytes.
+over HTTP, with the same bearer token if it sits under a private path. Uploads go the other way
+through `upload_asset`: multipart form data over the REST API, and base64 from an MCP client, which
+the site decodes into the same file before the tool runs.
 
 ## What the server tells a client
 

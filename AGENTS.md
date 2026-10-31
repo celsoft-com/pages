@@ -230,13 +230,12 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   as a lost file rather than a closed one. Nothing about
   the response to a request carrying no credential changes, which is what keeps a private path
   indistinguishable from a missing one. The registry stays metadata only: `list_assets` hands out the
-  URLs, and `upload_asset` is the single capped exception, base64 in because JSON-RPC carries no
-  bytes and a client with no shell has no other way to send a file. Never add a tool that returns
-  bytes. The 4 MB cap is not a policy to relax: Netlify caps a function's whole request at 6 MB and
-  base64 costs a third, so a raw binary endpoint would buy about 1.4x and cost the second surface
-  this design exists to avoid. Chunked upload would lift it properly and brings part storage,
-  assembly and cleanup with it; that trade was looked at and declined. What the tool text and the
-  skill owe a client is that the ceiling is the host's, so nobody goes hunting for a bigger door.
+  URLs, and `upload_asset` is the one tool taking bytes in, through the platform's `upload()` input
+  field: multipart form data over the API, base64 from an MCP client, and the size checked by the
+  platform before the handler runs, so both doors arrive as the same `File`. Never add a tool that
+  returns bytes, and never build an upload route by hand or take base64 in a JSON field: that is the
+  second surface `upload()` exists to avoid. What the tool text and the skill owe a client is that
+  the ceiling is the host's, so nobody goes hunting for a bigger door.
 - **The page editor's highlighting is a CDN script, and it is allowed to fail.**
   [editor.ts](src/admin/editor.ts) loads prism-code-editor from jsDelivr at an exact version on the
   edit screen only. It overlays a real `<textarea>`, so the form posts exactly as it did; replacing
@@ -450,9 +449,8 @@ Until setup completes, `/` renders [welcome.ts](src/welcome.ts) and every other 
   only them taught clients that the API *is* a shell tool: the first reader concluded that uploading a file meant
   base64 through a here-doc and balked, which is a fair reading of a page that showed nothing else.
   [SKILL.md](skills/pages-api/SKILL.md) leads with the HTTP shape and a dependency-free client, and says to prefer
-  it for anything binary or bulky. `upload_asset` carries bytes as base64 because one registry serves this API and
-  a JSON-RPC connector both, and JSON-RPC cannot carry bytes; a raw binary endpoint would be the second surface the
-  whole design exists to avoid, so the answer is to show the one line that encodes a file, not to add an endpoint.
+  it for anything bulky. `upload_asset` is the one call that is not JSON: its file goes as multipart form data, which
+  `curl -F` sends with nothing to encode, and the skill shows that rather than base64.
 - **The served contract is public API.** Collection `/a/b` is served at `/data/a/b.json` as a bare array, each item
   carrying its `id`, in collection order, with nested values untouched. Pages are written against that with no MCP
   access, so it cannot drift: the tool text, the MCP instructions and the tests all state it. Changing any of it means

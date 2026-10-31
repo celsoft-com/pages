@@ -31,9 +31,9 @@ icon before it has a page.
 
 ## Size
 
-A file is capped at about 4 MB. That ceiling is the host's limit on a single request, not a policy,
-so there is no larger endpoint and no way to send a file in pieces. Something bigger has to be made
-smaller first.
+A file has a size ceiling, higher over the REST API than from an MCP client, and a file over it is
+refused before it is read. That ceiling is the host's, not a setting, so there is no larger endpoint
+and no way to send a file in pieces. Something bigger has to be made smaller first.
 
 ## Reading one back
 

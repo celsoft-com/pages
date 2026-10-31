@@ -57,8 +57,8 @@ for it to be filed under the page that uses it.
 
 > Put these three photos under /kitchens and use them on that page.
 
-Files are capped at about 4 MB each, which is the host's limit rather than a setting, so a large
-photo has to be made smaller before it goes up. Claude cannot hand you a file back down the chat: to
+Files have a size ceiling, which is the host's limit rather than a setting, so a large photo has
+to be made smaller before it goes up. Claude cannot hand you a file back down the chat: to
 see one, open its URL. See [assets](assets.md).
 
 ## Moving things later
