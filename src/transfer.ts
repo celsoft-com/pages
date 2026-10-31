@@ -135,7 +135,11 @@ export async function planTransfer(
     overwrite?: boolean;
     ifRev?: number;
   },
-): Promise<{ transfer: Transfer; sources: Sources; targets: Map<string, string> }> {
+): Promise<{
+  transfer: Transfer;
+  sources: Sources;
+  targets: Map<string, string>;
+}> {
   const { scope, verb } = input;
   const from = normalizeFor(scope, input.from);
   const to = verb === "delete" ? null : normalizeFor(scope, String(input.to ?? ""));
@@ -214,7 +218,13 @@ export async function planTransfer(
 }
 
 function resourceFor(kind: Kind, path: string, targets: Map<string, string>, extra: Partial<Resource>): Resource {
-  return { kind, from: path, to: targets.get(`${kind}${path}`) ?? null, replaced: false, ...extra };
+  return {
+    kind,
+    from: path,
+    to: targets.get(`${kind}${path}`) ?? null,
+    replaced: false,
+    ...extra,
+  };
 }
 
 function rewriteRefs(
@@ -297,7 +307,7 @@ export async function applyTransfer(
       createdAt: move ? collection.createdAt : (prior?.createdAt ?? now),
       updatedAt: now,
     };
-    mark(transfer, "collection", collection.path, prior !== null);
+    mark(transfer, "collection", collection.path, prior !== null, rev);
     writes.push({
       run: () => writeCollectionFile(app, next),
       undo: () => (prior ? writeCollectionFile(app, prior) : removeCollectionFile(app, target)),
@@ -337,7 +347,10 @@ export async function applyTransfer(
 
   if (transfer.verb !== "copy") {
     for (const page of sources.pages)
-      writes.push({ run: () => removePageFile(app, page.path), undo: () => writePageFile(app, page) });
+      writes.push({
+        run: () => removePageFile(app, page.path),
+        undo: () => writePageFile(app, page),
+      });
     for (const collection of sources.collections)
       writes.push({
         run: () => removeCollectionFile(app, collection.path),
@@ -345,7 +358,10 @@ export async function applyTransfer(
       });
     for (const asset of sources.assets)
       if (staged.has(asset.key))
-        writes.push({ run: () => removeAsset(app, asset.key), undo: () => rewrite(asset, asset.key) });
+        writes.push({
+          run: () => removeAsset(app, asset.key),
+          undo: () => rewrite(asset, asset.key),
+        });
   }
 
   const done: Write[] = [];
@@ -368,9 +384,11 @@ export async function applyTransfer(
   return { ...transfer, applied: true };
 }
 
-function mark(transfer: Transfer, kind: Kind, from: string, replaced: boolean): void {
+function mark(transfer: Transfer, kind: Kind, from: string, replaced: boolean, rev?: number): void {
   const resource = transfer.resources.find((r) => r.kind === kind && r.from === from);
-  if (resource) resource.replaced = replaced;
+  if (!resource) return;
+  resource.replaced = replaced;
+  if (rev !== undefined) resource.rev = rev;
 }
 
 // A bundle touches more than one thing at a time, so it never applies without being asked twice.
@@ -401,8 +419,8 @@ function escape(literal: string): string {
 
 // A page hardcodes the URLs it fetches, so anything the transfer takes away strands whoever
 // still names it. The exact URL catches fetch('/data/trip/items.json'); the parent catches a
-// const BASE = "/data/trip/". A page path is matched on segment boundaries so that a link to
-// /trip does not report for /tripwire, and a link to /trip/day1 does not report for /trip.
+// const BASE = "/data/trip/". A page is linked as /p plus its path, matched on segment boundaries so that a link to
+// /p/trip does not report for /p/tripwire, and a link to /p/trip/day1 does not report for /p/trip.
 export function stalePatterns(transfer: Transfer): RegExp[] {
   const patterns: RegExp[] = [];
   const prefixed = (root: string, path: string) => {
@@ -419,7 +437,7 @@ export function stalePatterns(transfer: Transfer): RegExp[] {
     if (resource.kind === "collection") prefixed("/data", resource.from);
     if (resource.kind === "asset") prefixed("/assets", resource.from);
     if (resource.kind === "page")
-      patterns.push(new RegExp(`(?<![A-Za-z0-9._~-])${escape(resource.from)}(?![A-Za-z0-9._~/-])`));
+      patterns.push(new RegExp(`(?<![A-Za-z0-9._~-])${escape(`/p${resource.from}`)}(?![A-Za-z0-9._~/-])`));
   }
   return patterns;
 }

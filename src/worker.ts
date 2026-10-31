@@ -3,12 +3,13 @@ import { assetEndpoints } from "./endpoints/assets";
 import { dataEndpoints } from "./endpoints/data";
 import { pageEndpoints } from "./endpoints/pages";
 import { siteEndpoints } from "./endpoints/site";
+import { transferEndpoints } from "./endpoints/transfer";
 import { SITE_POINT } from "./pages-app";
 import * as schema from "./schema";
 
 export default defineApp(undefined, {
   schema,
-  endpoints: { ...siteEndpoints, ...pageEndpoints, ...dataEndpoints, ...assetEndpoints },
+  endpoints: { ...siteEndpoints, ...pageEndpoints, ...dataEndpoints, ...assetEndpoints, ...transferEndpoints },
   access: {
     points: {
       [SITE_POINT]: {
