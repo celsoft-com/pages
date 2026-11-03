@@ -1,11 +1,5 @@
 import { defineApp } from "@celsoft/platform";
-import { assetEndpoints } from "./endpoints/assets";
-import { dataEndpoints } from "./endpoints/data";
-import { geoEndpoints } from "./endpoints/geo";
-import { pageEndpoints } from "./endpoints/pages";
-import { privacyEndpoints } from "./endpoints/privacy";
-import { siteEndpoints } from "./endpoints/site";
-import { transferEndpoints } from "./endpoints/transfer";
+import { endpoints } from "./endpoints";
 import { MCP_INSTRUCTIONS } from "./mcp-instructions";
 import { SITE_POINT } from "./pages-app";
 import * as schema from "./schema";
@@ -13,7 +7,7 @@ import { servedPages } from "./serve";
 
 export default defineApp(undefined, {
   schema,
-  endpoints: { ...siteEndpoints, ...pageEndpoints, ...dataEndpoints, ...assetEndpoints, ...transferEndpoints, ...privacyEndpoints, ...geoEndpoints },
+  endpoints,
   pages: servedPages,
   mcp: { instructions: MCP_INSTRUCTIONS },
   // Templates read across the site, so no write can name every page it changed: each one empties them all.

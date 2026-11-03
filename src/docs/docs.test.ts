@@ -3,6 +3,8 @@ import { testApp } from "@celsoft/platform/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import app from "../worker";
 import { LICENSE_MD, README_MD, TOPIC_SOURCES } from "./content";
+import { ENDPOINT_GROUPS } from "../endpoints";
+import { GROUPS, slugOf } from "./reference";
 import { linkToPage, REPOSITORY, topics } from "./topics";
 
 let t: Awaited<ReturnType<typeof testApp>>;
@@ -11,7 +13,12 @@ beforeAll(async () => {
 });
 afterAll(() => t.close());
 
-const PAGES = ["/docs", "/docs/license", ...topics().map((topic) => `/docs/${topic.slug}`)];
+const PAGES = [
+  "/docs",
+  "/docs/license",
+  ...topics().map((topic) => `/docs/${topic.slug}`),
+  ...GROUPS.map((group) => `/docs/tools/${slugOf(group)}`),
+];
 
 describe("the generated content", () => {
   it("is the README, the licence and every topic as they are on disk", () => {
@@ -80,3 +87,32 @@ describe("linkToPage", () => {
     );
   });
 });
+
+describe("the tool reference", () => {
+  it("documents every endpoint once, in the group of the file that defines it", async () => {
+    const grouped = Object.values(ENDPOINT_GROUPS).flatMap((group) => Object.keys(group));
+    expect([...grouped].sort()).toEqual(Object.keys(app.endpoints).sort());
+    for (const [group, defined] of Object.entries(ENDPOINT_GROUPS)) {
+      const html = await (await t.fetch(`/docs/tools/${slugOf(group)}`)).text();
+      for (const name of Object.keys(defined)) expect(html, `${group} ${name}`).toContain(`id="${name}"`);
+    }
+  });
+
+  it("draws a tool from its own description and field descriptions", async () => {
+    const html = await (await t.fetch("/docs/tools/data")).text();
+    expect(html).toContain("<code>GET /api/v1/list_items</code>");
+    expect(html).toContain("Field names to include. Defaults to every field. id is always included.");
+    expect(html).toContain("<code>POST /api/v1/put_item</code>");
+    expect(html).toContain('<span class="pill write">write</span>');
+  });
+
+  it("lists every tool on the index, under the tools topic", async () => {
+    const html = await (await t.fetch("/docs/tools")).text();
+    for (const name of Object.keys(app.endpoints)) expect(html, name).toContain(`#${name}"`);
+  });
+
+  it("answers 404 for a group that does not exist", async () => {
+    expect((await t.fetch("/docs/tools/nowhere")).status).toBe(404);
+  });
+});
+

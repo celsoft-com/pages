@@ -6,20 +6,17 @@ order: 25
 # Tool reference
 
 Every tool is the same tool whichever way it is called: the same name, the same arguments, the same
-result. Nothing is offered over MCP and withheld from REST, or the other way round.
+result. Nothing is offered over MCP and withheld from REST, or the other way round. Over REST each is
+an endpoint at `/api/v1/<tool>`, a GET for a read and a POST for a write; over MCP it is a tool of the
+same name.
 
 Each tool documents itself: its description, and a description on every argument and every field of
-its result. An MCP client reads all of that from the tool list when it connects. A reference page
-served by the site, drawn from the same descriptions, is not available yet.
+its result. The reference below is drawn from those, so it describes the deploy serving it. A client
+reads the same thing as an OpenAPI document at `/api/platform/openapi.json`, with a token or signed
+in, and an MCP client reads it from the tool list when it connects.
 
-The tools fall into five groups:
-
-- **Pages:** publishing, reading, editing, drafts and checking links. See [pages](pages.md).
-- **Data:** collections and their items. See [data collections](collections.md).
-- **Assets:** listing and uploading files. See [images and files](assets.md).
-- **Transfers:** copying, moving and deleting pages, collections, assets and bundles. See
-  [copy, move and delete](transfer.md) and [path bundles](bundles.md).
-- **Site:** the title, description and chrome, and the owner's instructions. See
-  [connecting a client](api.md).
+The tag beside each tool is the level it needs on the path it names, or on the site: `read`,
+`create`, `write`, `delete` or `manage`. A token's cap must reach it, and on a
+[private path](privacy.md) only the owner has it.
 
 Signing in, tokens and status codes are in [connecting a client](api.md).

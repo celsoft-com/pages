@@ -59,6 +59,20 @@ th { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color:
   display: inline-block; padding: .3rem .1rem; margin-right: 1.1rem; cursor: pointer;
   font-size: .85rem; font-weight: 560; color: var(--muted); border-bottom: 2px solid transparent;
 }
+td.name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; white-space: nowrap; }
+td.type { color: var(--muted); font-size: .82rem; }
+td.need { color: var(--muted); font-size: .82rem; white-space: nowrap; }
+.tool { border-top: 1px solid var(--rule); padding-top: 1.6rem; margin-top: 2.4rem; }
+.tool h2 { margin-top: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.15rem; }
+.tool h2 a { color: inherit; text-decoration: none; }
+.pill { font-size: .72rem; padding: .1rem .5rem; border-radius: 99px; border: 1px solid var(--rule);
+  color: var(--muted); vertical-align: middle; margin-left: .5rem; font-family: inherit; font-weight: 500; }
+.pill.read, .pill.anyone { color: var(--read); border-color: var(--read); }
+.pill.create, .pill.write, .pill.delete, .pill.manage { color: var(--write); border-color: var(--write); }
+.endpoint { color: var(--muted); font-size: .85rem; margin: 0 0 1rem; }
+ul.tools { list-style: none; padding: 0; }
+ul.tools li { padding: .45rem 0; border-bottom: 1px solid var(--rule); display: flex; gap: .75rem; align-items: baseline; }
+ul.tools a { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; text-decoration: none; }
 footer.docs { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .8rem; }
 @media (max-width: 55rem) {
   .shell { display: block; padding: 0 1rem; }
@@ -73,11 +87,14 @@ footer.docs { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--r
 export interface NavItem {
   href: string;
   label: string;
+  children?: NavItem[];
 }
 
 function navHtml(items: NavItem[], here: string): string {
-  const entry = (item: NavItem) =>
-    `<li><a href="${item.href}"${item.href === here ? ' aria-current="page"' : ""}>${escapeHtml(item.label)}</a></li>`;
+  const entry = (item: NavItem): string =>
+    `<li><a href="${item.href}"${item.href === here ? ' aria-current="page"' : ""}>${escapeHtml(item.label)}</a>${
+      item.children ? `<ul>${item.children.map(entry).join("")}</ul>` : ""
+    }</li>`;
   return `<ul>${items.map(entry).join("")}</ul>`;
 }
 

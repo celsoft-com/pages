@@ -70,13 +70,12 @@ it. Ask for a share link for each person you want to let in, and revoke one when
 
 ## Documentation
 
-Every deploy serves its own guides at `/docs`: this README and the topics in [docs/](docs), from
-the copy that deploy was built with.
+Every deploy serves its own documentation at `/docs`: this README, the topics in [docs/](docs), and
+a reference to every tool drawn from the code it is running.
 
 ## Not available yet
 
-A tool reference at `/docs`, an admin screen, and the agent skill for the REST API are not available
-yet.
+An admin screen and the agent skill for the REST API are not available yet.
 
 ## Development
 

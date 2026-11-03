@@ -1,7 +1,7 @@
 import { EndpointError, page, route } from "@celsoft/platform";
 import { z } from "zod";
 import { findAsset } from "./assets/service";
-import { docsPage } from "./docs/pages";
+import { docsPage, referencePage } from "./docs/pages";
 import { favicon } from "./favicon";
 import { getCollection, manifest, MANIFEST_PATH, normalizeCollectionPath } from "./data/service";
 import { contentsHtml, listable } from "./pages/contents";
@@ -121,12 +121,17 @@ const icon = page({
 
 // The software's own documentation, the same on every site and readable by anyone the site is.
 const SLUG = z.object({ slug: z.string() });
+const GROUP = z.object({ group: z.string() });
 const docs = page({
   path: "/docs",
   routes: {
     "/": route({ access: { point: () => SITE_POINT, level: "read" }, cache: CACHE }, (_params, app) => docsPage(app, "")),
     "/:slug": route({ params: SLUG, access: { point: () => SITE_POINT, level: "read" }, cache: CACHE }, ({ slug }, app) =>
       docsPage(app, slug),
+    ),
+    "/tools/:group": route(
+      { params: GROUP, access: { point: () => SITE_POINT, level: "read" }, cache: CACHE },
+      ({ group }, app) => referencePage(app, group),
     ),
   },
 });

@@ -314,13 +314,18 @@ schema, `invalidates: "all"` and the `site` access point.
   `typecheck` and `test` scripts, so neither needs a build first. `linkToPage` in
   [topics.ts](src/docs/topics.ts) turns a link to a topic file into its page and any other relative link into
   one to the repository, and [docs.test.ts](src/docs/docs.test.ts) fails on a docs link that would 404.
+- **The tool reference is the endpoints, drawn.** `/docs/tools` renders the platform's
+  `openApiDocument(endpoints, ...)` as tables in [reference.ts](src/docs/reference.ts): each tool's description,
+  its arguments and its result, every word from the endpoint's own `description` and `.describe()` calls. The
+  groups are the files that define the endpoints, through `ENDPOINT_GROUPS` in
+  [endpoints/index.ts](src/endpoints/index.ts), so nothing keeps a list of tools. [docs/tools.md](docs/tools.md)
+  is the reference's introduction rather than a page of its own.
 
 ## Not available yet
 
 These wait on @celsoft/platform. Build none of them, and no stand-in for any of them, until the
 platform offers what each needs.
 
-- **The tool reference at `/docs/tools`,** drawn from the endpoints, which needs documented API discovery.
 - **An admin screen.** The owner works through Claude, the API and the platform's own screens.
 - **The [pages-api](skills/pages-api) skill,** which needs documented REST discovery. Its files predate the
   platform and do not match the site.

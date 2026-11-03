@@ -49,14 +49,16 @@ def call(tool, **args):
         return json.load(r)
 ```
 
-A list of the endpoints served by the site itself is not available yet.
+`GET /api/platform/openapi.json`, with the same token, is the OpenAPI document of every endpoint: its
+method, path, arguments, result and the level it needs. The [tool reference](tools.md) draws the
+same document as pages.
 
 ## Tokens
 
 Make a token at `/tokens` while signed in, and give it a cap: `read`, `create`, `write`, `delete` or
 `manage`. A token acts as you, never above its cap: a `read` token gets a 403 on anything but a
-read, and a call needing more than the cap is refused the same way. Revoke a token on the same
-screen.
+read. A call that names a path is checked on that path, and a cap too low for it answers 404, the
+same as a path that is not there. Revoke a token on the same screen.
 
 ## When a call fails
 
@@ -66,7 +68,7 @@ A refused call is an HTTP status and a message saying what was wrong.
 | ---- | ------- |
 | 400 | The arguments were refused. The message says which and why. |
 | 401 | No token, or one that is unknown, expired or revoked. |
-| 403 | The token's cap is below what the call needs. |
+| 403 | A `read` token asked for something other than a read. |
 | 404 | Nothing at that path, or a path you may not reach: the two look the same. |
 | 409 | A revision conflict: the `if_rev` you passed is stale. Re-read and reapply. |
 | 413 | An upload larger than the ceiling, refused unread. |
