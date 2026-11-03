@@ -34,6 +34,10 @@ def out(status, body):
     sys.stdout.write(text if text.endswith("\n") or not text else text + "\n")
     if 200 <= status < 300:
         return 0
+    if pages_config.from_edge(status, body):
+        print("pages: 403 from Cloudflare in front of the site, not from the site. The reply above says why.",
+              file=sys.stderr)
+        return 1
     print(f"pages: {SAY.get(status, f'HTTP {status}')}", file=sys.stderr)
     return EXIT.get(status, 1)
 

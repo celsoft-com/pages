@@ -16,6 +16,9 @@ import urllib.request
 CONFIG_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "pages", "config")
 OPENAPI_PATH = "/api/platform/openapi.json"
 CALLER_PATH = "/api/platform/caller"
+# Cloudflare refuses Python's default user agent with its own 403 (error 1010) before the site sees
+# the request, so the scripts name themselves.
+USER_AGENT = "pages-api-skill/1"
 
 
 class NotConfigured(Exception):
@@ -44,7 +47,7 @@ def resolve():
 
 def request(site, token, method, path, body=None, timeout=60):
     """One HTTP call. Returns (status, bytes); the token goes in a header and nowhere else."""
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "User-Agent": USER_AGENT}
     data = None
     if body is not None:
         data = json.dumps(body).encode()
@@ -55,6 +58,16 @@ def request(site, token, method, path, body=None, timeout=60):
             return response.status, response.read()
     except urllib.error.HTTPError as error:
         return error.code, error.read()
+
+
+def from_edge(status, body):
+    """A refusal written by Cloudflare in front of the site, which says nothing about the token."""
+    if status != 403:
+        return False
+    try:
+        return bool(json.loads(body).get("cloudflare_error"))
+    except ValueError:
+        return False
 
 
 def query(args):

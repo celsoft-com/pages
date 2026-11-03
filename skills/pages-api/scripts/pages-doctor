@@ -40,6 +40,9 @@ def main():
             print(f"ROLE: {(caller.get('user') or {}).get('role') or 'none'}")
             print(f"CAP: {caller.get('cap') or 'none'}")
         print("READY: yes")
+    elif pages_config.from_edge(status, body):
+        print("READY: no")
+        print("FIX: Cloudflare in front of the site refused the request before the site saw it; read its reply.")
     elif status == 401:
         print("READY: no")
         print("FIX: the token is unknown, expired or revoked. Make another at /tokens on the site, then run pages-login.")
