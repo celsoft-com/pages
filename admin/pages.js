@@ -146,11 +146,17 @@ function metaChanges(before, after) {
 // link is shown here once, because only its hash is kept.
 async function accessPanel(path) {
   const listed = await call("list_shares", { path });
-  const box = el("div", { id: "access" });
-  const redraw = async (minted) => box.replaceWith(await accessPanel(path).then((p) => (minted && p.prepend(minted), p)));
+  // The panel redraws itself in place, so revoking or minting keeps the editor's unsaved text.
+  let node;
+  const redraw = async (minted) => {
+    const next = await accessPanel(path);
+    if (minted) next.append(minted);
+    node.replaceWith(next);
+  };
 
   if (listed.closed_by)
     return panel(
+      el("span", { id: "access" }),
       text("h2", "Access"),
       el("p", {}, "Private, because ", link(listed.closed_by, to("/page", { path: listed.closed_by })), " is. Its links open this page too."),
     );
@@ -158,7 +164,7 @@ async function accessPanel(path) {
   const scope = listed.private[0];
   if (!scope)
     return panel(
-      el("div", { id: "access" }),
+      el("span", { id: "access" }),
       text("h2", "Access"),
       el(
         "div",
@@ -219,8 +225,8 @@ async function accessPanel(path) {
     },
   );
 
-  return panel(
-    box,
+  node = panel(
+    el("span", { id: "access" }),
     text("h2", "Access"),
     el(
       "div",
@@ -228,7 +234,9 @@ async function accessPanel(path) {
       pill("Private", true),
       confirmInPlace(
         "Make public",
-        `Reopen ${path} to everyone and end ${scope.shares.length === 1 ? "its link" : `all ${scope.shares.length} of its links`}`,
+        scope.shares.length === 0
+          ? `Reopen ${path} to everyone`
+          : `Reopen ${path} to everyone and end ${scope.shares.length === 1 ? "its link" : `all ${scope.shares.length} of its links`}`,
         async () => {
           await call("set_privacy", { path, private: false });
           flash(`${path} is public again.`);
@@ -240,6 +248,7 @@ async function accessPanel(path) {
     shares,
     mint,
   );
+  return node;
 }
 
 export async function pageView(params) {
