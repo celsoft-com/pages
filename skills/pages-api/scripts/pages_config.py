@@ -15,6 +15,7 @@ import urllib.request
 
 CONFIG_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "pages", "config")
 OPENAPI_PATH = "/api/platform/openapi.json"
+CALLER_PATH = "/api/platform/caller"
 
 
 class NotConfigured(Exception):

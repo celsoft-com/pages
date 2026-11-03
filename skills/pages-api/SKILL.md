@@ -196,8 +196,10 @@ scripts/pages-doctor
 ```
 
 It changes nothing, never prints the token, and reports one fact per line: which config it found,
-the site, whether the credential reaches the API document, and how many tools it lists. `READY: no`
-comes with a `FIX:` line.
+the site, whether the credential reaches the API document, how many tools it lists, the role of the
+person the token acts as, and its `CAP`. A call on a path answers 404 both when nothing is there and
+when the cap is too low for it, so check `CAP` against the level the API document gives that tool
+before reporting something missing. `READY: no` comes with a `FIX:` line.
 
 ## What this cannot do
 

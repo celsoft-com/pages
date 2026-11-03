@@ -33,6 +33,12 @@ def main():
     if 200 <= status < 300:
         paths = json.loads(body).get("paths", {})
         print(f"TOOLS: {sum(1 for path in paths if path.startswith('/api/v1/'))}")
+        # The cap is what tells a call refused for a low cap from a path that is not there: both are 404.
+        who_status, who = pages_config.request(site, token, "GET", pages_config.CALLER_PATH, timeout=20)
+        if who_status == 200:
+            caller = json.loads(who)
+            print(f"ROLE: {(caller.get('user') or {}).get('role') or 'none'}")
+            print(f"CAP: {caller.get('cap') or 'none'}")
         print("READY: yes")
     elif status == 401:
         print("READY: no")
