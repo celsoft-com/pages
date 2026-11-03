@@ -338,6 +338,11 @@ schema, `invalidates: "all"` and the `site` access point.
   target with its source byte for byte and exits 1 on a difference, and [seed-export.mjs](scripts/seed-export.mjs)
   writes an export of the guides and a demo trip for a site that has nothing yet, such as a preview. The old
   API, which took every call as a POST, is read the same way.
+- **Redirects are data, for links from outside.** [redirects.ts](src/endpoints/redirects.ts) lists, sets and
+  removes the platform's `app.redirects`, which answer only an address nothing else does, so a redirect never
+  hides content. Content and templates still link to current addresses; a redirect is for a link the site does
+  not control, such as an old URL somebody bookmarked. A migration from a site that served pages at their own
+  paths leaves one per old page path.
 - **The skill points at the site, it does not copy it.** [skills/pages-api](skills/pages-api) is an Agent Skills
   collection shipped from this repo, installed with `npx skills add celsoft-com/pages --skill '*' -g -y`. Every
   install is a different site at a different URL, so the skill teaches an agent how to find the address and the

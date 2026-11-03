@@ -3,6 +3,7 @@ import { dataEndpoints } from "./data";
 import { geoEndpoints } from "./geo";
 import { pageEndpoints } from "./pages";
 import { privacyEndpoints } from "./privacy";
+import { redirectEndpoints } from "./redirects";
 import { siteEndpoints } from "./site";
 import { transferEndpoints } from "./transfer";
 
@@ -15,6 +16,7 @@ export const ENDPOINT_GROUPS = {
   Transfers: transferEndpoints,
   Privacy: privacyEndpoints,
   Maps: geoEndpoints,
+  Redirects: redirectEndpoints,
   Site: siteEndpoints,
 };
 
@@ -26,4 +28,5 @@ export const endpoints = {
   ...transferEndpoints,
   ...privacyEndpoints,
   ...geoEndpoints,
+  ...redirectEndpoints,
 };
