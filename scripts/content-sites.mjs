@@ -277,6 +277,15 @@ export function rewriteLinks(source, format) {
   return { text, changes };
 }
 
+// The redirect each old page path needs, from a site that served pages at their own paths: the home page
+// and the templates filed under /root were never addresses of their own, and / is unchanged.
+export function oldPathRedirects(content) {
+  return content.pages
+    .map((page) => page.path)
+    .filter((path) => path !== "/root" && !path.startsWith("/root/") && pageHref(path) !== path)
+    .map((path) => ({ from: path, to: pageHref(path) }));
+}
+
 // The whole content with every page's links in their new form, and the list of what changed.
 export function rewriteContent(content) {
   const rewritten = [];

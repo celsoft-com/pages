@@ -15,19 +15,20 @@
 // it would write and writes nothing. It never deletes anything on the target; what the target holds
 // and the source does not is reported, for a person to decide.
 //
+// --redirect-old-paths leaves a 301 from each old page path to its /p URL, for links from outside.
 // --rewrite-links moves internal links to the scheme this site serves, pages under /p: see
 // rewriteLinks in content-sites.mjs. It is a step of a migration, never something a transfer does.
 //
 // What cannot move: share links, because a site keeps only a hash of each. A private path arrives
 // closed, and its links are minted again on the target.
-import { canonical, openSource, openTarget, parseArgs, rewriteContent, same, sha256, SiteError, writeExport } from "./content-sites.mjs";
+import { canonical, oldPathRedirects, openSource, openTarget, parseArgs, rewriteContent, same, sha256, SiteError, writeExport } from "./content-sites.mjs";
 
 const actions = [];
 const notes = [];
 const act = (line) => actions.push(line);
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2), ["dry-run", "rewrite-links"]);
+  const options = parseArgs(process.argv.slice(2), ["dry-run", "rewrite-links", "redirect-old-paths"]);
   if (!options.source) throw new SiteError("usage: migrate-content.mjs --source <url|dir> [--token-env NAME] (--target <url> [--target-token-env NAME] [--dry-run] | --export <dir>)");
   const source = await openSource(options.source, options["token-env"]);
   let content = await source.read();
@@ -94,6 +95,18 @@ async function main() {
         }),
       );
     if (!page.draft && there?.draft) notes.push(`${page.path} has a draft on the target and none in the source; left alone`);
+  }
+
+  // From a site that served pages at their own paths: each old address answers with a 301 to the page's
+  // /p URL, for links the site does not control. Content itself links to the new addresses.
+  if (options["redirect-old-paths"]) {
+    const { redirects } = await target.read("list_redirects");
+    const there = new Map(redirects.map((r) => [r.from, r]));
+    for (const { from, to } of oldPathRedirects(content)) {
+      const was = there.get(from);
+      if (was && was.to === to && !was.prefix && was.status === 301) continue;
+      await write(`redirect ${from} -> ${to}`, () => target.call("set_redirect", { from, to }));
+    }
   }
 
   const collectionsThere = new Map(current.collections.map((c) => [c.path, c]));

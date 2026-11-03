@@ -6,10 +6,10 @@
 // Arguments and tokens as for migrate-content.mjs. It reads both whole and reports every page (live
 // and draft), item (fields and order), collection reference, asset (by SHA-256 of its bytes), the
 // instructions, the site settings and the private paths that differ. It exits 1 on any difference.
-import { canonical, openSource, openTarget, parseArgs, rewriteContent, same, sha256, SiteError } from "./content-sites.mjs";
+import { canonical, oldPathRedirects, openSource, openTarget, parseArgs, rewriteContent, same, sha256, SiteError } from "./content-sites.mjs";
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2), ["rewrite-links"]);
+  const options = parseArgs(process.argv.slice(2), ["rewrite-links", "redirect-old-paths"]);
   if (!options.source || !options.target) throw new SiteError("usage: verify-content.mjs --source <url|dir> [--token-env NAME] --target <url> [--target-token-env NAME]");
   const source = await openSource(options.source, options["token-env"]);
   const target = openTarget(options.target, options["target-token-env"] ?? "TARGET_TOKEN");
@@ -67,6 +67,15 @@ async function main() {
     else if (there.contentType !== asset.contentType)
       problems.push(`asset ${asset.path ?? asset.filename}: served as ${there.contentType}, not ${asset.contentType}`);
   }
+
+  // Each old address must answer, signed out, with a 301 to the page's /p URL.
+  if (options["redirect-old-paths"])
+    for (const { from, to } of oldPathRedirects(want)) {
+      checked++;
+      const response = await fetch(`${target.url}${from}`, { redirect: "manual", headers: { "user-agent": "pages-migrate/1" } });
+      const location = response.headers.get("location") ?? "";
+      if (response.status !== 301 || !location.endsWith(to)) problems.push(`redirect ${from}: ${response.status} ${location}, not 301 to ${to}`);
+    }
 
   if (have.instructions !== want.instructions) problems.push("instructions differ");
   for (const [field, value] of Object.entries(want.site))
