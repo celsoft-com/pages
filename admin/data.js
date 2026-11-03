@@ -2,6 +2,11 @@ import { call } from "../.platform/client";
 import { render } from "./main.js";
 import { area, confirmInPlace, el, field, flash, form, input, link, muted, panel, submit, text, to } from "./ui.js";
 
+const start = () =>
+  form([field("New collection path", input("path", { required: true, placeholder: "/products" }))], submit("Open"), ({ path }) => {
+    location.hash = to("/collection", { path: path.trim() });
+  });
+
 export async function collectionsView() {
   const { collections } = await call("list_collections", {});
   const rows = collections.length
@@ -30,6 +35,7 @@ export async function collectionsView() {
     text("h1", "Data"),
     muted("Each collection is served as a bare JSON array at its url, for pages to fetch."),
     panel(el("table", {}, el("thead", {}, el("tr", {}, ...["Collection", "Items", "References", ""].map((h) => text("th", h)))), el("tbody", {}, ...rows))),
+    panel(start()),
   );
 }
 
@@ -51,7 +57,12 @@ function parseFields(raw) {
 // rev it was read at, so a stale screen is refused rather than overwriting someone else's change.
 export async function collectionView(params) {
   const path = params.get("path");
-  const listed = await call("list_items", { path, limit: 200 });
+  // A collection exists once its first item is written, so a new path is an empty list to add to.
+  const listed = await call("list_items", { path, limit: 200 }).catch((error) => {
+    if (error.status === 400 && /No collection exists/.test(error.message))
+      return { total: 0, items: [], url: `/data${path}.json` };
+    throw error;
+  });
 
   const itemRow = ({ id, rev, item }) => {
     const { id: _, ...fields } = item;
