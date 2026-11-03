@@ -13,18 +13,22 @@ export async function assetsView() {
         el(
           "tr",
           {},
-          el("td", {}, link(a.path ?? a.filename, a.url, { target: "_blank" }), text("div", a.filename, { className: "small muted" })),
+          el(
+            "td",
+            {},
+            link(a.path ?? a.filename, a.url, { target: "_blank" }),
+            text("div", a.path ? a.filename : "stored by hash, with no path", { className: "small muted" }),
+          ),
           el("td", { className: "small muted" }, size(a.bytes)),
           el(
             "td",
             { className: "actions" },
-            a.path
-              ? confirmInPlace("Delete", `Delete ${a.path} for good`, async () => {
-                  await call("delete_asset", { path: a.path });
-                  flash(`Deleted ${a.path}.`);
-                  await render();
-                })
-              : text("span", "stored by hash", { className: "small muted" }),
+            // A file stored by hash has no path, so it is named by its key, the last part of its url.
+            confirmInPlace("Delete", `Delete ${a.path ?? a.filename} for good`, async () => {
+              await call("delete_asset", { path: a.path ?? `/${a.url.split("/assets/")[1]}` });
+              flash(`Deleted ${a.path ?? a.filename}.`);
+              await render();
+            }),
           ),
         ),
       )
