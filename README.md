@@ -75,8 +75,8 @@ the copy that deploy was built with.
 
 ## Not available yet
 
-A tool reference at `/docs`, an admin screen, map tools, and the agent skill for the REST API are
-not available yet.
+A tool reference at `/docs`, an admin screen, and the agent skill for the REST API are not available
+yet.
 
 ## Development
 

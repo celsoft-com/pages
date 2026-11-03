@@ -291,6 +291,11 @@ schema, `invalidates: "all"` and the `site` access point.
   `prefer` is refused for walking or driving, never ignored, and its `ways` breakdown never becomes a single
   safety number. Cycling and walking never go to the public OSRM server, which is car-only whatever profile it is
   asked for.
+- **The openrouteservice key is optional, and read from `app.env`.** [endpoints/geo.ts](src/endpoints/geo.ts)
+  serves `geocode` and `route`; `orsKey` in [service.ts](src/geo/service.ts) passes `ORS_API_KEY` to the
+  providers when the deploy has one, and without it the public services answer, which is the richer path for
+  cycling. Never read it from `process.env`. Tests give it with `testApp(app, { env: { ORS_API_KEY: "test" } })`
+  and stub `fetch` with [http.ts](src/test/http.ts), so the suite never reaches the network.
 - **The build stamp is read, never written.** `{{ build }}` comes from [build.ts](src/build.ts), which reads
   the `DEPLOY_TARGET`, `DEPLOY_AT`, `DEPLOY_COMMIT` and `DEPLOY_BRANCH` the platform gives the Worker, so it
   always describes the deploy actually serving the page. Never stamp a file at build time for it. Under
@@ -317,6 +322,5 @@ platform offers what each needs.
 
 - **The tool reference at `/docs/tools`,** drawn from the endpoints, which needs documented API discovery.
 - **An admin screen.** The owner works through Claude, the API and the platform's own screens.
-- **The geo tools,** which need app secrets.
 - **The [pages-api](skills/pages-api) skill,** which needs documented REST discovery. Its files predate the
   platform and do not match the site.

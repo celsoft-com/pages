@@ -75,14 +75,9 @@ export interface RouteResult {
 
 const OSM = "© OpenStreetMap contributors, ODbL";
 
-function apiKey(): string {
-  if (typeof process === "undefined") return "";
-  return (process.env?.ORS_API_KEY ?? "").trim();
-}
-
-export function keyed(): boolean {
-  return apiKey() !== "";
-}
+// The openrouteservice key, when the deploy has one. Without it the public OpenStreetMap services
+// answer, which is the richer path for cycling: only BRouter takes prefer and reports the ways.
+export type OrsKey = string | undefined;
 
 async function request(url: string, init: RequestInit = {}): Promise<Response> {
   try {
@@ -142,10 +137,10 @@ async function nominatimGeocode(query: string, limit: number): Promise<GeocodeRe
   };
 }
 
-async function orsGeocode(query: string, limit: number): Promise<GeocodeResult> {
+async function orsGeocode(query: string, limit: number, key: string): Promise<GeocodeResult> {
   const url =
     "https://api.openrouteservice.org/geocode/search?" +
-    new URLSearchParams({ api_key: apiKey(), text: query, size: String(limit) });
+    new URLSearchParams({ api_key: key, text: query, size: String(limit) });
   const body = await getJson(url);
   const features = Array.isArray(body?.features) ? body.features : [];
   return {
@@ -167,8 +162,8 @@ async function orsGeocode(query: string, limit: number): Promise<GeocodeResult> 
   };
 }
 
-export async function geocode(query: string, limit: number): Promise<GeocodeResult> {
-  return keyed() ? orsGeocode(query, limit) : nominatimGeocode(query, limit);
+export async function geocode(query: string, limit: number, key: OrsKey): Promise<GeocodeResult> {
+  return key ? orsGeocode(query, limit, key) : nominatimGeocode(query, limit);
 }
 
 // The public OSRM server is a car-only deployment that accepts any profile in its path and answers
@@ -255,11 +250,11 @@ const ORS_PROFILE: Record<Profile, string> = {
   walking: "foot-walking",
 };
 
-async function orsRoute(stops: Position[], profile: Profile): Promise<RouteResult> {
+async function orsRoute(stops: Position[], profile: Profile, key: string): Promise<RouteResult> {
   const url = `https://api.openrouteservice.org/v2/directions/${ORS_PROFILE[profile]}/geojson`;
   const body = await getJson(url, {
     method: "POST",
-    headers: { authorization: apiKey(), "content-type": "application/json" },
+    headers: { authorization: key, "content-type": "application/json" },
     body: JSON.stringify({ coordinates: stops.map(([lon, lat]) => [lon, lat]), elevation: true }),
   });
   const feature = body?.features?.[0];
@@ -284,15 +279,15 @@ async function orsRoute(stops: Position[], profile: Profile): Promise<RouteResul
   };
 }
 
-export async function route(stops: Position[], profile: Profile, prefer: Prefer): Promise<RouteResult> {
-  if (keyed()) {
+export async function route(stops: Position[], profile: Profile, prefer: Prefer, key: OrsKey): Promise<RouteResult> {
+  if (key) {
     if (prefer !== "balanced") {
       throw new EndpointError(
         400,
         `prefer "${prefer}" is not available through openrouteservice; unset ORS_API_KEY to use it, or pass balanced.`,
       );
     }
-    return orsRoute(stops, profile);
+    return orsRoute(stops, profile, key);
   }
   if (profile === "driving") {
     if (prefer !== "balanced") throw new EndpointError(400, `prefer "${prefer}" applies to cycling only.`);

@@ -20,6 +20,12 @@ import { remapSegments, type TagAnalysis, type Warning } from "./tags";
 // summary, which is what a caller actually reads.
 
 export const MAX_STOPS = 50;
+
+// The key is read where the deploy puts it, and is optional: absent, the public services answer.
+export function orsKey(app: PagesApp): string | undefined {
+  const key = (app.env as { ORS_API_KEY?: string }).ORS_API_KEY?.trim();
+  return key ? key : undefined;
+}
 const MAX_ASSET_BYTES = 4 * 1024 * 1024;
 const METRES_PER_DEGREE = 111_320;
 
@@ -149,7 +155,7 @@ export async function routeToAsset(
   const path = normalizeAssetPath(input.to);
   if (path === "/") throw new EndpointError(400, "to must name a file, for example /trip/route.geojson");
 
-  const result = await providerRoute(input.stops, input.profile, input.prefer);
+  const result = await providerRoute(input.stops, input.profile, input.prefer, orsKey(app));
   const kept = simplifyIndices(result.coordinates, input.simplifyMetres);
   const coordinates = kept.map((index) => result.coordinates[index]);
   const analysis: TagAnalysis = remapSegments(result.analysis, kept);
@@ -222,10 +228,10 @@ export async function routeToAsset(
   };
 }
 
-export async function geocodeQuery(query: unknown, limit: unknown) {
+export async function geocodeQuery(app: PagesApp, query: unknown, limit: unknown) {
   if (typeof query !== "string" || query.trim() === "") throw new EndpointError(400, "query is required");
   const capped = Math.max(1, Math.min(10, Math.trunc(Number(limit)) || 5));
-  const result = await providerGeocode(query.trim(), capped);
+  const result = await providerGeocode(query.trim(), capped, orsKey(app));
   return {
     query: query.trim(),
     provider: result.provider,

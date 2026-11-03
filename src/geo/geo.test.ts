@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearGeoFetch, stubGeoFetch } from "../test/http";
+import type { PagesApp } from "../pages-app";
 import { geocodeQuery, parsePrefer, parseProfile, parseStops, simplify } from "./service";
 
 const STOPS = [
@@ -7,10 +8,11 @@ const STOPS = [
   { lat: 49.8917, lon: 10.8917 },
 ];
 
-beforeEach(() => {
-  delete process.env.ORS_API_KEY;
-});
 afterEach(clearGeoFetch);
+
+// geocodeQuery reads only app.env, so a bare env stands in for the app here; the endpoint tests run the real one.
+const keyless = { env: {} } as unknown as PagesApp;
+const keyed = { env: { ORS_API_KEY: "test-key" } } as unknown as PagesApp;
 
 describe("stops", () => {
   // GeoJSON is [lon, lat] and most map libraries are [lat, lon]. A bare pair in an argument is a
@@ -74,7 +76,7 @@ describe("geocode", () => {
   beforeEach(() => stubGeoFetch());
 
   it("returns candidates rather than an answer", async () => {
-    const result = await geocodeQuery("Springfield", 5);
+    const result = await geocodeQuery(keyless, "Springfield", 5);
     expect(result.count).toBe(2);
     expect(result.candidates.map((c) => c.name)).toEqual(["Springfield", "Springfield Union Station"]);
     expect(result.provider).toBe("nominatim");
@@ -82,19 +84,18 @@ describe("geocode", () => {
   });
 
   it("separates the name from the place around it", async () => {
-    const [first] = (await geocodeQuery("Springfield", 5)).candidates;
+    const [first] = (await geocodeQuery(keyless, "Springfield", 5)).candidates;
     expect(first.name).toBe("Springfield");
     expect(first.context).toBe("Greenfield County, Illinois, United States");
     expect(first.kind).toBe("town");
   });
 
   it("refuses an empty query", async () => {
-    await expect(geocodeQuery("  ", 5)).rejects.toThrow(/query is required/);
+    await expect(geocodeQuery(keyless, "  ", 5)).rejects.toThrow(/query is required/);
   });
 
   it("switches provider when a key is set, without changing the shape", async () => {
-    process.env.ORS_API_KEY = "test-key";
-    const result = await geocodeQuery("Springfield", 5);
+    const result = await geocodeQuery(keyed, "Springfield", 5);
     expect(result.provider).toBe("openrouteservice");
     expect(Object.keys(result.candidates[0]).sort()).toEqual(
       ["confidence", "context", "kind", "lat", "lon", "name"].sort(),

@@ -80,6 +80,14 @@ A draft is a working copy beside the live page. Readers keep getting the live pa
 the draft at `/preview/work`, and nothing changes for them until you say publish. See
 [pages](pages.md).
 
+## Maps
+
+> Put a map on /tour with the five stops, and route between them by bike.
+
+The stops become data you can edit later, the route is worked out once and stored, and the page
+draws both. Ask what the route is made of before you ride it: Claude can tell you how much of it is
+on main roads. See [maps](maps.md).
+
 ## Teach it your rules once
 
 Every site has its own way of doing things, and a new conversation starts knowing none of it. Say
