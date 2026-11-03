@@ -245,6 +245,13 @@ schema, `invalidates: "all"` and the `site` access point.
   writes them with `set_instructions`, carrying a rev, so a stale write is refused with a 409 rather than
   erasing a rule somebody added a minute ago. They shape content, never the platform. The 16,000 character
   ceiling is there because every session reads all of it.
+- **One short text points every client at them.** `MCP_INSTRUCTIONS` in
+  [mcp-instructions.ts](src/mcp-instructions.ts) is what a client is told on connecting, through
+  `defineApp`'s `mcp.instructions`. It is the same on every site, so the owner's own rules never go in it. A
+  connector may cut long instructions short, so the pointer to `get_instructions` comes first and the rest
+  says only what no single tool's description can: that this is not a static site, that repeating content
+  belongs in a collection, and how paths and privacy work. [mcp-instructions.test.ts](src/mcp-instructions.test.ts)
+  pins the pointer near the top and fails on a tool name that no longer exists.
 - **Content is stored, never built.** A write is live on the next request: no build runs, no deploy happens, and
   nothing about publishing touches git or this repo. A client that assumes a static site generator reaches for a
   commit and a push to publish, which would put somebody's page into the site's source code, so the tool text and
@@ -311,6 +318,5 @@ platform offers what each needs.
 - **The tool reference at `/docs/tools`,** drawn from the endpoints, which needs documented API discovery.
 - **An admin screen.** The owner works through Claude, the API and the platform's own screens.
 - **The geo tools,** which need app secrets.
-- **MCP server instructions,** the text a client reads on connecting.
 - **The [pages-api](skills/pages-api) skill,** which needs documented REST discovery. Its files predate the
   platform and do not match the site.

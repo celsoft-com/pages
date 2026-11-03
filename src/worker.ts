@@ -5,6 +5,7 @@ import { pageEndpoints } from "./endpoints/pages";
 import { privacyEndpoints } from "./endpoints/privacy";
 import { siteEndpoints } from "./endpoints/site";
 import { transferEndpoints } from "./endpoints/transfer";
+import { MCP_INSTRUCTIONS } from "./mcp-instructions";
 import { SITE_POINT } from "./pages-app";
 import * as schema from "./schema";
 import { servedPages } from "./serve";
@@ -13,6 +14,7 @@ export default defineApp(undefined, {
   schema,
   endpoints: { ...siteEndpoints, ...pageEndpoints, ...dataEndpoints, ...assetEndpoints, ...transferEndpoints, ...privacyEndpoints },
   pages: servedPages,
+  mcp: { instructions: MCP_INSTRUCTIONS },
   // Templates read across the site, so no write can name every page it changed: each one empties them all.
   invalidates: "all",
   access: {
