@@ -152,12 +152,29 @@ schema, `invalidates: "all"` and the `site` access point.
   is verbatim and can be given no `link` tag. Never add a settings field for this, and never wrap a page to inject
   an icon.
 - **A path is gated by the nearest private path at or above it.** The site has one control point, `site`, where
-  the owner manages and everyone reads. A private path would be the only path with a point of its own,
-  `path:<path>`, and `pointsFor` in [pages-app.ts](src/pages-app.ts) names a path's point, the point of every
-  folder above it and then the site; the platform checks the first that exists. Every served route and every tool
-  that names a path is gated that way, a transfer on both its source and its target, so a tool refuses exactly
-  what a reader would be refused. Never give a public path a point: a point per stored path and folder would have
-  to be created, moved and removed by every write and transfer.
+  the owner manages and everyone reads. A private path is the only path with a point of its own, `path:<path>`,
+  and `pointsFor` in [pages-app.ts](src/pages-app.ts) names a path's point, the point of every folder above it
+  and then the site; the platform checks the first that exists, so `/trip/day1`, `/data/trip/stops.json` and
+  `/assets/trip/map.jpg` are all gated by `path:/trip` once `/trip` is private, and by the site until then. Every
+  served route and every tool that names a path is gated that way, a transfer on both its source and its target,
+  so a tool refuses exactly what a reader would be refused. Never give a public path a point: a point per stored
+  path and folder would have to be created, moved and removed by every write and transfer.
+- **A private path is a point, and the points are the record.** [privacy.ts](src/privacy.ts) closes a path by
+  creating `path:<path>` with the site as parent, no inheritance and a `manage` grant to `{ owner: true }`, and
+  reopens it by removing the point, which ends its links with it. Pages keeps no table of private paths:
+  `app.access.points({ prefix: "path:" })` is the list, so it cannot drift from what the gate enforces. Privacy
+  does not nest either way, because nested scopes would leave a visitor needing two links for one page or one
+  link silently opening a narrower scope someone closed on purpose: an ancestor is found in the path's point
+  chain and a descendant with `points({ prefix: "path:<path>/" })`. `/` is refused; `/root` closes the home page.
+  To a stranger a closed path answers with the platform's one 404 page, the same as a missing one, so a private
+  path never shows that it exists. The tools need `manage`, so they are the owner's.
+- **A share link is the platform's, labelled per recipient.** `share_path` mints a `read` link on the path's
+  point with `app.access.link`, labelled with who it is for and unique per path, so `revoke_share` can end one
+  recipient's access without touching anyone else's. The address is `/p<path>#link=<token>`: the secret rides in
+  the fragment, which browsers never send, so it reaches no access log, no proxy and no `Referer`, and the
+  platform's 404 page swaps it for a cookie. The token is shown once, since only its hash is stored, and when a
+  link was last used is not kept. A transfer that carries a resource across the edge of a private path reports
+  it in `privacy_changes`, because the dangerous direction, private to public, is otherwise silent.
 - **Bytes leave by HTTP, never through a tool.** A tool result is text in the calling agent's context, so an
   asset's bytes never come back that way: `/assets/<path>` is the only way to read one, and `list_assets` hands
   out the URLs. `upload_asset` is the one tool taking bytes in, through the platform's `upload()` input field:
@@ -272,8 +289,9 @@ schema, `invalidates: "all"` and the `site` access point.
 These wait on @celsoft/platform. Build none of them, and no stand-in for any of them, until the
 platform offers what each needs.
 
-- **Private paths and share links:** `set_privacy`, `share_path`, `list_shares`, `revoke_share`, the
-  privacy changes a transfer reports, and the private list in `get_site`.
+- **Leaving private paths out of listings:** the contents at `/`, `/data/_collections.json`, and a
+  template's `site.pages` and `collections` still include what is private, until
+  `app.access.asEveryone().filter` checks each entry's first existing point.
 - **The build stamp:** [build.ts](src/build.ts) and [build-info.ts](src/build-info.ts) stay as they are.
 - **The `/docs` site.** The topics in [docs/](docs) are read on GitHub until then.
 - **An admin screen.** The owner works through Claude, the API and the platform's own screens.

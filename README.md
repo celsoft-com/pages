@@ -62,6 +62,12 @@ req = urllib.request.Request(
 print(json.load(urllib.request.urlopen(req)))
 ```
 
+## Private pages
+
+Ask Claude to make a path private and it closes to everyone but you, along with everything under
+it. Ask for a share link for each person you want to let in, and revoke one when you are done. See
+[private paths](docs/privacy.md).
+
 ## Documentation
 
 The guides are the markdown files in [docs/](docs). A reference served by the site itself is not
@@ -69,8 +75,8 @@ available yet.
 
 ## Not available yet
 
-Private pages and share links, the reference at `/docs`, an admin screen, map tools, and the
-agent skill for the REST API are not available yet.
+The reference at `/docs`, an admin screen, map tools, the agent skill for the REST API, and leaving
+private pages out of the site's contents are not available yet.
 
 ## Development
 
