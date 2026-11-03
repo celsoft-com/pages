@@ -5,8 +5,8 @@ order: 10
 
 # Working with Claude
 
-The site has no page builder, no templates and no drag and drop. You describe what you want and
-Claude writes it, publishes it, and changes it when you ask again. This page is about asking well.
+The site has no page builder and no drag and drop. You describe what you want and Claude writes it,
+publishes it, and changes it when you ask again. This page is about asking well.
 
 Everything below assumes the connector is set up. If it is not, start at
 [getting started](getting-started.md).
@@ -57,9 +57,9 @@ for it to be filed under the page that uses it.
 
 > Put these three photos under /kitchens and use them on that page.
 
-Files have a size ceiling, which is the host's limit rather than a setting, so a large photo has
-to be made smaller before it goes up. Claude cannot hand you a file back down the chat: to
-see one, open its URL. See [assets](assets.md).
+Files have a size ceiling set by the host, so a large photo has to be made smaller before it goes
+up. Claude cannot hand you a file back down the chat: to see one, open its URL. See
+[images and files](assets.md).
 
 ## Moving things later
 
@@ -72,51 +72,42 @@ That moves the page, the photos and the data in one go, on the server, with noth
 the conversation. Claude will tell you what it could not fix: any page that still links to the old
 address. See [copy, move and delete](transfer.md).
 
-## Showing someone a draft
+## Revising a live page
 
-> Make /work private and give me a link for my sister.
+> Rework the /work page as a draft, and show me before it goes live.
 
-A private path disappears for everyone else, and the link opens it. It is a link, not a login:
-anyone who has it is in. Good for a draft or a family album, wrong for anything whose exposure would
-actually hurt. See [private paths](privacy.md).
-
-## Maps
-
-> Put a map on /tour with the five stops, and route between them by bike.
-
-The stops become data you can edit later, the route is worked out once and stored, and the page
-draws both. Ask what the route is made of before you ride it: Claude can tell you how much of it is
-on main roads. See [maps](maps.md).
+A draft is a working copy beside the live page. Readers keep getting the live page while you look at
+the draft at `/preview/work`, and nothing changes for them until you say publish. See
+[pages](pages.md).
 
 ## Teach it your rules once
 
 Every site has its own way of doing things, and a new conversation starts knowing none of it. Say
 it once and ask Claude to remember:
 
-> From now on, every trip page gets a map at the top, and write in British English. Remember that.
+> From now on, every trip page gets a photo at the top, and write in British English. Remember that.
 
-Claude writes that into the site's instructions, which every later session reads before it touches
+Claude writes that into the site's instructions, which a later session reads before it touches
 anything, and tells you what it wrote. When it gets something wrong in a way it would repeat, the
 correction goes there too.
 
-They are yours as much as Claude's. Open **Instructions** in the admin to read them, reword them or
-delete a rule you no longer want. They are rules, not a diary: keep them short, because every
-session reads the whole thing. They shape the content, not the platform, so a rule asking Claude to
-commit or deploy will not work and Claude will say so.
+They are yours as much as Claude's: ask Claude to show them to you, reword a rule or drop one you no
+longer want. They are rules, not a diary: keep them short, because every session reads the whole
+thing. They shape the content, not the platform, so a rule asking Claude to commit or deploy will
+not work and Claude will say so.
 
 ## Two things worth knowing
 
-**It is live.** There is no draft mode and no publish button. When Claude says it published
-something, it is on the internet at that address. Ask for a private path first if that matters.
+**Publishing is live.** When Claude says it published something, it is on the internet at that
+address. Ask for a draft first when you want to look before readers do.
 
 **It never touches a repository.** If Claude starts talking about committing, pushing or waiting for
-a deploy, it has the wrong idea of what this site is: ask it to read the site's instructions again.
-Your content lives in the site's own storage, never in the code.
+a deploy, it has the wrong idea of what this site is. Your content lives in the site's own storage,
+never in the code.
 
 ## Checking its work
 
-- Your home page lists every public page. Open it.
-- The admin lists pages, assets and collections, and has an editor for when you would rather change
-  one word yourself than describe it.
+- Your home page lists every page. Open it.
 - Claude gives you the URL of anything it writes. Open that too. It is the fastest way to catch a
   page that reads well in a chat and badly in a browser.
+- Ask Claude to check the links after a move or a delete.

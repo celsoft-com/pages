@@ -5,63 +5,42 @@ order: 5
 
 # Getting started
 
-Four steps, no checkout, no command line. If you can fork a repository and pick a password, you can run
-this site.
+Three steps once your site is running: make the owner account, connect Claude, ask for a page.
 
-## 1. Deploy it
+## 1. Make the owner account
 
-1. Fork the [repository](https://github.com/celsoft-com/pages) on GitHub.
-2. In Netlify: **Add new project → Import an existing project**, and pick your fork.
+Open `/signup` on your site and sign up. The first account is the owner. After that nobody can sign
+up uninvited: invite people at `/invites`.
 
-You get an address ending in `netlify.app`. That is your site.
+Your site already serves a home page listing everything you publish. It has nothing on it yet.
 
-Want another site? Import the same fork again. Each site is separate.
+## 2. Connect Claude
 
-To update, press **Sync fork** on GitHub. Every site redeploys. Your content is safe.
-
-Don't edit your fork. Only sync it.
-
-## 2. Pick a password
-
-Open it. A new site says it is ready to set up and offers one link, **Set up this site**.
-
-Pick a password and you are the owner. That is the whole of setup: there are no accounts to create
-and nobody else to invite, because a site has one owner and everything else is either published or
-closed.
-
-Your site now serves a home page listing everything you publish. It has nothing on it yet.
-
-## 3. Connect Claude
-
-In the admin, open **Connections**. It shows one URL:
+In Claude, add this as a custom connector:
 
 ```
-{{mcp_url}}
+https://<your-site>/mcp
 ```
 
-In Claude, add that as a custom connector. Claude sends you back to your own site to sign in with
-the password you just picked, and asks you to approve the connection. Approve it.
+Claude sends you to your own site to sign in, and asks you to approve the connection. Approve it.
 
-Claude can now read and write your site. Nothing else can: the connection is to your site, from your
-Claude account.
+Claude can now read and write your site as you. A script, a cron job or an agent connects
+differently, with a token; see [connecting a client](api.md).
 
-A script, a cron job or an agent connects differently, with a token you mint on the same screen.
-See [connecting a client](api.md).
-
-## 4. Ask for a page
+## 3. Ask for a page
 
 Then talk to Claude:
 
 > Publish a page at /about that says who I am. I'm a cabinetmaker in Ashford, I've been doing it for
 > twenty years, and I mostly build kitchens.
 
-Claude writes it and publishes it. It is live at `{{site_url}}/about` immediately: nothing is built,
-no deploy runs, and there is nothing to wait for.
+Claude writes it and publishes it. It is live at `https://<your-site>/p/about` immediately: nothing
+is built, no deploy runs, and there is nothing to wait for.
 
 Open your home page and the new page is listed on it.
 
 ## Where to go next
 
-- [Working with Claude](with-claude.md) — what to ask for, and what it is good at
-- [Pages](pages.md) — markdown, HTML, and how a page's address is decided
-- [Data collections](collections.md) — the thing to use before a page grows a list
+- [Working with Claude](with-claude.md): what to ask for, and what it is good at
+- [Pages](pages.md): markdown, HTML, and how a page's address is decided
+- [Data collections](collections.md): the thing to use before a page grows a list
