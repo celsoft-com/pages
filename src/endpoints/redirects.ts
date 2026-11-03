@@ -5,7 +5,7 @@ import { site } from "./shared";
 const REDIRECTS =
   "A redirect sends a browser from an address nothing answers to another one, so links into moved content keep " +
   "working. It is read only when no page, collection, file or platform route answers the address, so it can never " +
-  "hide anything that is there.";
+  "hide anything that is there. Moving a page, collection, file or bundle leaves one behind for each thing it moved.";
 
 const REDIRECT = z.object({
   from: z.string().describe("The address it answers, such as /essay/x"),

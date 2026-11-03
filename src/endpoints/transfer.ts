@@ -2,6 +2,7 @@ import { EndpointError, endpoint } from "@celsoft/platform";
 import { z } from "zod";
 import { bundleContents, ROOT_IS_NOT_A_BUNDLE } from "../inventory";
 import { getPage } from "../pages/service";
+import { pageHref } from "../pages/path";
 import { type PagesApp, pointsFor } from "../pages-app";
 import {
   type Kind,
@@ -75,6 +76,10 @@ const TRANSFER_OUTPUT = z.object({
     .array(z.object({ kind: z.string(), path: z.string(), was: z.string(), now: z.string() }))
     .optional()
     .describe("Resources that changed hands between public and private. Absent when none did."),
+  redirects: z
+    .array(z.object({ from: z.string(), to: z.string() }))
+    .optional()
+    .describe("Addresses a move left redirecting to where things went, so links into them keep working. Moves only."),
   rest_of_bundle: z
     .array(z.object({ kind: z.string(), path: z.string() }))
     .optional()
@@ -88,7 +93,31 @@ function resourceUrl(app: PagesApp, kind: Kind, path: string): string {
   return `${app.env.APP_URL}/assets${path}`;
 }
 
+// Where a resource is read from: a page at its /p URL or /, a collection at /data, a file at /assets.
+function addressOf(kind: Kind, path: string): string {
+  if (kind === "page") return pageHref(path);
+  if (kind === "collection") return `/data${path === "/" ? "/index" : path}.json`;
+  return `/assets${path}`;
+}
+
+// A move takes an address away, so it leaves a redirect from each old address to the new one, and a
+// link into what moved keeps working. A redirect is read only where nothing else answers.
+async function leaveRedirects(app: PagesApp, transfer: Transfer): Promise<{ from: string; to: string }[]> {
+  if (!transfer.applied || transfer.verb !== "move") return [];
+  const left = [];
+  for (const resource of transfer.resources) {
+    if (resource.to === null) continue;
+    const from = addressOf(resource.kind, resource.from);
+    const to = addressOf(resource.kind, resource.to);
+    if (from === "/" || from === to) continue;
+    await app.redirects.set(from, to);
+    left.push({ from, to });
+  }
+  return left;
+}
+
 async function transferResult(app: PagesApp, transfer: Transfer): Promise<z.infer<typeof TRANSFER_OUTPUT>> {
+  const redirects = await leaveRedirects(app, transfer);
   const [stale, rest, privacy] = await Promise.all([
     staleReferences(app, transfer),
     restOfBundle(app, transfer),
@@ -136,6 +165,7 @@ async function transferResult(app: PagesApp, transfer: Transfer): Promise<z.infe
     breaks: transfer.breaks,
     pages_to_update: stale,
     ...(privacy.length === 0 ? {} : { privacy_changes: privacy }),
+    ...(redirects.length === 0 ? {} : { redirects }),
     ...(rest.length === 0 ? {} : { rest_of_bundle: rest }),
     notes,
   };

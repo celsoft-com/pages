@@ -45,3 +45,27 @@ describe("redirects", () => {
     await expect(t.as(guest).call("set_redirect", { from: "/a", to: "/b" })).rejects.toMatchObject({ status: 404 });
   });
 });
+
+describe("a move", () => {
+  it("leaves a redirect from every old address to the new one", async () => {
+    await call("publish_page", { path: "/trip", content: "# Trip" });
+    await call("put_item", { path: "/trip/stops", id: "a", fields: { name: "A" } });
+    await call("upload_asset", { path: "/trip/map.txt", file: new File(["map"], "map.txt", { type: "text/plain" }) });
+    const moved = await call("move_bundle", { from: "/trip", to: "/journey", confirm: true });
+    expect(moved.redirects).toEqual(
+      expect.arrayContaining([
+        { from: "/p/trip", to: "/p/journey" },
+        { from: "/data/trip/stops.json", to: "/data/journey/stops.json" },
+        { from: "/assets/trip/map.txt", to: "/assets/journey/map.txt" },
+      ]),
+    );
+    expect(await location("/p/trip")).toMatch(/^301 .*\/p\/journey$/);
+    expect(await location("/data/trip/stops.json")).toMatch(/^301 .*\/data\/journey\/stops\.json$/);
+    expect(await location("/assets/trip/map.txt")).toMatch(/^301 .*\/assets\/journey\/map\.txt$/);
+  });
+
+  it("leaves none for a copy", async () => {
+    await call("publish_page", { path: "/a", content: "# A" });
+    expect(await call("copy_page", { from: "/a", to: "/b" })).not.toHaveProperty("redirects");
+  });
+});

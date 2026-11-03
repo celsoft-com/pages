@@ -87,6 +87,16 @@ A URL a page assembles from pieces cannot be found at all. That is why the reply
 rather than promising a clean result, and why a client that cannot break a page even briefly should copy,
 repoint the page, confirm it renders, then delete the source.
 
+## Old addresses keep working
+
+A move leaves a redirect behind from each old address to the new one: the page's `/p` URL, the
+collection's `/data` URL and the file's `/assets` URL. A bookmark or a link from another site still
+arrives, with a 301. The reply lists them under `redirects`. A redirect only answers an address
+nothing else does, so publishing something new at the old path takes it back. A copy leaves none.
+
+Links on the site's own pages are not redirected around: they are listed in `pages_to_update`, as
+below, because a page should link to where things are.
+
 ## The reply
 
 Every tool returns the same envelope: `operation`, `scope`, `from`, `to`, `applied`, `resources`, `breaks`,

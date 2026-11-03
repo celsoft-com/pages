@@ -341,8 +341,10 @@ schema, `invalidates: "all"` and the `site` access point.
 - **Redirects are data, for links from outside.** [redirects.ts](src/endpoints/redirects.ts) lists, sets and
   removes the platform's `app.redirects`, which answer only an address nothing else does, so a redirect never
   hides content. Content and templates still link to current addresses; a redirect is for a link the site does
-  not control, such as an old URL somebody bookmarked. A migration from a site that served pages at their own
-  paths leaves one per old page path.
+  not control, such as an old URL somebody bookmarked. Every move leaves one from each old address, a page's
+  `/p` URL, a collection's `/data` URL and a file's `/assets` URL, to where it went, and reports them in
+  `redirects`; a copy leaves none. A migration from a site that served pages at their own paths leaves one per
+  old page path.
 - **The skill points at the site, it does not copy it.** [skills/pages-api](skills/pages-api) is an Agent Skills
   collection shipped from this repo, installed with `npx skills add celsoft-com/pages --skill '*' -g -y`. Every
   install is a different site at a different URL, so the skill teaches an agent how to find the address and the
