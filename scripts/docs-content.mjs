@@ -1,8 +1,9 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 
 // What /docs serves: the README, the licence and every topic in docs/. The Worker has no repository
-// to read them from, so they are carried into it as a module. The build script runs this before every
-// deploy, and the typecheck and test scripts run it first, so the module is generated, never committed.
+// to read them from, so they are carried into it as a module. It is the whole build script, which the
+// platform runs on every install and deploy, and typecheck and test run it first, so the module is
+// generated, never committed.
 const root = new URL("../", import.meta.url);
 const read = (file) => readFileSync(new URL(file, root), "utf8");
 

@@ -5,11 +5,10 @@
   "type": "module",
   "scripts": {
     "postinstall": "platform generate",
-    "build": "npm run docs && tsc --noEmit && vitest run",
-    "typecheck": "npm run docs && tsc --noEmit",
-    "test": "npm run docs && vitest run",
-    "test:watch": "npm run docs && vitest",
-    "docs": "node scripts/docs-content.mjs"
+    "build": "node scripts/docs-content.mjs",
+    "typecheck": "npm run build && tsc --noEmit",
+    "test": "npm run build && vitest run",
+    "test:watch": "npm run build && vitest"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261023.1",
