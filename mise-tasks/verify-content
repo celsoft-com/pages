@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+#MISE description="Compare a migrated site with its source byte for byte: --source <url|dir> --target <url> --token-env NAME"
+set -euo pipefail
+
+# Node loads .env.secrets into this one process, as dotenv, so its values reach nothing else and a
+# value the shell would misparse is still read as written.
+exec node --env-file-if-exists=.env.secrets scripts/verify-content.mjs "$@"

@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 // Compares a target site with the source it was migrated from, byte for byte.
 //
-//   node scripts/verify-content.mjs <source> <target>
+//   node scripts/verify-content.mjs --source <url|dir> [--token-env NAME] --target <url> [--target-token-env NAME]
 //
 // Arguments and tokens as for migrate-content.mjs. It reads both whole and reports every page (live
 // and draft), item (fields and order), collection reference, asset (by SHA-256 of its bytes), the
 // instructions, the site settings and the private paths that differ. It exits 1 on any difference.
-import { canonical, openSource, openTarget, same, sha256, SiteError } from "./content-sites.mjs";
+import { canonical, openSource, openTarget, parseArgs, same, sha256, SiteError } from "./content-sites.mjs";
 
 async function main() {
-  const [sourceName, targetName] = process.argv.slice(2);
-  if (!sourceName || !targetName) throw new SiteError("usage: verify-content.mjs <source> <target>");
-  const source = await openSource(sourceName);
-  const target = openTarget(targetName);
+  const options = parseArgs(process.argv.slice(2));
+  if (!options.source || !options.target) throw new SiteError("usage: verify-content.mjs --source <url|dir> [--token-env NAME] --target <url> [--target-token-env NAME]");
+  const source = await openSource(options.source, options["token-env"]);
+  const target = openTarget(options.target, options["target-token-env"] ?? "TARGET_TOKEN");
   const [want, have] = await Promise.all([source.read(), target.snapshot()]);
   const problems = [];
   let checked = 0;

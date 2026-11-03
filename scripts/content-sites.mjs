@@ -48,7 +48,8 @@ export class Site {
     }
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const error = new SiteError(`${tool} on ${this.url}: ${response.status} ${body.error ?? body.message ?? ""}`.trim());
+      const reason = body.error?.message ?? body.error ?? body.message ?? "";
+      const error = new SiteError(`${tool} on ${this.url}: ${response.status} ${typeof reason === "string" ? reason : JSON.stringify(reason)}`.trim());
       error.status = response.status;
       throw error;
     }
@@ -172,21 +173,40 @@ export async function writeExport(dir, snapshot) {
   await writeFile(join(dir, "content.json"), `${JSON.stringify({ ...snapshot, assets }, null, 2)}\n`);
 }
 
-// A source named on the command line: a site URL, whose token is SOURCE_TOKEN, or an export directory.
-export async function openSource(name) {
+// A token is named by the environment variable that holds it, never passed as a value.
+function tokenFrom(envName, role) {
+  if (!envName) throw new SiteError(`name the environment variable holding the ${role} token`);
+  const token = process.env[envName];
+  if (!token) throw new SiteError(`${envName} is not set, so there is no token for the ${role}.`);
+  return token;
+}
+
+// A source is a site URL, read with the token in tokenEnv, or an export directory.
+export async function openSource(name, tokenEnv) {
   if (/^https?:\/\//.test(name)) {
-    const token = process.env.SOURCE_TOKEN;
-    if (!token) throw new SiteError("SOURCE_TOKEN is not set for the source site.");
-    return { label: name, read: () => new Site(name, token).snapshot() };
+    const site = new Site(name, tokenFrom(tokenEnv, "source"));
+    return { label: name, site, read: () => site.snapshot() };
   }
   return { label: `${name} (export)`, read: () => readExport(name) };
 }
 
-export function openTarget(name) {
-  if (!/^https?:\/\//.test(name)) throw new SiteError("The target must be a site URL.");
-  const token = process.env.TARGET_TOKEN;
-  if (!token) throw new SiteError("TARGET_TOKEN is not set for the target site.");
-  return new Site(name, token);
+export function openTarget(name, tokenEnv) {
+  if (!/^https?:\/\//.test(name ?? "")) throw new SiteError("--target must be a site URL.");
+  return new Site(name, tokenFrom(tokenEnv, "target"));
+}
+
+// --name value pairs and bare --switches, the way both scripts take their arguments.
+export function parseArgs(argv, switches = []) {
+  const options = {};
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (!arg.startsWith("--")) throw new SiteError(`unexpected argument ${arg}`);
+    const name = arg.slice(2);
+    if (switches.includes(name)) options[name] = true;
+    else if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) options[name] = argv[++i];
+    else throw new SiteError(`--${name} needs a value`);
+  }
+  return options;
 }
 
 // Stable JSON, so two values compare equal whatever order their keys came in.

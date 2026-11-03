@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+#MISE description="Migrate a site's content: --source <url|dir> --target <url> --token-env NAME [--target-token-env NAME] [--dry-run]"
+set -euo pipefail
+
+# Node loads .env.secrets into this one process, as dotenv, so its values reach nothing else and a
+# value the shell would misparse is still read as written.
+exec node --env-file-if-exists=.env.secrets scripts/migrate-content.mjs "$@"

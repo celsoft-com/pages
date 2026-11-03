@@ -320,9 +320,12 @@ schema, `invalidates: "all"` and the `site` access point.
   one to the repository, and [docs.test.ts](src/docs/docs.test.ts) fails on a docs link that would 404.
 - **Content moves between sites through their APIs, idempotently.** [migrate-content.mjs](scripts/migrate-content.mjs)
   copies a site's pages and drafts, collections with their order and references, assets, instructions, settings
-  and private paths onto another site: `node scripts/migrate-content.mjs <source> <target> [--dry-run]`, the
-  source a site URL read with `SOURCE_TOKEN` or an export directory, the target a URL written with a manage-capped
-  `TARGET_TOKEN`. Tokens come only from the environment and are never printed. It compares everything with what
+  and private paths onto another site: `mise run migrate --source <url|dir> --token-env NAME --target <url>
+  [--target-token-env NAME] [--dry-run]`, the source a site URL read with the token in the named variable or an
+  export directory, the target a URL written with a manage-capped token, `TARGET_TOKEN` unless named. A token is
+  only ever named, never passed or printed: the task loads [secrets.tmpl](secrets.tmpl)'s names from
+  `.env.secrets` through Node's `--env-file`, into its own process. One source goes to one target; the old sites
+  sean.celsoft.com and pages.odellfambly.us are never merged. It compares everything with what
   the target holds and writes only a difference, so it is fixed and run again rather than reset, and it deletes
   nothing: what only the target holds is reported. Share links cannot move, since a site keeps only their hashes.
   `--export <dir>` writes a source to a directory, [verify-content.mjs](scripts/verify-content.mjs) compares a

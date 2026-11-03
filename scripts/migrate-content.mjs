@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // Copies a pages site's content onto another, through the target's API with a manage token.
 //
-//   node scripts/migrate-content.mjs <source> <target> [--dry-run]
-//   node scripts/migrate-content.mjs <source> --export <dir>
+//   node scripts/migrate-content.mjs --source <url|dir> --token-env NAME --target <url> [--target-token-env NAME] [--dry-run]
+//   node scripts/migrate-content.mjs --source <url|dir> --token-env NAME --export <dir>
 //
-// <source> is a site URL, read with SOURCE_TOKEN, or an export directory; <target> is a site URL,
-// written with TARGET_TOKEN. Tokens come only from the environment and are never printed.
+// The source is a site URL, read with the token in the environment variable --token-env names, or an
+// export directory, which needs none. The target is a site URL, written with a manage-capped token in
+// --target-token-env, TARGET_TOKEN unless named. A token is only ever named, never passed, and never
+// printed; `mise run migrate` sources .env.secrets for them. One source goes to one target: two sites
+// are never merged into one.
 //
 // It is idempotent: everything is compared with what the target already holds and only a difference
 // is written, so running it again after a fix writes only what the fix changed. --dry-run lists what
@@ -14,32 +17,28 @@
 //
 // What cannot move: share links, because a site keeps only a hash of each. A private path arrives
 // closed, and its links are minted again on the target.
-import { canonical, openSource, openTarget, same, sha256, SiteError, writeExport } from "./content-sites.mjs";
-
-const args = process.argv.slice(2);
-const flag = (name) => args.includes(name);
-const positional = args.filter((arg, i) => !arg.startsWith("--") && args[i - 1] !== "--export");
+import { canonical, openSource, openTarget, parseArgs, same, sha256, SiteError, writeExport } from "./content-sites.mjs";
 
 const actions = [];
 const notes = [];
 const act = (line) => actions.push(line);
 
 async function main() {
-  const [sourceName, targetName] = positional;
-  if (!sourceName) throw new SiteError("usage: migrate-content.mjs <source> <target> [--dry-run] | <source> --export <dir>");
-  const source = await openSource(sourceName);
+  const options = parseArgs(process.argv.slice(2), ["dry-run"]);
+  if (!options.source) throw new SiteError("usage: migrate-content.mjs --source <url|dir> [--token-env NAME] (--target <url> [--target-token-env NAME] [--dry-run] | --export <dir>)");
+  const source = await openSource(options.source, options["token-env"]);
   const content = await source.read();
 
-  if (flag("--export")) {
-    const dir = args[args.indexOf("--export") + 1];
+  if (options.export) {
+    const dir = options.export;
     await writeExport(dir, content);
     console.log(`exported ${source.label} to ${dir}: ${summary(content)}`);
     return;
   }
 
-  if (!targetName) throw new SiteError("name a target site URL, or --export <dir>");
-  const dry = flag("--dry-run");
-  const target = openTarget(targetName);
+  const dry = options["dry-run"] === true;
+  const target = openTarget(options.target, options["target-token-env"] ?? "TARGET_TOKEN");
+  if (source.site && source.site.url === target.url) throw new SiteError("the source and the target are the same site");
   const current = await target.snapshot();
   console.log(`${dry ? "dry run: " : ""}${source.label} -> ${target.url}`);
   console.log(`source: ${summary(content)}`);
