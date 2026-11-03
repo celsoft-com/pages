@@ -38,11 +38,12 @@ still possible.
   `sort`, `reverse` and a loop's `limit` and `offset` are how you pick from it. A page's `path` is
   its path, not its URL: link to it at `/p` followed by the path.
 - **`site.title`** and **`site.description`** are the site's own.
+- **`build`** is the deploy serving the page: `description` is one line saying when and from what
+  it was deployed, and `built`, `commit`, `branch` and `target` (`production` or `preview`) are its
+  parts.
 - **`collections["/trip/stops"]`** is a [collection](collections.md)'s items, the same array its
   `/data` URL serves, in collection order. It is read only when a template names it, and a
   collection under a [private path](privacy.md) reads as missing.
-
-Which deploy is serving the page is not available to a template yet.
 
 Everything printed is escaped, so a `<` in a collection field shows as a `<` rather than breaking
 the page. Pipe a value through `raw` when it holds HTML you mean to keep.

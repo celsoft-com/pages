@@ -1,43 +1,49 @@
-import { describe, expect, it } from "vitest";
+import { testApp } from "@celsoft/platform/testing";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildStamp, describeBuild } from "./build";
+import app from "./worker";
 
 const deployed = {
-  builtAt: "2026-09-05T22:14:37.000Z",
-  commit: "b8565f0",
-  branch: "main",
-  context: "production",
+  DEPLOY_TARGET: "production",
+  DEPLOY_AT: "2026-09-05T22:14:37.000Z",
+  DEPLOY_COMMIT: "b8565f0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b",
+  DEPLOY_BRANCH: "main",
 };
 
 describe("describeBuild", () => {
   it("shows the time to the minute in UTC with the ref", () => {
-    expect(describeBuild(deployed)).toBe("Built 2026-09-05 22:14 UTC · main@b8565f0");
+    expect(describeBuild(buildStamp(deployed))).toBe("Deployed 2026-09-05 22:14 UTC · main@b8565f0");
   });
 
-  it("names a context that is not production", () => {
-    expect(describeBuild({ ...deployed, context: "deploy-preview" })).toContain("deploy-preview");
-  });
-
-  it("says so when nothing was stamped", () => {
-    expect(describeBuild({ builtAt: "", commit: "", branch: "", context: "" })).toBe(
-      "Running locally, not from a deploy build.",
+  it("names a target that is not production", () => {
+    expect(describeBuild(buildStamp({ ...deployed, DEPLOY_TARGET: "preview" }))).toBe(
+      "Deployed 2026-09-05 22:14 UTC · main@b8565f0 · preview",
     );
   });
 
-  it("survives a stamp with only a ref", () => {
-    expect(describeBuild({ builtAt: "", commit: "abc1234", branch: "", context: "" })).toBe("Built from · abc1234");
+  it("names the target when nothing else is known, as under tests", () => {
+    expect(describeBuild(buildStamp({ DEPLOY_TARGET: "test" }))).toBe("Running as test, not from a deploy.");
+    expect(describeBuild(buildStamp({}))).toBe("Not from a deploy.");
   });
 
-  it("ignores an unparseable timestamp rather than printing Invalid Date", () => {
-    const text = describeBuild({ ...deployed, builtAt: "not a date" });
-    expect(text).not.toMatch(/invalid/i);
-    expect(text).toBe("Built from · main@b8565f0");
+  it("ignores an unparseable time rather than printing Invalid Date", () => {
+    expect(describeBuild(buildStamp({ ...deployed, DEPLOY_AT: "not a date" }))).toBe("Deployed from · main@b8565f0");
   });
 });
 
-describe("buildStamp", () => {
-  it("reads the committed placeholder as empty in a local checkout", () => {
-    const stamp = buildStamp();
-    expect(typeof stamp.builtAt).toBe("string");
-    expect(typeof stamp.commit).toBe("string");
+describe("{{ build }}", () => {
+  let t: Awaited<ReturnType<typeof testApp>>;
+  beforeEach(async () => {
+    t = await testApp(app);
+  });
+  afterEach(() => t.close());
+
+  it("tells a template which deploy is serving it", async () => {
+    const owner = await t.signUp("owner@example.com");
+    await t.as(owner).call("publish_page", {
+      path: "/about",
+      content: "# About\n\n```pages\n[{{ build.target }}] {{ build.description }}\n```",
+    });
+    expect(await (await t.fetch("/p/about")).text()).toContain("[test] Running as test, not from a deploy.");
   });
 });

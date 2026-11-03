@@ -283,6 +283,10 @@ schema, `invalidates: "all"` and the `site` access point.
   `prefer` is refused for walking or driving, never ignored, and its `ways` breakdown never becomes a single
   safety number. Cycling and walking never go to the public OSRM server, which is car-only whatever profile it is
   asked for.
+- **The build stamp is read, never written.** `{{ build }}` comes from [build.ts](src/build.ts), which reads
+  the `DEPLOY_TARGET`, `DEPLOY_AT`, `DEPLOY_COMMIT` and `DEPLOY_BRANCH` the platform gives the Worker, so it
+  always describes the deploy actually serving the page. Never stamp a file at build time for it. Under
+  `testApp` only `DEPLOY_TARGET` is set, to `test`.
 - **Documentation is markdown in [docs/](docs), one topic per subsystem.** A topic is reader-facing prose with
   frontmatter giving it a `title` and an `order`; it carries no status line and no project bookkeeping, which
   lives here instead. Links between topics are written as files (`[bundles](bundles.md)`), never into `src/`.
@@ -294,7 +298,6 @@ schema, `invalidates: "all"` and the `site` access point.
 These wait on @celsoft/platform. Build none of them, and no stand-in for any of them, until the
 platform offers what each needs.
 
-- **The build stamp:** [build.ts](src/build.ts) and [build-info.ts](src/build-info.ts) stay as they are.
 - **The `/docs` site.** The topics in [docs/](docs) are read on GitHub until then.
 - **An admin screen.** The owner works through Claude, the API and the platform's own screens.
 - **The geo tools,** which need app secrets.

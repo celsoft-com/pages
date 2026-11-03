@@ -29,14 +29,15 @@ function pageValue(page: Page | PageSummary) {
   };
 }
 
-// The deploy serving this render, as the admin and the docs already print it.
-function buildValue() {
-  const stamp = buildStamp();
+// The deploy serving this render, from what the platform tells the Worker.
+function buildValue(app: PagesApp) {
+  const stamp = buildStamp(app.env);
   return {
     description: describeBuild(stamp),
     commit: stamp.commit,
     branch: stamp.branch,
     built: stamp.builtAt,
+    target: stamp.target,
   };
 }
 
@@ -122,7 +123,7 @@ export async function renderTemplate(source: string, context: TemplateContext): 
       page: context.input.page ? pageValue(context.input.page) : null,
       site: new SiteDrop(context.app, context.site.title, context.site.description),
       collections: new CollectionsDrop(context.app),
-      build: buildValue(),
+      build: buildValue(context.app),
     });
   } catch (error) {
     return `<pre class="pages-error">Template error: ${escapeHtml((error as Error).message)}</pre>`;
