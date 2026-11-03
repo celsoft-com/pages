@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { testApp } from "@celsoft/platform/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assets } from "./schema";
@@ -149,5 +150,47 @@ describe("/favicon.ico", () => {
     const response = await t.fetch("/favicon.ico");
     expect(response.headers.get("content-type")).toBe("image/svg+xml");
     expect(await response.text()).toBe("favicon.svg");
+  });
+});
+
+describe("frontend files", () => {
+  it("serves robots.txt from public/", async () => {
+    const response = await t.fetch("/robots.txt");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toMatch(/^text\/plain/);
+    expect(await response.text()).toBe(readFileSync("public/robots.txt", "utf8"));
+  });
+});
+
+describe("caching", () => {
+  it("keeps a page, and any write empties it", async () => {
+    await call("publish_page", { path: "/about", content: "# About" });
+    expect((await t.fetch("/p/about")).headers.get("platform-cache")).toBe("miss");
+    expect((await t.fetch("/p/about")).headers.get("platform-cache")).toBe("hit");
+
+    // A write anywhere empties every kept page, because a template on one page may read any other.
+    await call("put_item", { path: "/elsewhere", id: "a", fields: { name: "A" } });
+    const after = await t.fetch("/p/about");
+    expect(after.headers.get("platform-cache")).toBe("miss");
+  });
+
+  it("serves the new content after the page itself changes", async () => {
+    await call("publish_page", { path: "/about", content: "# About" });
+    await t.fetch("/p/about");
+    await call("update_page", { path: "/about", content: "# Changed" });
+    expect(await (await t.fetch("/p/about")).text()).toContain("Changed");
+  });
+
+  it("never keeps a draft preview", async () => {
+    await call("publish_page", { path: "/about", content: "# About" });
+    await t.as(owner).fetch("/preview/about");
+    expect((await t.as(owner).fetch("/preview/about")).headers.get("platform-cache")).toBeNull();
+  });
+
+  it("empties nothing on a read", async () => {
+    await call("publish_page", { path: "/about", content: "# About" });
+    await t.fetch("/p/about");
+    await call("list_pages", {});
+    expect((await t.fetch("/p/about")).headers.get("platform-cache")).toBe("hit");
   });
 });
