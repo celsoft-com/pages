@@ -318,6 +318,17 @@ schema, `invalidates: "all"` and the `site` access point.
   on disk and a topic edited since the last install would otherwise fail them. `linkToPage` in
   [topics.ts](src/docs/topics.ts) turns a link to a topic file into its page and any other relative link into
   one to the repository, and [docs.test.ts](src/docs/docs.test.ts) fails on a docs link that would 404.
+- **Content moves between sites through their APIs, idempotently.** [migrate-content.mjs](scripts/migrate-content.mjs)
+  copies a site's pages and drafts, collections with their order and references, assets, instructions, settings
+  and private paths onto another site: `node scripts/migrate-content.mjs <source> <target> [--dry-run]`, the
+  source a site URL read with `SOURCE_TOKEN` or an export directory, the target a URL written with a manage-capped
+  `TARGET_TOKEN`. Tokens come only from the environment and are never printed. It compares everything with what
+  the target holds and writes only a difference, so it is fixed and run again rather than reset, and it deletes
+  nothing: what only the target holds is reported. Share links cannot move, since a site keeps only their hashes.
+  `--export <dir>` writes a source to a directory, [verify-content.mjs](scripts/verify-content.mjs) compares a
+  target with its source byte for byte and exits 1 on a difference, and [seed-export.mjs](scripts/seed-export.mjs)
+  writes an export of the guides and a demo trip for a site that has nothing yet, such as a preview. The old
+  API, which took every call as a POST, is read the same way.
 - **The skill points at the site, it does not copy it.** [skills/pages-api](skills/pages-api) is an Agent Skills
   collection shipped from this repo, installed with `npx skills add celsoft-com/pages --skill '*' -g -y`. Every
   install is a different site at a different URL, so the skill teaches an agent how to find the address and the

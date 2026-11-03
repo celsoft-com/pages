@@ -1,0 +1,75 @@
+#!/usr/bin/env node
+// Compares a target site with the source it was migrated from, byte for byte.
+//
+//   node scripts/verify-content.mjs <source> <target>
+//
+// Arguments and tokens as for migrate-content.mjs. It reads both whole and reports every page (live
+// and draft), item (fields and order), collection reference, asset (by SHA-256 of its bytes), the
+// instructions, the site settings and the private paths that differ. It exits 1 on any difference.
+import { canonical, openSource, openTarget, same, sha256, SiteError } from "./content-sites.mjs";
+
+async function main() {
+  const [sourceName, targetName] = process.argv.slice(2);
+  if (!sourceName || !targetName) throw new SiteError("usage: verify-content.mjs <source> <target>");
+  const source = await openSource(sourceName);
+  const target = openTarget(targetName);
+  const [want, have] = await Promise.all([source.read(), target.snapshot()]);
+  const problems = [];
+  let checked = 0;
+
+  const pages = new Map(have.pages.map((p) => [p.path, p]));
+  for (const page of want.pages) {
+    checked++;
+    const there = pages.get(page.path);
+    if (!there) {
+      problems.push(`page ${page.path}: missing`);
+      continue;
+    }
+    if (there.content !== page.content) problems.push(`page ${page.path}: content differs (${page.content.length} bytes in source, ${there.content.length} on target)`);
+    for (const key of ["title", "format"]) if (there[key] !== page[key]) problems.push(`page ${page.path}: ${key} "${there[key]}" is not "${page[key]}"`);
+    if (!same(there.meta, page.meta)) problems.push(`page ${page.path}: meta ${canonical(there.meta)} is not ${canonical(page.meta)}`);
+    if (!same(there.draft ?? null, page.draft ?? null)) problems.push(`page ${page.path}: draft differs`);
+  }
+
+  const collections = new Map(have.collections.map((c) => [c.path, c]));
+  for (const collection of want.collections) {
+    const there = collections.get(collection.path);
+    if (!there) {
+      problems.push(`collection ${collection.path}: missing`);
+      continue;
+    }
+    const items = new Map(there.items.map((item) => [item.id, item]));
+    for (const item of collection.items) {
+      checked++;
+      if (!items.has(item.id)) problems.push(`item ${collection.path}#${item.id}: missing`);
+      else if (!same(items.get(item.id), item)) problems.push(`item ${collection.path}#${item.id}: fields differ`);
+    }
+    const order = collection.items.map((item) => item.id);
+    if (canonical(there.items.map((item) => item.id).filter((id) => order.includes(id))) !== canonical(order))
+      problems.push(`collection ${collection.path}: order differs`);
+    if (!same(there.refs, collection.refs)) problems.push(`collection ${collection.path}: references differ`);
+  }
+
+  const key = (asset) => asset.path ?? `#${asset.filename}:${sha256(asset.bytes)}`;
+  const assets = new Map(have.assets.map((a) => [key(a), a]));
+  for (const asset of want.assets) {
+    checked++;
+    const there = assets.get(key(asset));
+    if (!there) problems.push(`asset ${asset.path ?? asset.filename}: missing`);
+    else if (sha256(there.bytes) !== sha256(asset.bytes)) problems.push(`asset ${asset.path}: bytes differ`);
+  }
+
+  if (have.instructions !== want.instructions) problems.push("instructions differ");
+  for (const [field, value] of Object.entries(want.site))
+    if (have.site[field] !== value) problems.push(`site ${field}: "${have.site[field]}" is not "${value}"`);
+  for (const path of want.private) if (!have.private.includes(path)) problems.push(`private path ${path}: not private on the target`);
+
+  console.log(`checked ${checked} pages, items and assets, plus instructions, settings and ${want.private.length} private paths`);
+  console.log(problems.length ? problems.join("\n") : "the target matches the source");
+  process.exit(problems.length ? 1 : 0);
+}
+
+main().catch((error) => {
+  console.error(error instanceof SiteError ? `verify: ${error.message}` : error);
+  process.exit(1);
+});
