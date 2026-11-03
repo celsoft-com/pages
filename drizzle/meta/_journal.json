@@ -22,6 +22,13 @@
       "when": 1793398920464,
       "tag": "20261030222200_smooth_serpent_society",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793674793125,
+      "tag": "20261103025953_sudden_skullbuster",
+      "breakpoints": true
     }
   ]
 }
