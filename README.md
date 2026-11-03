@@ -1,67 +1,53 @@
 # pages
 
-A website you talk to Claude to build.
+A website you build by talking to Claude.
 
-Deploy it to your own Netlify account, connect Claude, and ask it to publish pages. Markdown gets a clean theme, HTML is served exactly as written.
+Connect Claude to your site and ask it to publish pages. Markdown gets a clean theme, HTML is served exactly as written.
 
 Lists of things (products, posts, events) can live in a data collection instead of being typed into a page. Claude edits one item at a time, the page fetches the whole collection as JSON, and nothing has to be rewritten to change a price.
 
 ## Not a static site generator
 
-This deploys once and then stops being a build. One function serves every page, collection and
-asset out of storage, so publishing writes a record and the next visitor sees it. There is no
-rebuild, no deploy, and no build minutes burned when you change a word.
+Publishing writes a record, and the next visitor sees it. There is no rebuild and no deploy when
+you change a word.
 
-Your content never enters this repository. A deploy happens when the site's *code* changes, which
-is when you take an upstream update. Writing a page is not a code change and does not need one.
+Your content never enters this repository. A deploy happens when the site's *code* changes.
+Writing a page is not a code change and does not need one.
 
-## Deploy
+## How it runs
 
-1. Fork this repo on GitHub.
-2. In Netlify: **Add new project → Import an existing project**, and pick your fork.
-3. Open the site and pick a password.
+pages is an app on [@celsoft/platform](https://www.npmjs.com/package/@celsoft/platform), which
+provides sign-in, API tokens, the MCP server, storage, the database and deploys. To run your own
+copy, set it up with the platform's `celsoft-platform-setup` skill, which ships in the package.
+The site's address is the `hostname` in [platform.jsonc](platform.jsonc).
 
-Done. Want another site? Repeat step 2 with the same fork. Each site is separate.
+Every push to `main` deploys the site, and every pull request gets a preview of its own at
+`pr-<number>.<hostname>`. Tests run first, and a failing test stops the deploy.
 
-To update, press **Sync fork** on GitHub. Every site redeploys. Your content is safe.
+## Sign in
 
-Don't edit your fork. Only sync it.
+Open `/signup` on your site. The first account becomes the owner. After that, sign-up is by
+invitation: invite people at `/invites`.
 
 ## Connect Claude
 
-Open **Connections** in your site, copy the URL, and add it as a custom connector in Claude. Sign in with your admin password and approve.
-
-Then ask Claude to publish a page.
+Add `https://<your-site>/mcp` as a custom connector in Claude, sign in, and approve. Then ask
+Claude to publish a page.
 
 ## Connect a script, a cron job, or an agent
 
-Anything without a browser talks to the site over its REST API instead. Open **Connections**,
-create an API token under **API tokens**, and pick whether it may write or only read.
+Anything without a browser uses the REST API. Make a token at `/tokens`, and choose how much it
+may do: `read` only, up to `manage`.
 
-There is a skill that teaches any agent how to use it. Install it once:
-
-```
-npx skills add celsoft-com/pages --skill '*' -g -y
-```
-
-The flags matter: without them it opens an interactive picker. Add `-a '*'` if it asks which agent
-to install to.
-
-Then tell your agent your site's address and give it the token, and it will work out the rest
-from the site itself. It reaches Claude Code, Cursor, Codex and anything else that reads the
-[Agent Skills](https://github.com/anthropics/skills) format.
-
-Calling it directly is two lines:
+Each tool is an endpoint at `/api/v1/<tool>`. Writes take a JSON body; reads are GET with the
+input in the query string:
 
 ```
-curl -H "Authorization: Bearer $TOKEN" https://your-site.example/api/v1
 curl -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"path":"/beers","fields":{"name":"Pilsner"}}' \
   https://your-site.example/api/v1/put_item
+curl -H "Authorization: Bearer $TOKEN" "https://your-site.example/api/v1/list_items?path=/beers"
 ```
-
-`GET /api/v1` lists every tool the token may call, with its JSON Schema. That list is generated
-from the site, so it is never out of date.
 
 It is plain HTTP and JSON, so any language talks to it with nothing installed:
 
@@ -78,9 +64,17 @@ print(json.load(urllib.request.urlopen(req)))
 
 ## Documentation
 
-Every deploy serves its own reference at `/docs`: this README, the connector, the REST API, and
-every tool with its arguments and its reply. It is generated from the code that deploy is running,
-so it describes your site rather than a version of it somebody wrote down once.
+The guides are the markdown files in [docs/](docs). A reference served by the site itself is not
+available yet.
+
+## Not available yet
+
+Private pages and share links, the reference at `/docs`, an admin screen, map tools, and the
+agent skill for the REST API are not available yet.
+
+## Development
+
+See [AGENTS.md](AGENTS.md).
 
 ## License
 
