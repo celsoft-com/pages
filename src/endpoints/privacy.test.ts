@@ -274,4 +274,21 @@ describe("listings", () => {
     const body = await (await t.fetch("/p/list")).text();
     expect(body).toContain("[/list][/tripwire]|0");
   });
+
+  it("show a page inside a private path that path's own pages, and nothing of another's", async () => {
+    await trip();
+    await call("publish_page", { path: "/other/page", content: "# Other" });
+    await call("set_privacy", { path: "/other", private: true });
+    await call("set_privacy", { path: "/trip", private: true });
+    await call("publish_page", {
+      path: "/trip/list",
+      content:
+        "# List\n\n```pages\n{% for p in site.pages %}[{{ p.path }}]{% endfor %}" +
+        '|{{ collections["/trip/stops"] | size }}\n```',
+    });
+    const { link } = await call("share_path", { path: "/trip", label: "Dana" });
+    const body = await (await t.fetch("/p/trip/list", { headers: { "x-access-link": tokenOf(link) } })).text();
+    expect(body).toContain("[/trip][/trip/day1][/trip/list][/tripwire]|1");
+    expect(body).not.toContain("/other/page");
+  });
 });

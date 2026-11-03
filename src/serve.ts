@@ -8,7 +8,7 @@ import { contentsHtml, listable } from "./pages/contents";
 import { normalizeAssetPath, normalizePath, ROOT_BUNDLE } from "./pages/path";
 import { getPage, listPages, previewOf } from "./pages/service";
 import { type PagesApp, pointsFor, SITE_POINT } from "./pages-app";
-import { publicOnly } from "./privacy";
+import { publicOnly, scopeOfPoint } from "./privacy";
 import { loadChrome } from "./render/chrome";
 import { renderMarkdown } from "./render/markdown";
 import { expandFences, templateInput } from "./render/template";
@@ -28,9 +28,9 @@ const at = (normalize: (raw: string) => string, level: "read" | "write" = "read"
 const notFound = (path: string) => new EndpointError(404, `Nothing is published at ${path}.`);
 
 // Markdown is themed and runs its templates; HTML is served exactly as written.
-async function rendered(app: PagesApp, stored: Page): Promise<string> {
+async function rendered(app: PagesApp, stored: Page, gate: { point: string | null }): Promise<string> {
   if (stored.contentType === "html") return stored.body;
-  const { chrome, context } = await loadChrome(app, templateInput(stored));
+  const { chrome, context } = await loadChrome(app, templateInput(stored, scopeOfPoint(gate.point)));
   const content = await expandFences(stored.body, context, renderMarkdown);
   return layout({ title: stored.title, chrome, content });
 }
@@ -41,9 +41,9 @@ const home = page({
   routes: {
     "/": route(
       { access: { point: () => pointsFor(ROOT_BUNDLE), level: "read" }, cache: CACHE },
-      async (_params, app) => {
+      async (_params, app, _request, gate) => {
         const stored = await getPage(app, ROOT_BUNDLE);
-        if (stored) return rendered(app, stored);
+        if (stored) return rendered(app, stored, gate);
         const { chrome } = await loadChrome(app, templateInput(null));
         return contentsHtml({ chrome, pages: listable(await publicOnly(app, await listPages(app), (p) => p.path)) });
       },
@@ -54,13 +54,13 @@ const home = page({
 const pages = page({
   path: "/p",
   routes: {
-    "/*path": route({ params: REST, access: at(normalizePath), cache: CACHE }, async ({ path: raw }, app) => {
+    "/*path": route({ params: REST, access: at(normalizePath), cache: CACHE }, async ({ path: raw }, app, _request, gate) => {
       const path = normalizePath(raw);
       // The home page is served at /, so it has one URL, not two.
       if (path === ROOT_BUNDLE) return new Response(null, { status: 301, headers: { location: "/" } });
       const stored = await getPage(app, path);
       if (!stored) throw notFound(`/p${path}`);
-      return rendered(app, stored);
+      return rendered(app, stored, gate);
     }),
   },
 });
@@ -101,10 +101,10 @@ const assets = page({
 const preview = page({
   path: "/preview",
   routes: {
-    "/*path": route({ params: REST, access: at(normalizePath, "write") }, async ({ path: raw }, app) => {
+    "/*path": route({ params: REST, access: at(normalizePath, "write") }, async ({ path: raw }, app, _request, gate) => {
       const stored = await getPage(app, normalizePath(raw));
       if (!stored) throw notFound(`/preview/${raw}`);
-      return rendered(app, previewOf(stored));
+      return rendered(app, previewOf(stored), gate);
     }),
   },
 });

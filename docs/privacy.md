@@ -24,8 +24,10 @@ above one cannot be closed over it. `/` cannot be private, because that is the e
 than a path within it. To close the home page, make `/root` private.
 
 Private pages drop out of the site's contents at `/`, collections drop out of the index of
-collections, and a template lists neither, for everybody, link holders included: those lists are one
-copy for every visitor, so they can only show what a stranger may see.
+collections, and a public page's templates list neither, for everybody, link holders included: those
+lists are one copy for every visitor, so they can only show what a stranger may see. A page inside a
+private path is different: its templates list that path's pages and collections too, so a private
+series keeps its numbering and its navigation.
 
 ## The link
 

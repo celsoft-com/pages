@@ -181,8 +181,11 @@ schema, `invalidates: "all"` and the `site` access point.
   `/data/_collections.json`, and a template's `site.pages` and `collections`, shows only what a stranger may
   read: `publicOnly` in [privacy.ts](src/privacy.ts) passes each path's point chain to
   `app.access.asEveryone().filter`, which checks the first existing point of each, in one query. It is one copy
-  for every visitor, so it varies by nobody's cookie; a link holder reaches their page by the link, and a page
-  inside a private path sees no more through its templates than a public one does. A transfer that carries a resource across the edge of a private path reports
+  for every visitor, so it varies by nobody's cookie; a link holder reaches their page by the link. A page
+  inside a private path also lists that path's own pages and collections: the route's handler is given the
+  point its gate admitted the request on, and `visibleFrom` adds everything under that scope. That is still one
+  copy per URL, since everyone the gate admits sees the same page, and privacy never nests, so nothing under
+  the scope sits behind another gate. A transfer that carries a resource across the edge of a private path reports
   it in `privacy_changes`, because the dangerous direction, private to public, is otherwise silent.
 - **Bytes leave by HTTP, never through a tool.** A tool result is text in the calling agent's context, so an
   asset's bytes never come back that way: `/assets/<path>` is the only way to read one, and `list_assets` hands

@@ -5,13 +5,15 @@ import { normalizePath, pageHref } from "../pages/path";
 import { buildStamp, describeBuild } from "../build";
 import { countWords, getPage, listPages } from "../pages/service";
 import type { PagesApp } from "../pages-app";
-import { publicOnly } from "../privacy";
+import { visibleFrom } from "../privacy";
 import type { Page, PageSummary } from "../types";
 import { escapeHtml } from "./theme";
 
 // The page a template renders for, or null for chrome rendered around something that is not one.
 export interface TemplateScope {
   page: Page | null;
+  // The private path the request was admitted on, whose pages a template may list too; null for the site.
+  scope: string | null;
 }
 
 // minutes is a reading time at a steady 230 words a minute, at least one; a page that wants another
@@ -48,6 +50,7 @@ class SiteDrop extends Drop {
 
   constructor(
     private readonly app: PagesApp,
+    private readonly scope: string | null,
     readonly title: string,
     readonly description: string,
   ) {
@@ -56,7 +59,7 @@ class SiteDrop extends Drop {
 
   get pages() {
     this.cached ??= listPages(this.app)
-      .then((all) => publicOnly(this.app, listable(all), (page) => page.path))
+      .then((all) => visibleFrom(this.app, this.scope, listable(all), (page) => page.path))
       .then((pages) => pages.map(pageValue));
     return this.cached;
   }
@@ -67,7 +70,10 @@ class SiteDrop extends Drop {
 class CollectionsDrop extends Drop {
   private readonly cache = new Map<string, Promise<unknown[] | undefined>>();
 
-  constructor(private readonly app: PagesApp) {
+  constructor(
+    private readonly app: PagesApp,
+    private readonly scope: string | null,
+  ) {
     super();
   }
 
@@ -76,7 +82,7 @@ class CollectionsDrop extends Drop {
     if (!this.cache.has(path))
       this.cache.set(
         path,
-        publicOnly(this.app, [path], (p) => p).then(async ([open]) =>
+        visibleFrom(this.app, this.scope, [path], (p) => p).then(async ([open]) =>
           open === undefined ? undefined : (await getCollection(this.app, path))?.items,
         ),
       );
@@ -124,8 +130,8 @@ export async function renderTemplate(source: string, context: TemplateContext): 
   try {
     return await engine(context.app).parseAndRender(source, {
       page: context.input.page ? pageValue(context.input.page) : null,
-      site: new SiteDrop(context.app, context.site.title, context.site.description),
-      collections: new CollectionsDrop(context.app),
+      site: new SiteDrop(context.app, context.input.scope, context.site.title, context.site.description),
+      collections: new CollectionsDrop(context.app, context.input.scope),
       build: buildValue(context.app),
     });
   } catch (error) {
@@ -152,6 +158,6 @@ export async function expandFences(
   return render(marked).replace(/<!--pages-fence-(\d+)-->/g, (_whole, index: string) => rendered[Number(index)]);
 }
 
-export function templateInput(page: Page | null): TemplateScope {
-  return { page };
+export function templateInput(page: Page | null, scope: string | null = null): TemplateScope {
+  return { page, scope };
 }

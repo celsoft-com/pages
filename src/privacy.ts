@@ -128,3 +128,21 @@ export async function publicOnly<T>(app: PagesApp, items: readonly T[], pathOf: 
   const kept = new Set(await app.access.asEveryone().filter(entries, "read"));
   return items.filter((_, i) => kept.has(entries[i]));
 }
+
+// The private path a gate admitted a request on, from the point it names, or null for the site.
+export const scopeOfPoint = (point: string | null | undefined): string | null =>
+  point?.startsWith(PREFIX) ? pathOf(point) : null;
+
+// What a response may list: what everyone may read, and inside a private path the rest of that path,
+// which everyone the gate admits may read too. Still one copy per URL, since the gate decides who
+// sees it, and privacy never nests, so nothing under the scope sits behind another gate.
+export async function visibleFrom<T>(
+  app: PagesApp,
+  scope: string | null,
+  items: readonly T[],
+  pathOf: (item: T) => string,
+): Promise<T[]> {
+  const open = new Set(await publicOnly(app, items, pathOf));
+  return items.filter((item) => open.has(item) || (scope !== null && contains(scope, pathOf(item))));
+}
+
