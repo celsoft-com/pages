@@ -6,7 +6,7 @@
   "scripts": {
     "postinstall": "platform generate",
     "generate": "node scripts/docs-content.mjs",
-    "build": "tsc --noEmit && vitest run",
+    "build": "tsc --noEmit",
     "typecheck": "npm run generate && tsc --noEmit",
     "test": "npm run generate && vitest run",
     "test:watch": "npm run generate && vitest"
@@ -19,7 +19,7 @@
     "vitest": "^5.0.0"
   },
   "dependencies": {
-    "@celsoft/platform": "^0.45.0",
+    "@celsoft/platform": "^0.50.0",
     "drizzle-orm": "^0",
     "liquidjs": "^10.29.0",
     "marked": "^18.0.11",

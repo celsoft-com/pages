@@ -21,7 +21,7 @@ this repo is the app on top: pages, collections, assets, templates and the tools
 mise run install      # npm dependencies, skipped when current
 mise run typecheck
 mise run test         # the suite once, in parallel; args pass through, e.g. -- src/transfer.test.ts
-mise run build        # typecheck and tests: what every deploy runs before it ships
+mise run build        # typecheck, as every deploy does before it runs the tests
 mise run platform -- <command>   # any @celsoft/platform command, e.g. upgrade, previews
 ```
 
@@ -39,7 +39,7 @@ fake `app`.
 push to `main` and a preview at `pr-<n>.<hostname>` for each pull request. `platform generate` runs
 the `generate` script in [package.json](package.json) first, on install, dev and every deploy, and
 that script writes the app's generated files, the docs module today. Each deploy then runs the
-`build` script, which typechecks and runs the suite, so a failing test deploys nothing. The hostname
+`build` script, which typechecks, and the `test` script, so a failing test deploys nothing. The hostname
 and the platform features the app uses are in [platform.jsonc](platform.jsonc).
 
 ## Architecture
@@ -323,7 +323,7 @@ schema, `invalidates: "all"` and the `site` access point.
   each is a GET or a POST, from the site's own `/api/platform/openapi.json`. It carries no tool list, no schema
   and no copy of the connect-time instructions, and [skill.test.ts](src/skill.test.ts) fails if it names a tool
   or argument that does not exist or repeats a twelve-word run of `MCP_INSTRUCTIONS`. Its scripts need only
-  Python 3, keep the token out of argv, take arguments as a file rather than a command line so page content never
+  Python 3, keep the token out of argv, report the token's cap from `/api/platform/caller` in pages-doctor, take arguments as a file rather than a command line so page content never
   reaches the process list, and never block on stdin.
 - **The tool reference is the endpoints, drawn.** `/docs/tools` renders the platform's
   `openApiDocument(endpoints, ...)` as tables in [reference.ts](src/docs/reference.ts): each tool's description,

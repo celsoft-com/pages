@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-#MISE description="Typecheck and test: what every deploy runs before it ships"
+#MISE description="Typecheck, as every deploy does before it runs the tests"
 #MISE depends=["install"]
 set -euo pipefail
 source "${0:A:h}/_lib.sh"
