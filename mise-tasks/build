@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-#MISE description="Write the generated files, such as the /docs module: what install and every deploy run first"
+#MISE description="Typecheck and test: what every deploy runs before it ships"
 #MISE depends=["install"]
 set -euo pipefail
 source "${0:A:h}/_lib.sh"

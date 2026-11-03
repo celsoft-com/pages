@@ -21,7 +21,7 @@ this repo is the app on top: pages, collections, assets, templates and the tools
 mise run install      # npm dependencies, skipped when current
 mise run typecheck
 mise run test         # the suite once, in parallel; args pass through, e.g. -- src/transfer.test.ts
-mise run build        # write the generated files: what install and every deploy run first
+mise run build        # typecheck and tests: what every deploy runs before it ships
 mise run platform -- <command>   # any @celsoft/platform command, e.g. upgrade, previews
 ```
 
@@ -36,11 +36,11 @@ fake `app`.
 ## Deploys
 
 [platform.yml](.github/workflows/platform.yml) runs `platform ci`, which deploys production on a
-push to `main` and a preview at `pr-<n>.<hostname>` for each pull request. The `build` script in
-[package.json](package.json) only writes generated files, the docs module today, because the platform
-runs it before `generate` on every install and every deploy; typechecking and tests are the
-`typecheck` and `test` scripts, which run it first. The hostname and the platform features the app
-uses are in [platform.jsonc](platform.jsonc).
+push to `main` and a preview at `pr-<n>.<hostname>` for each pull request. `platform generate` runs
+the `generate` script in [package.json](package.json) first, on install, dev and every deploy, and
+that script writes the app's generated files, the docs module today. Each deploy then runs the
+`build` script, which typechecks and runs the suite, so a failing test deploys nothing. The hostname
+and the platform features the app uses are in [platform.jsonc](platform.jsonc).
 
 ## Architecture
 
@@ -311,8 +311,9 @@ schema, `invalidates: "all"` and the `site` access point.
   ([layout.ts](src/docs/layout.ts)) and contains no prose, because a paragraph written there would be a source
   nobody thinks to update. The Worker has no repository to read, so
   [docs-content.mjs](scripts/docs-content.mjs) writes them into `src/docs/content.ts`, which is gitignored and
-  never committed: the `build` script writes it, the platform runs that on every install and deploy, and
-  the `typecheck` and `test` scripts run it first, so neither needs a build first. `linkToPage` in
+  never committed: the `generate` script writes it, which the platform runs on every install, dev and
+  deploy, and `typecheck` and `test` run it again first, because the tests hold the module to the markdown
+  on disk and a topic edited since the last install would otherwise fail them. `linkToPage` in
   [topics.ts](src/docs/topics.ts) turns a link to a topic file into its page and any other relative link into
   one to the repository, and [docs.test.ts](src/docs/docs.test.ts) fails on a docs link that would 404.
 - **The skill points at the site, it does not copy it.** [skills/pages-api](skills/pages-api) is an Agent Skills
