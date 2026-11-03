@@ -15,19 +15,29 @@
 // it would write and writes nothing. It never deletes anything on the target; what the target holds
 // and the source does not is reported, for a person to decide.
 //
+// --rewrite-links moves internal links to the scheme this site serves, pages under /p: see
+// rewriteLinks in content-sites.mjs. It is a step of a migration, never something a transfer does.
+//
 // What cannot move: share links, because a site keeps only a hash of each. A private path arrives
 // closed, and its links are minted again on the target.
-import { canonical, openSource, openTarget, parseArgs, same, sha256, SiteError, writeExport } from "./content-sites.mjs";
+import { canonical, openSource, openTarget, parseArgs, rewriteContent, same, sha256, SiteError, writeExport } from "./content-sites.mjs";
 
 const actions = [];
 const notes = [];
 const act = (line) => actions.push(line);
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2), ["dry-run"]);
+  const options = parseArgs(process.argv.slice(2), ["dry-run", "rewrite-links"]);
   if (!options.source) throw new SiteError("usage: migrate-content.mjs --source <url|dir> [--token-env NAME] (--target <url> [--target-token-env NAME] [--dry-run] | --export <dir>)");
   const source = await openSource(options.source, options["token-env"]);
-  const content = await source.read();
+  let content = await source.read();
+  // From a site that served pages at their own paths: every internal link takes its /p form, listed.
+  if (options["rewrite-links"]) {
+    const result = rewriteContent(content);
+    content = result.content;
+    for (const r of result.rewritten) console.log(`rewrite link in ${r.page}: ${r.from} -> ${r.to}`);
+    console.log(`rewrote ${result.rewritten.length} link${result.rewritten.length === 1 ? "" : "s"}`);
+  }
 
   if (options.export) {
     const dir = options.export;

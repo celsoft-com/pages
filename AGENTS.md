@@ -328,7 +328,10 @@ schema, `invalidates: "all"` and the `site` access point.
   sean.celsoft.com and pages.odellfambly.us are never merged. It compares everything with what
   the target holds and writes only a difference, so it is fixed and run again rather than reset, and it deletes
   nothing: what only the target holds is reported. Share links cannot move, since a site keeps only their hashes.
-  `--export <dir>` writes a source to a directory, [verify-content.mjs](scripts/verify-content.mjs) compares a
+  `--rewrite-links` moves internal links in content and templates to this site's scheme, pages under `/p`,
+  and lists each one: a literal link takes its `/p` form, `/{{ x }}` becomes `/p/{{ x }}`, and a link a template
+  computes gains `| page_url`. It is a step of a migration from a site that served pages at their own paths,
+  never something a transfer does. `--export <dir>` writes a source to a directory, [verify-content.mjs](scripts/verify-content.mjs) compares a
   target with its source byte for byte and exits 1 on a difference, and [seed-export.mjs](scripts/seed-export.mjs)
   writes an export of the guides and a demo trip for a site that has nothing yet, such as a preview. The old
   API, which took every call as a POST, is read the same way.

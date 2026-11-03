@@ -6,14 +6,21 @@
 // Arguments and tokens as for migrate-content.mjs. It reads both whole and reports every page (live
 // and draft), item (fields and order), collection reference, asset (by SHA-256 of its bytes), the
 // instructions, the site settings and the private paths that differ. It exits 1 on any difference.
-import { canonical, openSource, openTarget, parseArgs, same, sha256, SiteError } from "./content-sites.mjs";
+import { canonical, openSource, openTarget, parseArgs, rewriteContent, same, sha256, SiteError } from "./content-sites.mjs";
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2));
+  const options = parseArgs(process.argv.slice(2), ["rewrite-links"]);
   if (!options.source || !options.target) throw new SiteError("usage: verify-content.mjs --source <url|dir> [--token-env NAME] --target <url> [--target-token-env NAME]");
   const source = await openSource(options.source, options["token-env"]);
   const target = openTarget(options.target, options["target-token-env"] ?? "TARGET_TOKEN");
-  const [want, have] = await Promise.all([source.read(), target.snapshot()]);
+  const [read, have] = await Promise.all([source.read(), target.snapshot()]);
+  // Compared modulo the migration's link rewrites, which it lists, so a rewrite is the only difference allowed.
+  let want = read;
+  if (options["rewrite-links"]) {
+    const result = rewriteContent(read);
+    want = result.content;
+    for (const r of result.rewritten) console.log(`expected rewrite in ${r.page}: ${r.from} -> ${r.to}`);
+  }
   const problems = [];
   let checked = 0;
 

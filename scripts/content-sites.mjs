@@ -223,3 +223,69 @@ export function canonical(value) {
 }
 
 export const same = (a, b) => canonical(a) === canonical(b);
+
+// Where a reader opens a path: the same rule as src/pages/path.ts pageHref, which the site's own
+// templates use, so a rewritten link and a link a template builds always agree.
+const SERVED_AS_IS = [
+  "/assets", "/data", "/docs", "/p", "/preview", "/admin", "/api", "/login", "/signup", "/forgot", "/reset",
+  "/consent", "/invites", "/tokens", "/mcp", "/.well-known", "/favicon.ico", "/robots.txt",
+];
+export function pageHref(value) {
+  if (!value.startsWith("/") || value.startsWith("//")) return value;
+  const at = value.search(/[?#]/);
+  const path = at === -1 ? value : value.slice(0, at);
+  const rest = at === -1 ? "" : value.slice(at);
+  if (path === "/" || path === "/root" || path === "/root/") return `/${rest}`;
+  if (SERVED_AS_IS.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return value;
+  return `/p${path}${rest}`;
+}
+
+// A link's new form, for the migration from sites that served pages at their own paths:
+//   a literal internal link       /essay/x            -> /p/essay/x
+//   a path a template completes   /{{ kind }}         -> /p/{{ kind }}
+//   a link a template computes    {{ r.path }}        -> {{ r.path | page_url }}
+// /assets, /data, /docs, outside addresses and fragments are left as written. It reads href, src and
+// action attributes and markdown link targets; a code block other than a pages fence is prose and is
+// left alone.
+function rewriteValue(value) {
+  const trimmed = value.trim();
+  const output = /^\{\{-?\s*([\s\S]+?)\s*-?\}\}$/.exec(trimmed);
+  if (output) return /\|\s*page_url\b/.test(output[1]) ? value : `{{ ${output[1]} | page_url }}`;
+  if (trimmed.startsWith("/{{") || trimmed.startsWith("/{%")) return `/p${trimmed}`;
+  if (trimmed.includes("{{") || trimmed.includes("{%")) return value;
+  return pageHref(value);
+}
+
+function rewriteSpan(text, changes) {
+  const note = (from, to) => {
+    if (from !== to) changes.push({ from, to });
+    return to;
+  };
+  return text
+    .replace(/\b(href|src|action)(\s*=\s*)(["'])([^"']*)\3/g, (_, attr, eq, q, value) => `${attr}${eq}${q}${note(value, rewriteValue(value))}${q}`)
+    .replace(/\]\((\/[^)\s]*)((?:\s+"[^"]*")?)\)/g, (_, value, title) => `](${note(value, pageHref(value))}${title})`);
+}
+
+export function rewriteLinks(source, format) {
+  const changes = [];
+  if (format === "html") return { text: rewriteSpan(source, changes), changes };
+  // Markdown: only text and pages fences carry links a reader follows.
+  const parts = source.split(/(^```[^\n]*\n[\s\S]*?^```[ \t]*$)/m);
+  const text = parts
+    .map((part) => (part.startsWith("```") && !/^```pages\b/.test(part) ? part : rewriteSpan(part, changes)))
+    .join("");
+  return { text, changes };
+}
+
+// The whole content with every page's links in their new form, and the list of what changed.
+export function rewriteContent(content) {
+  const rewritten = [];
+  const pages = content.pages.map((page) => {
+    const live = rewriteLinks(page.content, page.format);
+    for (const change of live.changes) rewritten.push({ page: page.path, ...change });
+    const draft = page.draft ? rewriteLinks(page.draft.content, page.draft.format) : null;
+    for (const change of draft?.changes ?? []) rewritten.push({ page: `${page.path} (draft)`, ...change });
+    return { ...page, content: live.text, ...(page.draft ? { draft: { ...page.draft, content: draft.text } } : {}) };
+  });
+  return { content: { ...content, pages }, rewritten };
+}
