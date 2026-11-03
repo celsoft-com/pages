@@ -1,3 +1,5 @@
+import { assetKeyFor } from "../assets/service";
+import { assetFile } from "../store";
 import { testApp } from "@celsoft/platform/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import app from "../worker";
@@ -222,5 +224,14 @@ describe("privacy_changes", () => {
     expect(await call("move_page", { from: "/trip/day1", to: "/trip/day-one" })).not.toHaveProperty(
       "privacy_changes",
     );
+  });
+});
+
+describe("an asset whose bytes are gone", () => {
+  it("can still be deleted, so its listing row does not outlive it", async () => {
+    await call("upload_asset", { path: "/gone/a.txt", file: new File(["a"], "a.txt", { type: "text/plain" }) });
+    await t.files.delete(assetFile(assetKeyFor("/gone/a.txt")));
+    expect((await call("delete_asset", { path: "/gone/a.txt" })).applied).toBe(true);
+    expect((await call("list_assets", {})).assets).toEqual([]);
   });
 });

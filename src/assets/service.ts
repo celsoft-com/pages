@@ -47,6 +47,11 @@ export async function writeAsset(app: PagesApp, asset: Asset, body: ArrayBuffer 
     .onConflictDoUpdate({ target: assets.key, set: { path: asset.path ?? null, asset } });
 }
 
+// Puts back only the row of an asset whose bytes were already gone, for a transfer's undo.
+export async function restoreAssetRow(app: PagesApp, asset: Asset): Promise<void> {
+  await app.db.insert(assets).values({ key: asset.key, path: asset.path ?? null, asset }).onConflictDoNothing();
+}
+
 export async function removeAsset(app: PagesApp, key: string): Promise<void> {
   await app.files.delete(assetFile(key));
   await app.db.delete(assets).where(eq(assets.key, key));

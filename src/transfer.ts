@@ -1,5 +1,5 @@
 import { EndpointError } from "@celsoft/platform";
-import { assetBody, assetKeyFor, getAsset, listAssets, removeAsset, writeAsset } from "./assets/service";
+import { assetBody, assetKeyFor, getAsset, listAssets, removeAsset, restoreAssetRow, writeAsset } from "./assets/service";
 import { contains, segmentsOf } from "./bundle";
 import {
   getCollection,
@@ -358,11 +358,12 @@ export async function applyTransfer(
         undo: () => writeCollectionFile(app, collection),
       });
     for (const asset of sources.assets)
-      if (staged.has(asset.key))
-        writes.push({
-          run: () => removeAsset(app, asset.key),
-          undo: () => rewrite(asset, asset.key),
-        });
+      writes.push({
+        run: () => removeAsset(app, asset.key),
+        // A row whose bytes are already gone has nothing to put back but the row, and skipping it would
+        // leave a listing that names a file nothing serves, with no way to remove it.
+        undo: () => (staged.has(asset.key) ? rewrite(asset, asset.key) : restoreAssetRow(app, asset)),
+      });
   }
 
   const done: Write[] = [];
