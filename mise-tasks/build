@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-#MISE description="Typecheck and test, as CI does before it deploys"
+#MISE description="Generate the docs module, typecheck and test: what a deploy runs first"
 #MISE depends=["install"]
 set -euo pipefail
 source "${0:A:h}/_lib.sh"

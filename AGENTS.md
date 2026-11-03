@@ -21,7 +21,7 @@ this repo is the app on top: pages, collections, assets, templates and the tools
 mise run install      # npm dependencies, skipped when current
 mise run typecheck
 mise run test         # the suite once, in parallel; args pass through, e.g. -- src/transfer.test.ts
-mise run build        # typecheck + tests
+mise run build        # the docs module, typecheck and tests: what a deploy runs first
 mise run platform -- <command>   # any @celsoft/platform command, e.g. upgrade, previews
 ```
 
@@ -35,10 +35,11 @@ fake `app`.
 
 ## Deploys
 
-[platform.yml](.github/workflows/platform.yml) runs `platform ci`: it tests, then deploys
-production on a push to `main` and a preview at `pr-<n>.<hostname>` for each pull request. The
-hostname and the platform features the app uses are in [platform.jsonc](platform.jsonc). A failing
-test fails the deploy.
+[platform.yml](.github/workflows/platform.yml) runs `platform ci`, which deploys production on a
+push to `main` and a preview at `pr-<n>.<hostname>` for each pull request. Each deploy first runs the
+`build` script in [package.json](package.json): it generates the docs module, typechecks and runs the
+suite, so a failing test deploys nothing. The hostname and the platform features the app uses are in
+[platform.jsonc](platform.jsonc).
 
 ## Architecture
 
@@ -292,13 +293,22 @@ schema, `invalidates: "all"` and the `site` access point.
   lives here instead. Links between topics are written as files (`[bundles](bundles.md)`), never into `src/`.
   Changing how something works means changing its topic in the same commit, and the endpoint descriptions are
   the tool reference, so no topic restates them.
+- **`/docs` serves the markdown the deploy was built with, and nothing else.** The README, the licence and the
+  topics are the only sources: [pages.ts](src/docs/pages.ts) renders them in the docs' own chrome
+  ([layout.ts](src/docs/layout.ts)) and contains no prose, because a paragraph written there would be a source
+  nobody thinks to update. The Worker has no repository to read, so
+  [docs-content.mjs](scripts/docs-content.mjs) writes them into `src/docs/content.ts`, which is gitignored and
+  never committed: the `build` script the platform runs before every deploy generates it, and so do the
+  `typecheck` and `test` scripts, so neither needs a build first. `linkToPage` in
+  [topics.ts](src/docs/topics.ts) turns a link to a topic file into its page and any other relative link into
+  one to the repository, and [docs.test.ts](src/docs/docs.test.ts) fails on a docs link that would 404.
 
 ## Not available yet
 
 These wait on @celsoft/platform. Build none of them, and no stand-in for any of them, until the
 platform offers what each needs.
 
-- **The `/docs` site.** The topics in [docs/](docs) are read on GitHub until then.
+- **The tool reference at `/docs/tools`,** drawn from the endpoints, which needs documented API discovery.
 - **An admin screen.** The owner works through Claude, the API and the platform's own screens.
 - **The geo tools,** which need app secrets.
 - **MCP server instructions,** the text a client reads on connecting.

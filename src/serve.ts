@@ -1,12 +1,13 @@
 import { EndpointError, page, route } from "@celsoft/platform";
 import { z } from "zod";
 import { findAsset } from "./assets/service";
+import { docsPage } from "./docs/pages";
 import { favicon } from "./favicon";
 import { getCollection, manifest, MANIFEST_PATH, normalizeCollectionPath } from "./data/service";
 import { contentsHtml, listable } from "./pages/contents";
 import { normalizeAssetPath, normalizePath, ROOT_BUNDLE } from "./pages/path";
 import { getPage, listPages, previewOf } from "./pages/service";
-import { type PagesApp, pointsFor } from "./pages-app";
+import { type PagesApp, pointsFor, SITE_POINT } from "./pages-app";
 import { publicOnly } from "./privacy";
 import { loadChrome } from "./render/chrome";
 import { renderMarkdown } from "./render/markdown";
@@ -118,4 +119,16 @@ const icon = page({
   },
 });
 
-export const servedPages = [home, pages, data, assets, preview, icon];
+// The software's own documentation, the same on every site and readable by anyone the site is.
+const SLUG = z.object({ slug: z.string() });
+const docs = page({
+  path: "/docs",
+  routes: {
+    "/": route({ access: { point: () => SITE_POINT, level: "read" }, cache: CACHE }, (_params, app) => docsPage(app, "")),
+    "/:slug": route({ params: SLUG, access: { point: () => SITE_POINT, level: "read" }, cache: CACHE }, ({ slug }, app) =>
+      docsPage(app, slug),
+    ),
+  },
+});
+
+export const servedPages = [home, pages, data, assets, preview, icon, docs];

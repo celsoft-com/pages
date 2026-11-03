@@ -70,13 +70,13 @@ it. Ask for a share link for each person you want to let in, and revoke one when
 
 ## Documentation
 
-The guides are the markdown files in [docs/](docs). A reference served by the site itself is not
-available yet.
+Every deploy serves its own guides at `/docs`: this README and the topics in [docs/](docs), from
+the copy that deploy was built with.
 
 ## Not available yet
 
-The reference at `/docs`, an admin screen, map tools, and the agent skill for the REST API are not
-available yet.
+A tool reference at `/docs`, an admin screen, map tools, and the agent skill for the REST API are
+not available yet.
 
 ## Development
 
