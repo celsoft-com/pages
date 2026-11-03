@@ -99,8 +99,8 @@ Claude writes that into the site's instructions, which a later session reads bef
 anything, and tells you what it wrote. When it gets something wrong in a way it would repeat, the
 correction goes there too.
 
-They are yours as much as Claude's: ask Claude to show them to you, reword a rule or drop one you no
-longer want. They are rules, not a diary: keep them short, because every session reads the whole
+They are yours as much as Claude's: open **Instructions** in the admin at `/admin`, or ask Claude,
+to read them, reword a rule or drop one you no longer want. They are rules, not a diary: keep them short, because every session reads the whole
 thing. They shape the content, not the platform, so a rule asking Claude to commit or deploy will
 not work and Claude will say so.
 
@@ -119,3 +119,5 @@ never in the code.
 - Claude gives you the URL of anything it writes. Open that too. It is the fastest way to catch a
   page that reads well in a chat and badly in a browser.
 - Ask Claude to check the links after a move or a delete.
+- The admin at `/admin` lists your pages, collections and files, and has an editor for when it is
+  faster to change one word yourself than to describe it.

@@ -21,7 +21,7 @@ this repo is the app on top: pages, collections, assets, templates and the tools
 mise run install      # npm dependencies, skipped when current
 mise run typecheck
 mise run test         # the suite once, in parallel; args pass through, e.g. -- src/transfer.test.ts
-mise run build        # typecheck, as every deploy does before it runs the tests
+mise run build        # typecheck and build the admin into dist/, as every deploy does
 mise run platform -- <command>   # any @celsoft/platform command, e.g. upgrade, previews
 ```
 
@@ -39,7 +39,8 @@ fake `app`.
 push to `main` and a preview at `pr-<n>.<hostname>` for each pull request. `platform generate` runs
 the `generate` script in [package.json](package.json) first, on install, dev and every deploy, and
 that script writes the app's generated files, the docs module today. Each deploy then runs the
-`build` script, which typechecks, and the `test` script, so a failing test deploys nothing. The hostname
+`build` script, which typechecks and builds the admin into `dist/`, and the `test` script, which builds it
+again and runs the suite, so a failing test deploys nothing. The hostname
 and the platform features the app uses are in [platform.jsonc](platform.jsonc).
 
 ## Architecture
@@ -57,7 +58,8 @@ schema, `invalidates: "all"` and the `site` access point.
   - `/assets/<path>`: an uploaded file.
   - `/preview/<path>`: a page's working copy.
   - `/favicon.ico`: the site icon.
-- **Static files** come from [public/](public), such as `robots.txt`, served before the Worker.
+- **Static files** are `dist/`, served before the Worker: the admin, which Vite builds there, and
+  [public/](public)'s files, such as `robots.txt`, which Vite copies in beside it.
 - **Storage:** every page, collection and asset is a file in `app.files`
   ([store.ts](src/store.ts) names them: `pages/<path>.json`, `data/<path>.json`,
   `assets/<key>`), and the file is the truth. Postgres ([schema.ts](src/schema.ts)) holds a summary
@@ -331,10 +333,22 @@ schema, `invalidates: "all"` and the `site` access point.
   groups are the files that define the endpoints, through `ENDPOINT_GROUPS` in
   [endpoints/index.ts](src/endpoints/index.ts), so nothing keeps a list of tools. [docs/tools.md](docs/tools.md)
   is the reference's introduction rather than a page of its own.
-
-## Not available yet
-
-These wait on @celsoft/platform. Build none of them, and no stand-in for any of them, until the
-platform offers what each needs.
-
-- **An admin screen.** The owner works through Claude, the API and the platform's own screens.
+- **The admin is a browser app over the endpoints.** [admin/](admin) is plain JavaScript that Vite bundles
+  ([vite.config.ts](vite.config.ts), with the platform's `platform()` plugin) into `dist/admin/`, served at
+  `/admin` before the Worker. It calls the same endpoints Claude and the REST API use through `call()` from
+  `.platform/client`, so it can do nothing a token could not, and there is no admin route in the Worker. Its
+  bundle goes under `/admin/assets` because `/assets` is the site's own route for uploaded files and would
+  shadow it. Signing in, API tokens and invitations are the platform's own screens at `/login`, `/tokens` and
+  `/invites`; the admin links to them and never rebuilds them. It is the owner's, and says so to anyone else
+  rather than showing screens that refuse every action. [admin.test.ts](src/admin.test.ts) checks how it is
+  served, which is what a test can reach; the screens themselves are checked on a preview.
+- **The admin asks its own questions.** No `confirm`, no `alert`, no `prompt`, and no dialog the browser draws:
+  they are unstyled, name the origin instead of the site, and on a phone arrive detached from whatever was
+  tapped. A destructive button becomes its own confirmation where it was pressed, stated in full, and a second
+  press commits: `confirmInPlace` in [ui.js](admin/ui.js) is the single rendering of that. The wording says
+  what will happen, `Delete /trip/items and its 3 items`, never `Are you sure?`.
+- **The admin never retypes a path.** The page editor shows a page's path and links to a move; it never offers
+  the path as a field, because retyping it writes a new page and strands everything filed under the old one.
+  The move screen offers the whole bundle first and the page alone second, and shows what each leaves behind,
+  through the same transfer tools a client uses. Privacy is a column of the pages list, one state and one text
+  action, and its controls live in the page's own editor, beside its content.

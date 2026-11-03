@@ -29,6 +29,12 @@ Every push to `main` deploys the site, and every pull request gets a preview of 
 Open `/signup` on your site. The first account becomes the owner. After that, sign-up is by
 invitation: invite people at `/invites`.
 
+## The admin
+
+Open `/admin` on your site to see and change everything without Claude: pages and their drafts,
+data collections, files, private paths and their share links, the instructions Claude follows, and
+the site's title and theme.
+
 ## Connect Claude
 
 Add `https://<your-site>/mcp` as a custom connector in Claude, sign in, and approve. Then ask
@@ -83,10 +89,6 @@ it. Ask for a share link for each person you want to let in, and revoke one when
 
 Every deploy serves its own documentation at `/docs`: this README, the topics in [docs/](docs), and
 a reference to every tool drawn from the code it is running.
-
-## Not available yet
-
-An admin screen is not available yet.
 
 ## Development
 
