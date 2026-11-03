@@ -6,6 +6,7 @@ import { type PagesApp, pointsFor } from "../pages-app";
 import {
   type Kind,
   normalizeFor,
+  privacyChanges,
   restOfBundle,
   runTransfer,
   type Scope,
@@ -70,6 +71,10 @@ const TRANSFER_OUTPUT = z.object({
     .describe(
       "Page lines still naming a path that has gone. No page content is ever edited, so these are yours to fix.",
     ),
+  privacy_changes: z
+    .array(z.object({ kind: z.string(), path: z.string(), was: z.string(), now: z.string() }))
+    .optional()
+    .describe("Resources that changed hands between public and private. Absent when none did."),
   rest_of_bundle: z
     .array(z.object({ kind: z.string(), path: z.string() }))
     .optional()
@@ -84,7 +89,11 @@ function resourceUrl(app: PagesApp, kind: Kind, path: string): string {
 }
 
 async function transferResult(app: PagesApp, transfer: Transfer): Promise<z.infer<typeof TRANSFER_OUTPUT>> {
-  const [stale, rest] = await Promise.all([staleReferences(app, transfer), restOfBundle(app, transfer)]);
+  const [stale, rest, privacy] = await Promise.all([
+    staleReferences(app, transfer),
+    restOfBundle(app, transfer),
+    privacyChanges(app, transfer),
+  ]);
   const notes: string[] = [];
 
   if (!transfer.applied)
@@ -101,6 +110,13 @@ async function transferResult(app: PagesApp, transfer: Transfer): Promise<z.infe
         : "No page content was changed. Every line listed in pages_to_update still names a path that has gone.",
     );
   if (rest.length > 0) notes.push("Everything in rest_of_bundle stayed exactly where it was.");
+  if (privacy.some((change) => change.now === "public"))
+    notes.push(
+      "Something in privacy_changes left a private path and is now public to anyone who has the URL. Tell the " +
+        "owner before they find out another way, and use set_privacy on the new path if it should stay closed.",
+    );
+  else if (privacy.length > 0)
+    notes.push("Something in privacy_changes moved into a private path and is now closed to the public.");
 
   return {
     operation: transfer.verb,
@@ -119,6 +135,7 @@ async function transferResult(app: PagesApp, transfer: Transfer): Promise<z.infe
     })),
     breaks: transfer.breaks,
     pages_to_update: stale,
+    ...(privacy.length === 0 ? {} : { privacy_changes: privacy }),
     ...(rest.length === 0 ? {} : { rest_of_bundle: rest }),
     notes,
   };

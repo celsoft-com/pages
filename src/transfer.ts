@@ -11,6 +11,7 @@ import {
 } from "./data/service";
 import { ROOT_IS_NOT_A_BUNDLE, bundleContents, referencesInto, type BrokenReference } from "./inventory";
 import { normalizeAssetPath, normalizePath } from "./pages/path";
+import { privatePaths, scopeOf } from "./privacy";
 import {
   findInPages,
   getPage,
@@ -460,4 +461,23 @@ export async function restOfBundle(app: PagesApp, transfer: Transfer): Promise<{
     ...contents.collections.map((c) => ({ kind: "collection", path: c.path })),
     ...contents.assets.map((a) => ({ kind: "asset", path: a.path! })),
   ].filter((entry) => !taken.has(entry.path));
+}
+
+// Moving or copying a resource across the edge of a private path opens it or closes it. Neither shows
+// in the resource list and the dangerous direction is silent, so it is reported the way a broken
+// reference is: named, not refused. A delete has no target and so changes nobody's access.
+export async function privacyChanges(
+  app: PagesApp,
+  transfer: Transfer,
+): Promise<{ kind: string; path: string; was: string; now: string }[]> {
+  if (!transfer.applied) return [];
+  const privates = await privatePaths(app);
+  const state = (scope: string | null) => (scope ? `private, under ${scope}` : "public");
+  return transfer.resources.flatMap((resource) => {
+    if (resource.to === null) return [];
+    const before = scopeOf(privates, resource.from);
+    const after = scopeOf(privates, resource.to);
+    if (before === after) return [];
+    return [{ kind: resource.kind, path: resource.to, was: state(before), now: state(after) }];
+  });
 }

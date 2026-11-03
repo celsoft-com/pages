@@ -191,3 +191,36 @@ describe("access", () => {
     expect(await refusal(t.as(guest).call("move_page", { from: "/trip", to: "/x" }))).toMatch(/^404 not found/);
   });
 });
+
+// A private /trip holding /trip/day1, and a public /tripwire beside it.
+async function privateTrip() {
+  await call("publish_page", { path: "/trip/day1", content: "# Day one" });
+  await call("publish_page", { path: "/tripwire", content: "# Tripwire" });
+  await call("set_privacy", { path: "/trip", private: true });
+}
+
+describe("privacy_changes", () => {
+  it("report a resource leaving a private path as now public", async () => {
+    await privateTrip();
+    const moved = await call("move_page", { from: "/trip/day1", to: "/day1" });
+    expect(moved.privacy_changes).toEqual([
+      { kind: "page", path: "/day1", was: "private, under /trip", now: "public" },
+    ]);
+    expect(moved.notes.join(" ")).toContain("is now public to anyone who has the URL");
+  });
+
+  it("report a resource moving into a private path as now closed", async () => {
+    await privateTrip();
+    const copied = await call("copy_page", { from: "/tripwire", to: "/trip/wire" });
+    expect(copied.privacy_changes).toEqual([
+      { kind: "page", path: "/trip/wire", was: "public", now: "private, under /trip" },
+    ]);
+  });
+
+  it("leave privacy_changes out when nothing crossed an edge", async () => {
+    await privateTrip();
+    expect(await call("move_page", { from: "/trip/day1", to: "/trip/day-one" })).not.toHaveProperty(
+      "privacy_changes",
+    );
+  });
+});
