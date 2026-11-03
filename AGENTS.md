@@ -328,7 +328,8 @@ schema, `invalidates: "all"` and the `site` access point.
   export directory, the target a URL written with a manage-capped token, `TARGET_TOKEN` unless named. A token is
   only ever named, never passed or printed: the task loads [secrets.tmpl](secrets.tmpl)'s names from
   `.env.secrets` through Node's `--env-file`, into its own process. One source goes to one target; the old sites
-  sean.celsoft.com and pages.odellfambly.us are never merged. It compares everything with what
+  sean.celsoft.com and pages.odellfambly.us are never merged. `mise run migrate-site sean|family [--dry-run]`
+  runs either one to its own preview, pr-1 or pr-2, with link rewrites and old-path redirects, then verifies it. It compares everything with what
   the target holds and writes only a difference, so it is fixed and run again rather than reset, and it deletes
   nothing: what only the target holds is reported. Share links cannot move, since a site keeps only their hashes.
   `--rewrite-links` moves internal links in content and templates to this site's scheme, pages under `/p`,
