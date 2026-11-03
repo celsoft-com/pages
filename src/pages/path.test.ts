@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isValidPath, normalizePath } from "./path";
+import { isValidPath, normalizePath, pageHref } from "./path";
 
 describe("normalizePath", () => {
   it("anchors a bare name", () => {
@@ -74,5 +74,19 @@ describe("isValidPath", () => {
     expect(isValidPath("/blog/")).toBe(false);
     expect(isValidPath("/blog//first")).toBe(false);
     expect(isValidPath("/a?b")).toBe(false);
+  });
+});
+
+describe("pageHref", () => {
+  it("sends a page's path to its /p URL and /root to /", () => {
+    expect(pageHref("/about")).toBe("/p/about");
+    expect(pageHref("/essay/x?y=1#top")).toBe("/p/essay/x?y=1#top");
+    expect(pageHref("/")).toBe("/");
+    expect(pageHref("/root")).toBe("/");
+  });
+
+  it("leaves the site's own routes, outside addresses and fragments alone", () => {
+    for (const value of ["/assets/a.png", "/data/x.json", "/docs/tools", "/p/about", "/login", "https://x.example/a", "//cdn.example/a.js", "#top", "mailto:a@b.c"])
+      expect(pageHref(value)).toBe(value);
   });
 });

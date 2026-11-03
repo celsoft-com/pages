@@ -194,3 +194,17 @@ describe("caching", () => {
     expect((await t.fetch("/p/about")).headers.get("platform-cache")).toBe("hit");
   });
 });
+
+describe("links in templates", () => {
+  it("give a page's url, and turn any path into one with page_url", async () => {
+    await call("publish_page", { path: "/about", content: "# About" });
+    await call("publish_page", {
+      path: "/links",
+      content:
+        '# Links\n\n```pages\n{% for p in site.pages %}[{{ p.url }}]{% endfor %}' +
+        ' {{ "/about" | page_url }} {{ "/root" | page_url }} {{ "/assets/a.png" | page_url }} {{ "https://x.example/" | page_url }}\n```',
+    });
+    const body = await (await t.fetch("/p/links")).text();
+    expect(body).toContain("[/p/about][/p/links] /p/about / /assets/a.png https://x.example/");
+  });
+});

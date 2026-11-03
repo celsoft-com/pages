@@ -62,3 +62,22 @@ export function normalizeAssetPath(input: string): string {
   if (segments.length === 0) return "/";
   return "/" + segments.join("/");
 }
+
+// Paths the site serves as themselves rather than as a page: its own routes and the platform's.
+export const SERVED_AS_IS = [
+  "/assets", "/data", "/docs", "/p", "/preview", "/admin", "/api", "/login", "/signup", "/forgot", "/reset",
+  "/consent", "/invites", "/tokens", "/mcp", "/.well-known", "/favicon.ico", "/robots.txt",
+];
+
+// Where a browser reads what a link names: a page's path becomes its /p URL and /root becomes /, while
+// the site's own routes, outside addresses and fragments are left as written. Templates reach it as a
+// page's url and the page_url filter, so a link built from a path never has to know the scheme.
+export function pageHref(value: string): string {
+  if (!value.startsWith("/") || value.startsWith("//")) return value;
+  const at = value.search(/[?#]/);
+  const path = at === -1 ? value : value.slice(0, at);
+  const rest = at === -1 ? "" : value.slice(at);
+  if (path === "/" || path === ROOT_BUNDLE || path === `${ROOT_BUNDLE}/`) return `/${rest}`;
+  if (SERVED_AS_IS.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return value;
+  return `/p${path}${rest}`;
+}

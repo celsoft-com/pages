@@ -1,7 +1,7 @@
 import { Drop, Liquid } from "liquidjs";
 import { getCollection, normalizeCollectionPath } from "../data/service";
 import { listable } from "../pages/contents";
-import { normalizePath } from "../pages/path";
+import { normalizePath, pageHref } from "../pages/path";
 import { buildStamp, describeBuild } from "../build";
 import { countWords, getPage, listPages } from "../pages/service";
 import type { PagesApp } from "../pages-app";
@@ -20,6 +20,7 @@ function pageValue(page: Page | PageSummary) {
   const words = "words" in page ? page.words : countWords(page.body);
   return {
     path: page.path,
+    url: pageHref(page.path),
     title: page.title,
     format: page.contentType,
     updated: new Date(page.updatedAt).toISOString(),
@@ -87,7 +88,7 @@ class CollectionsDrop extends Drop {
 // the request path, and one that never finishes takes the site down with it.
 function engine(app: PagesApp): Liquid {
   const named = (file: string): Promise<Page | null> => getPage(app, normalizePath(file));
-  return new Liquid({
+  const liquid = new Liquid({
     fs: {
       exists: async (file) => (await named(file)) !== null,
       existsSync: () => false,
@@ -107,6 +108,8 @@ function engine(app: PagesApp): Liquid {
     renderLimit: 2000,
     memoryLimit: 5e7,
   });
+  liquid.registerFilter("page_url", (value: unknown) => pageHref(String(value ?? "")));
+  return liquid;
 }
 
 export interface TemplateContext {

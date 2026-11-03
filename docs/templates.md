@@ -19,7 +19,7 @@ A template goes in a fenced code block whose language is `pages`:
 {% assign essays = site.pages | where: "meta.kind", "essay" | sort: "meta.date" | reverse %}
 <ul>
 {% for p in essays limit: 5 %}
-  <li><a href="/p{{ p.path }}">{{ p.title }}</a> {{ p.meta.date }}</li>
+  <li><a href="{{ p.url }}">{{ p.title }}</a> {{ p.meta.date }}</li>
 {% endfor %}
 </ul>
 ```
@@ -31,12 +31,13 @@ still possible.
 
 ## What a template can see
 
-- **`page`** is the page being rendered: `path`, `title`, `format`, `updated`, its
+- **`page`** is the page being rendered: `path`, `url`, `title`, `format`, `updated`, its
   [meta](pages.md), `words` (the prose in its body, not counting code or markup) and `minutes`, a
   reading time at 230 words a minute and never less than one.
 - **`site.pages`** is every page a stranger may read, each with the same fields, in path order. Liquid's `where`,
   `sort`, `reverse` and a loop's `limit` and `offset` are how you pick from it. A page's `path` is
-  its path, not its URL: link to it at `/p` followed by the path.
+  where it is filed and its `url` is where a reader opens it: `/p` followed by the path, or `/` for
+  `/root`. Link with the `url`.
 - **`site.title`** and **`site.description`** are the site's own.
 - **`build`** is the deploy serving the page: `description` is one line saying when and from what
   it was deployed, and `built`, `commit`, `branch` and `target` (`production` or `preview`) are its
@@ -44,6 +45,10 @@ still possible.
 - **`collections["/trip/stops"]`** is a [collection](collections.md)'s items, the same array its
   `/data` URL serves, in collection order. It is read only when a template names it, and a
   collection under a [private path](privacy.md) reads as missing.
+
+A link built some other way, from a path held in a variable, goes through the `page_url` filter:
+`{{ "/" | append: kind | page_url }}` gives the URL of the page at that path, and leaves `/assets`,
+`/data` and outside addresses as they are.
 
 Everything printed is escaped, so a `<` in a collection field shows as a `<` rather than breaking
 the page. Pipe a value through `raw` when it holds HTML you mean to keep.
