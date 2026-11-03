@@ -1,8 +1,24 @@
+import { testApp } from "@celsoft/platform/testing";
 import { describe, expect, it } from "vitest";
 import { MCP_INSTRUCTIONS } from "./mcp-instructions";
 import app from "./worker";
 
 describe("MCP instructions", () => {
+  it("are what a client is told when it connects", async () => {
+    const t = await testApp(app);
+    try {
+      const owner = await t.signUp("owner@example.com");
+      const reply = (await t.as(owner).mcp("initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1" },
+      })) as { result?: { instructions?: string } };
+      expect(reply.result?.instructions).toBe(MCP_INSTRUCTIONS);
+    } finally {
+      await t.close();
+    }
+  });
+
   // A connector may truncate them, so the pointer to the owner's instructions must survive a cut.
   it("point at the owner's instructions in their first lines", () => {
     expect(MCP_INSTRUCTIONS.slice(0, 400)).toContain("Call get_instructions before writing anything");
