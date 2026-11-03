@@ -29,7 +29,7 @@ fetches that and renders it:
     .then(function (r) { return r.json(); })
     .then(function (items) {
       document.getElementById('beers').innerHTML =
-        items.map(function (i) { return '<li>' + i.name + ' — €' + i.price + '</li>'; }).join('');
+        items.map(function (i) { return '<li>' + i.name + ': €' + i.price + '</li>'; }).join('');
     });
 </script>
 ```
@@ -57,8 +57,8 @@ cannot silently clobber each other.
 
 ## References catch typos
 
-When a field on one collection holds an id from another — a category, a section, a status, an owner
-— declare it. Then a value that matches no id is rejected when it is written.
+When a field on one collection holds an id from another (a category, a section, a status, an owner),
+declare it. Then a value that matches no id is rejected when it is written.
 
 This is worth doing because of how the failure looks without it. The write succeeds. The JSON is
 valid. The page renders. The record simply stops appearing wherever that value is used to select it,
@@ -70,7 +70,6 @@ collection with nothing declared comes back saying nothing was checked, not that
 
 ## It is public
 
-The served JSON is unauthenticated. A collection under a [private path](privacy.md) is served only
-to a browser holding a share link, and is left out of the index entirely. Anywhere else it is
-readable by anyone who guesses the path, exactly like a page. Put nothing in one that you would not
-publish.
+The served JSON needs no sign-in: anyone who guesses the path can read it, exactly like a page, and
+the index names every collection. Put nothing in one that you would not publish. Private paths are
+not available yet.

@@ -22,9 +22,9 @@ page. It sees the page it wraps, so a nav can mark where the reader is. Leave
 the header or footer empty to keep the built-in one, or set the theme to none to drop the built-in
 styles and chrome altogether, so the page is your head, your header, the content and your footer.
 A nav on every page goes in the header template. Chrome is live on every markdown page the moment
-it is saved, so a broken tag in it breaks all of them at once. It is set in the admin under
-Settings, or by asking Claude. Moving a template page does not update the name, and a name
-pointing at nothing falls back to the built-in piece.
+it is saved, so a broken tag in it breaks all of them at once. Ask Claude to set it. Moving a
+template page does not update the name, and a name pointing at nothing falls back to the built-in
+piece.
 
 Write a full HTML document, starting `<!doctype html>` or `<html>`, and it is served byte for byte.
 Your own CSS, your own scripts, a library from a CDN, a map, a canvas, whatever you like. The site
@@ -48,14 +48,16 @@ Paths are lowercased, and `.md`, `.markdown`, `.html` and `.htm` are stripped, s
 `/about` are the same page. A trailing `index` is dropped: `/docs/index` is `/docs`. Use lowercase
 letters, numbers, dashes and slashes.
 
+A page is served under `/p`, so the page at `/about` is read at `/p/about`.
+
 A page's title is the first heading in its body, or the `<title>` of an HTML document, unless one is
 given. The title is what the home page lists it as.
 
 ## Working on a live page
 
-A published page can be revised without anyone seeing the half-finished version. Save a draft in
-the editor, or ask Claude to work on a draft, and the change goes to the page's working copy while
-readers keep getting the live page. The working copy is served at `/preview` followed by the page's
+A published page can be revised without anyone seeing the half-finished version. Ask Claude to work
+on a draft, and the change goes to the page's working copy while readers keep getting the live
+page. The working copy is served at `/preview` followed by the page's
 path, so `/about` previews at `/preview/about`, exactly as it would be served, templates and all. Only
 someone who may write the page sees it; anybody else gets the same not-found page as a path with
 nothing there, so nobody learns that a draft exists. Publish makes the working copy live, and
@@ -63,9 +65,6 @@ discard throws it away.
 
 Look at the preview before publishing. Nothing builds the site, so the preview is the only place a
 broken [template](templates.md) shows up before a reader finds it.
-
-A page that has never been public doesn't need a working copy: make its path
-[private](privacy.md) while it is written and share a link to it.
 
 ## Meta
 
@@ -77,8 +76,7 @@ Every value is text. A date written `2026-09-30` and a number written with its l
 sort correctly as text, and a value never changes type because it passed through the editor. A name
 starts with a letter; `path` and `title` are refused, because the page already has both.
 
-Changing one fact changes one name: the rest are kept, and the body is not sent again. In the
-admin editor meta is one `name: value` per line.
+Changing one fact changes one name: the rest are kept, and the body is not sent again.
 
 ## The home page lives at /root
 
@@ -87,13 +85,9 @@ the contents of the site instead: a list of every public page, generated on ever
 nobody has to keep current. Publish at `/root` and your page replaces the list; delete it and the
 list comes back.
 
-`/` itself is never a page path, because it would be a second name for the same page. `/root` is
-also what you make private to close the site to the public, where a share link for the whole site
-points, and where the [favicon](assets.md) lives. `/root` itself redirects to `/`, so the home page
+`/` itself is never a page path, because it would be a second name for the same page. The `/root`
+folder is also where the [favicon](assets.md) lives. `/p/root` redirects to `/`, so the home page
 has one address.
-
-A private page is left out of the list for everyone, link holders included, because a page that
-varied by who was asking could not be cached, and the next visitor would get somebody else's copy.
 
 ## Editing
 
@@ -101,8 +95,7 @@ Ask for a change and Claude replaces the part it is changing, leaving every othe
 is cheaper than rewriting the page, and safer: a hand-written HTML page survives an edit to one
 paragraph.
 
-The admin has an editor for the times it is faster to fix a word yourself. It shows the page's path
-and offers a link to move it, never a box to retype it in: retyping a path writes a new page and
+To rename a page, move it rather than publishing it again at the new path: a new page at a new path
 strands everything filed under the old one. See [copy, move and delete](transfer.md).
 
 ## Checking links
@@ -116,7 +109,7 @@ rather than promising there are no broken ones.
 
 ## A page that lists things should fetch them
 
-If a page holds a list you will add to — products, posts, events, opening times — the list belongs
+If a page holds a list you will add to (products, posts, events, opening times), the list belongs
 in a [collection](collections.md) and the page should fetch it. The page is then written once and
 the list changes without it. This is the one piece of advice on this whole site that saves real
 work, and it is easy to skip on the day the list has three things in it.

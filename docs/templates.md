@@ -19,7 +19,7 @@ A template goes in a fenced code block whose language is `pages`:
 {% assign essays = site.pages | where: "meta.kind", "essay" | sort: "meta.date" | reverse %}
 <ul>
 {% for p in essays limit: 5 %}
-  <li><a href="{{ p.path }}">{{ p.title }}</a> {{ p.meta.date }}</li>
+  <li><a href="/p{{ p.path }}">{{ p.title }}</a> {{ p.meta.date }}</li>
 {% endfor %}
 </ul>
 ```
@@ -34,17 +34,14 @@ still possible.
 - **`page`** is the page being rendered: `path`, `title`, `format`, `updated`, its
   [meta](pages.md), `words` (the prose in its body, not counting code or markup) and `minutes`, a
   reading time at 230 words a minute and never less than one.
-- **`site.pages`** is every public page, each with the same fields, in path order. Liquid's `where`,
-  `sort`, `reverse` and a loop's `limit` and `offset` are how you pick from it.
+- **`site.pages`** is every page, each with the same fields, in path order. Liquid's `where`,
+  `sort`, `reverse` and a loop's `limit` and `offset` are how you pick from it. A page's `path` is
+  its path, not its URL: link to it at `/p` followed by the path.
 - **`site.title`** and **`site.description`** are the site's own.
-- **`build`** is the deploy serving the page: `description` is the one line the admin prints, and
-  `commit`, `branch` and `built` are its parts.
 - **`collections["/trip/stops"]`** is a [collection](collections.md)'s items, the same array its
   `/data` URL serves, in collection order. It is read only when a template names it.
 
-A template reads only what its page may show. A public page never sees a private page or a private
-collection, because a public page is cached for everyone; a page inside a [private path](privacy.md)
-also sees what shares that path with it.
+Which deploy is serving the page is not available to a template yet.
 
 Everything printed is escaped, so a `<` in a collection field shows as a `<` rather than breaking
 the page. Pipe a value through `raw` when it holds HTML you mean to keep.

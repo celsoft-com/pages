@@ -44,7 +44,7 @@ Item-level operations stay out of scope: `put_item` and `delete_item` already ch
 - **Item revs on a move.** A copy is a new collection and starts at fresh revs; both are stated in the reply.
 - **Bytes on an asset copy or move**, with the filename and content type intact.
 - **Page bodies verbatim.** A copied page keeps the URLs written into it, so it still fetches the original's
-  data until someone edits it. See section 6.
+  data until someone edits it. See [page content is never rewritten](#page-content-is-never-rewritten).
 
 Replacing an occupied target always bumps the rev past what that target held, so no rev a client is holding
 is ever reused for different content.

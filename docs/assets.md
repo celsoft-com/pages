@@ -13,7 +13,7 @@ stylesheet: anything a browser fetches and the site did not generate.
 Give a file a path when you upload it and it is served under `/assets` plus that path:
 
 ```
-/kitchens/oak.jpg     →   {{site_url}}/assets/kitchens/oak.jpg
+/kitchens/oak.jpg     →   https://<your-site>/assets/kitchens/oak.jpg
 ```
 
 That also files it in the `/kitchens` [bundle](bundles.md), so it travels with the page when the
@@ -31,16 +31,14 @@ icon before it has a page.
 
 ## Size
 
-A file has a size ceiling, higher over the REST API than from an MCP client, and a file over it is
-refused before it is read. That ceiling is the host's, not a setting, so there is no larger endpoint
-and no way to send a file in pieces. Something bigger has to be made smaller first.
+A file has a size ceiling: 10 MB over the REST API, where it goes as multipart form data, and 5 MB
+from an MCP client, which sends it as base64. A file over it is refused before it is read. That
+ceiling is the host's, not a setting, so there is no larger endpoint and no way to send a file in
+pieces. Something bigger has to be made smaller first.
 
 ## Reading one back
 
 No tool hands back the contents of a file, at either door. A reply is text in the calling agent's
 context, and a three megabyte photograph spent there is one nobody can look at.
 
-To read a stored file, fetch its URL over HTTP and save it. A file under a private path answers that
-fetch with the same nothing everyone else gets unless the request carries an API token or the
-owner's own session, which is also why the admin can open a private image and a stranger cannot tell
-it exists.
+To read a stored file, fetch its URL over HTTP and save it. `list_assets` gives every file's URL.
