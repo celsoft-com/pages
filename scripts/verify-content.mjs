@@ -57,6 +57,8 @@ async function main() {
     const there = assets.get(key(asset));
     if (!there) problems.push(`asset ${asset.path ?? asset.filename}: missing`);
     else if (sha256(there.bytes) !== sha256(asset.bytes)) problems.push(`asset ${asset.path}: bytes differ`);
+    else if (there.contentType !== asset.contentType)
+      problems.push(`asset ${asset.path ?? asset.filename}: served as ${there.contentType}, not ${asset.contentType}`);
   }
 
   if (have.instructions !== want.instructions) problems.push("instructions differ");

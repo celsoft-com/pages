@@ -60,11 +60,13 @@ export class Site {
     return this.call(tool, args, { read: true });
   }
 
-  async bytes(url) {
+  // A file's bytes and the type the site serves it with, which is what its upload recorded.
+  async file(url) {
     const absolute = url.startsWith("http") ? url : `${this.url}${url}`;
     const response = await fetch(absolute, { headers: this.headers() });
     if (!response.ok) throw new SiteError(`GET ${absolute}: ${response.status}`);
-    return Buffer.from(await response.arrayBuffer());
+    const type = (response.headers.get("content-type") ?? "").split(";")[0].trim();
+    return { bytes: Buffer.from(await response.arrayBuffer()), type };
   }
 
   async upload(path, filename, contentType, bytes) {
@@ -113,8 +115,8 @@ export class Site {
 
     const fullAssets = [];
     for (const asset of assets) {
-      const bytes = await this.bytes(asset.url);
-      fullAssets.push({ path: asset.path ?? null, filename: asset.filename, contentType: contentTypeOf(asset.filename), bytes });
+      const { bytes, type } = await this.file(asset.url);
+      fullAssets.push({ path: asset.path ?? null, filename: asset.filename, contentType: type || contentTypeOf(asset.filename), bytes });
     }
 
     return {
@@ -144,6 +146,7 @@ const TYPES = {
   png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
   ico: "image/x-icon", pdf: "application/pdf", json: "application/json", geojson: "application/geo+json",
   txt: "text/plain", css: "text/css", js: "text/javascript", html: "text/html", md: "text/markdown",
+  woff2: "font/woff2", woff: "font/woff", ttf: "font/ttf", otf: "font/otf",
 };
 
 export function contentTypeOf(filename) {

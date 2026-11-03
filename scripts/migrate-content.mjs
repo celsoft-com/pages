@@ -48,6 +48,11 @@ async function main() {
     if (!dry) await work();
   };
 
+  // Privacy first: a path is closed before anything is written into it, so private content is never
+  // public, nor kept in a cache, for the length of the run. The owner's token still writes there.
+  for (const path of content.private)
+    if (!current.private.includes(path)) await write(`make ${path} private`, () => target.call("set_privacy", { path, private: true }));
+
   // Pages before settings, because a header or footer may name a template page that must exist first.
   const pagesThere = new Map(current.pages.map((p) => [p.path, p]));
   for (const page of content.pages) {
@@ -132,9 +137,6 @@ async function main() {
   if (Object.keys(changed).length)
     await write(`site settings: ${Object.keys(changed).join(", ")}`, () => target.call("set_site_info", changed));
 
-  // Privacy last, so nothing above is written into a path already closed to the token's own reads.
-  for (const path of content.private)
-    if (!current.private.includes(path)) await write(`make ${path} private`, () => target.call("set_privacy", { path, private: true }));
   for (const path of current.private)
     if (!content.private.includes(path)) notes.push(`${path} is private on the target and not in the source; left alone`);
   if (content.private.length) notes.push("share links never migrate, only their hashes are kept; mint new ones with share_path");
