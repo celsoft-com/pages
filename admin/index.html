@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon.ico">
+  <title>Admin</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fdfdfc; --panel: #ffffff; --fg: #1c1c1a; --muted: #6b6b66; --rule: #e4e4e0;
+      --accent: #2f5fd0; --danger: #b3261e; --warn: #9a6b12; --code-bg: #f2f2ee;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16161a; --panel: #1c1c21; --fg: #e8e8e4; --muted: #9a9a94; --rule: #2c2c32;
+        --accent: #8fb0ff; --danger: #ff8a80; --warn: #d8ab4e; --code-bg: #21212a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    nav { display: flex; flex-wrap: wrap; gap: .25rem 1.1rem; align-items: center; padding: .7rem 1rem; border-bottom: 1px solid var(--rule); background: var(--panel); position: sticky; top: 0; z-index: 1; }
+    nav a { color: var(--muted); text-decoration: none; padding: .15rem 0; border-bottom: 2px solid transparent; }
+    nav a.active { color: var(--fg); border-bottom-color: var(--accent); }
+    nav .brand { color: var(--fg); font-weight: 650; margin-right: .5rem; }
+    nav .spacer { flex: 1; }
+    main { max-width: 60rem; margin: 1.25rem auto 4rem; padding: 0 1rem; }
+    #flash { max-width: 60rem; margin: .75rem auto 0; padding: 0 1rem; min-height: 1.4rem; }
+    #flash.error { color: var(--danger); }
+    h1 { font-size: 1.5rem; margin: .5rem 0 1rem; }
+    h2 { font-size: 1.1rem; margin: 1.6rem 0 .6rem; }
+    a { color: var(--accent); }
+    .panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: .9rem 1rem; margin: 0 0 1rem; }
+    .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+    .row.spread { justify-content: space-between; }
+    .muted { color: var(--muted); }
+    .small { font-size: .85rem; }
+    .mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; }
+    code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: .5rem .45rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+    th { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 560; }
+    td.actions { white-space: nowrap; text-align: right; }
+    .pill { display: inline-block; font-size: .72rem; padding: .05rem .5rem; border-radius: 99px; border: 1px solid var(--rule); color: var(--muted); }
+    .pill.warn { color: var(--warn); border-color: var(--warn); }
+    label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 .25rem; }
+    input, textarea, select, button, a.button { font: inherit; }
+    input[type=text], input:not([type]), textarea, select { width: 100%; padding: .45rem .55rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg); color: var(--fg); }
+    textarea { min-height: 7rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+    textarea.body { min-height: 24rem; }
+    button, a.button { cursor: pointer; padding: .35rem .8rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); color: var(--fg); text-decoration: none; display: inline-block; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.danger, .confirm button.yes { color: var(--danger); border-color: var(--danger); }
+    button.link { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; }
+    .confirm { display: inline-flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+    .confirm .question { color: var(--danger); font-size: .9rem; }
+    .secret { word-break: break-all; background: var(--code-bg); padding: .5rem .6rem; border-radius: 6px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav id="nav"></nav>
+  <p id="flash" role="status"></p>
+  <main id="main"></main>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-#MISE description="Typecheck, as every deploy does before it runs the tests"
+#MISE description="Typecheck and build the admin into dist/, as every deploy does before it runs the tests"
 #MISE depends=["install"]
 set -euo pipefail
 source "${0:A:h}/_lib.sh"

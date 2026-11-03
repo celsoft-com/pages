@@ -6,16 +6,18 @@
   "scripts": {
     "postinstall": "platform generate",
     "generate": "node scripts/docs-content.mjs",
-    "build": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
     "typecheck": "npm run generate && tsc --noEmit",
-    "test": "npm run generate && vitest run",
-    "test:watch": "npm run generate && vitest"
+    "test": "npm run generate && vite build --logLevel warn && vitest run",
+    "test:watch": "npm run generate && vite build --logLevel warn && vitest",
+    "dev": "vite"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261023.1",
     "@types/node": "^24.0.0",
     "embedded-postgres": "^18.4.0-beta.17",
     "typescript": "^7.0.2",
+    "vite": "^8.3.5",
     "vitest": "^5.0.0"
   },
   "dependencies": {
