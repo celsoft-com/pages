@@ -31,6 +31,25 @@ function pathOf(link: string): string | null {
   }
 }
 
+// The lines a reader's links are on, numbered from 1. In markdown, a code block other than a pages fence
+// and an inline code span are prose about links, such as an example URL, and a reader follows neither.
+function* linesToRead(body: string, format: string): Generator<[number, string]> {
+  let fence: string | null = null;
+  for (const [index, line] of body.split("\n").entries()) {
+    if (format !== "markdown") {
+      yield [index, line];
+      continue;
+    }
+    const opens = /^\s*```(\S*)/.exec(line);
+    if (opens) {
+      fence = fence === null ? opens[1] || "code" : null;
+      continue;
+    }
+    if (fence !== null && fence !== "pages") continue;
+    yield [index, fence === "pages" ? line : line.replace(/`[^`]*`/g, "")];
+  }
+}
+
 const under = (prefix: string, path: string) => (path.startsWith(`${prefix}/`) ? path.slice(prefix.length) : null);
 
 export async function checkLinks(app: PagesApp): Promise<LinkReport> {
@@ -64,9 +83,11 @@ export async function checkLinks(app: PagesApp): Promise<LinkReport> {
   for (const summary of summaries) {
     const page = await getPage(app, summary.path);
     if (!page) continue;
-    for (const [index, text] of page.body.split("\n").entries())
+    for (const [index, text] of linesToRead(page.body, page.contentType))
       for (const match of text.matchAll(LINK)) {
         const link = match[1] ?? match[2] ?? match[3];
+        // A link a template completes, such as /p/{{ kind }}, is not written out whole.
+        if (/\{\{|\{%/.test(link)) continue;
         const path = pathOf(link);
         if (path === null) continue;
         links += 1;
