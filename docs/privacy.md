@@ -23,9 +23,9 @@ Privacy does not nest: a path inside a private path cannot be a second private p
 above one cannot be closed over it. `/` cannot be private, because that is the entire site rather
 than a path within it. To close the home page, make `/root` private.
 
-Leaving private pages out of the site's contents at `/`, the index of collections and what templates
-list is not available yet. Until it is, the title and path of a private page show in those lists,
-though the page itself stays closed.
+Private pages drop out of the site's contents at `/`, collections drop out of the index of
+collections, and a template lists neither, for everybody, link holders included: those lists are one
+copy for every visitor, so they can only show what a stranger may see.
 
 ## The link
 

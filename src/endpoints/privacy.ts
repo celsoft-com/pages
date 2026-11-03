@@ -16,7 +16,8 @@ const PRIVACY =
   "A private path is closed to the public and opened only by a share link. It covers a path and everything at or " +
   "under it, the same folder rule as a bundle, so making /trip private closes the page at /trip, every page under " +
   "it, /data/trip/*.json and every asset under /assets/trip/. To everyone without a link those all answer exactly " +
-  "as if nothing were published there, so a private path never reveals that it exists. Privacy does not nest: a path inside a private " +
+  "as if nothing were published there, so a private path never reveals that it exists, and it drops out of the " +
+  "contents at /, the index of collections and what templates list. Privacy does not nest: a path inside a private " +
   "path cannot be a second scope, and a path above one cannot close over it. / cannot be private; make /root " +
   "private to close the home page. A share link carries its secret in the URL fragment, after #link=, which " +
   "browsers never send to a server, so the link appears in no server log and no Referer header, and a chat or mail " +

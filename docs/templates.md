@@ -34,12 +34,13 @@ still possible.
 - **`page`** is the page being rendered: `path`, `title`, `format`, `updated`, its
   [meta](pages.md), `words` (the prose in its body, not counting code or markup) and `minutes`, a
   reading time at 230 words a minute and never less than one.
-- **`site.pages`** is every page, each with the same fields, in path order. Liquid's `where`,
+- **`site.pages`** is every page a stranger may read, each with the same fields, in path order. Liquid's `where`,
   `sort`, `reverse` and a loop's `limit` and `offset` are how you pick from it. A page's `path` is
   its path, not its URL: link to it at `/p` followed by the path.
 - **`site.title`** and **`site.description`** are the site's own.
 - **`collections["/trip/stops"]`** is a [collection](collections.md)'s items, the same array its
-  `/data` URL serves, in collection order. It is read only when a template names it.
+  `/data` URL serves, in collection order. It is read only when a template names it, and a
+  collection under a [private path](privacy.md) reads as missing.
 
 Which deploy is serving the page is not available to a template yet.
 

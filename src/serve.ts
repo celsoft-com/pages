@@ -7,6 +7,7 @@ import { contentsHtml, listable } from "./pages/contents";
 import { normalizeAssetPath, normalizePath, ROOT_BUNDLE } from "./pages/path";
 import { getPage, listPages, previewOf } from "./pages/service";
 import { type PagesApp, pointsFor } from "./pages-app";
+import { publicOnly } from "./privacy";
 import { loadChrome } from "./render/chrome";
 import { renderMarkdown } from "./render/markdown";
 import { expandFences, templateInput } from "./render/template";
@@ -43,7 +44,7 @@ const home = page({
         const stored = await getPage(app, ROOT_BUNDLE);
         if (stored) return rendered(app, stored);
         const { chrome } = await loadChrome(app, templateInput(null));
-        return contentsHtml({ chrome, pages: listable(await listPages(app)) });
+        return contentsHtml({ chrome, pages: listable(await publicOnly(app, await listPages(app), (p) => p.path)) });
       },
     ),
   },

@@ -173,7 +173,12 @@ schema, `invalidates: "all"` and the `site` access point.
   recipient's access without touching anyone else's. The address is `/p<path>#link=<token>`: the secret rides in
   the fragment, which browsers never send, so it reaches no access log, no proxy and no `Referer`, and the
   platform's 404 page swaps it for a cookie. The token is shown once, since only its hash is stored, and when a
-  link was last used is not kept. A transfer that carries a resource across the edge of a private path reports
+  link was last used is not kept. A listing served to every visitor, the contents at `/`,
+  `/data/_collections.json`, and a template's `site.pages` and `collections`, shows only what a stranger may
+  read: `publicOnly` in [privacy.ts](src/privacy.ts) passes each path's point chain to
+  `app.access.asEveryone().filter`, which checks the first existing point of each, in one query. It is one copy
+  for every visitor, so it varies by nobody's cookie; a link holder reaches their page by the link, and a page
+  inside a private path sees no more through its templates than a public one does. A transfer that carries a resource across the edge of a private path reports
   it in `privacy_changes`, because the dangerous direction, private to public, is otherwise silent.
 - **Bytes leave by HTTP, never through a tool.** A tool result is text in the calling agent's context, so an
   asset's bytes never come back that way: `/assets/<path>` is the only way to read one, and `list_assets` hands
@@ -289,9 +294,6 @@ schema, `invalidates: "all"` and the `site` access point.
 These wait on @celsoft/platform. Build none of them, and no stand-in for any of them, until the
 platform offers what each needs.
 
-- **Leaving private paths out of listings:** the contents at `/`, `/data/_collections.json`, and a
-  template's `site.pages` and `collections` still include what is private, until
-  `app.access.asEveryone().filter` checks each entry's first existing point.
 - **The build stamp:** [build.ts](src/build.ts) and [build-info.ts](src/build-info.ts) stay as they are.
 - **The `/docs` site.** The topics in [docs/](docs) are read on GitHub until then.
 - **An admin screen.** The owner works through Claude, the API and the platform's own screens.

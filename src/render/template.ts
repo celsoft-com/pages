@@ -5,6 +5,7 @@ import { normalizePath } from "../pages/path";
 import { buildStamp, describeBuild } from "../build";
 import { countWords, getPage, listPages } from "../pages/service";
 import type { PagesApp } from "../pages-app";
+import { publicOnly } from "../privacy";
 import type { Page, PageSummary } from "../types";
 import { escapeHtml } from "./theme";
 
@@ -52,7 +53,9 @@ class SiteDrop extends Drop {
   }
 
   get pages() {
-    this.cached ??= listPages(this.app).then((all) => listable(all).map(pageValue));
+    this.cached ??= listPages(this.app)
+      .then((all) => publicOnly(this.app, listable(all), (page) => page.path))
+      .then((pages) => pages.map(pageValue));
     return this.cached;
   }
 }
@@ -71,7 +74,9 @@ class CollectionsDrop extends Drop {
     if (!this.cache.has(path))
       this.cache.set(
         path,
-        getCollection(this.app, path).then((found) => found?.items),
+        publicOnly(this.app, [path], (p) => p).then(async ([open]) =>
+          open === undefined ? undefined : (await getCollection(this.app, path))?.items,
+        ),
       );
     return this.cache.get(path);
   }

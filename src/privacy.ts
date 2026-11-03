@@ -1,6 +1,6 @@
 import { EndpointError } from "@celsoft/platform";
 import { contains } from "./bundle";
-import { type PagesApp, SITE_POINT } from "./pages-app";
+import { type PagesApp, pointsFor, SITE_POINT } from "./pages-app";
 
 // A private path is a control point of its own, path:<path>, and nothing else: the points are the
 // record of which paths are private, so pages keeps no table of them.
@@ -118,4 +118,13 @@ export async function revokeShares(
   const gone = label === undefined ? links : links.filter((link) => link.label === label);
   for (const link of gone) await app.access.revokeLink(pointOf(path), link.id);
   return { revoked: gone.map((link) => link.label ?? link.id), remaining: links.length - gone.length };
+}
+
+// What everyone may read, in order: each path is checked at the first existing point of its chain,
+// as a visitor's request is. A listing served to every visitor is one copy, so it can only ever show
+// what a stranger may see; a link holder reaches their page by the link.
+export async function publicOnly<T>(app: PagesApp, items: readonly T[], pathOf: (item: T) => string): Promise<T[]> {
+  const entries = items.map((item) => pointsFor(pathOf(item)));
+  const kept = new Set(await app.access.asEveryone().filter(entries, "read"));
+  return items.filter((_, i) => kept.has(entries[i]));
 }

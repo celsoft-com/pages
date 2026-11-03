@@ -241,3 +241,37 @@ describe("revoke_share", () => {
     expect(await refusal(call("revoke_share", { path: "/trip/day1" }))).toMatch(/^400 .*Revoke on \/trip/);
   });
 });
+
+describe("listings", () => {
+  it("leave private pages out of the contents at /", async () => {
+    await trip();
+    await call("set_privacy", { path: "/trip", private: true });
+    const contents = await (await t.fetch("/")).text();
+    expect(contents).toContain("/tripwire");
+    expect(contents).not.toContain("/trip/day1");
+    expect(contents).not.toContain('href="/p/trip"');
+    await call("set_privacy", { path: "/trip", private: false });
+    expect(await (await t.fetch("/")).text()).toContain("/trip/day1");
+  });
+
+  it("leave private collections out of the index", async () => {
+    await trip();
+    await call("put_item", { path: "/open", id: "a", fields: {} });
+    await call("set_privacy", { path: "/trip", private: true });
+    const index = (await (await t.fetch("/data/_collections.json")).json()) as { path: string }[];
+    expect(index.map((c) => c.path)).toEqual(["/open"]);
+  });
+
+  it("show a template only what a stranger may see", async () => {
+    await trip();
+    await call("set_privacy", { path: "/trip", private: true });
+    await call("publish_page", {
+      path: "/list",
+      content:
+        "# List\n\n```pages\n{% for p in site.pages %}[{{ p.path }}]{% endfor %}" +
+        '|{{ collections["/trip/stops"] | size }}\n```',
+    });
+    const body = await (await t.fetch("/p/list")).text();
+    expect(body).toContain("[/list][/tripwire]|0");
+  });
+});

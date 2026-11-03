@@ -3,6 +3,7 @@ import { similarity } from "./match";
 import { normalizePath } from "../pages/path";
 import { asc, eq } from "drizzle-orm";
 import type { PagesApp } from "../pages-app";
+import { publicOnly } from "../privacy";
 import { collectionSummaries } from "../schema";
 import { collectionFile } from "../store";
 import type { Collection, CollectionSummary, Item } from "../types";
@@ -123,7 +124,7 @@ export async function saveCollection(app: PagesApp, path: string, items: Item[])
 export async function manifest(
   app: PagesApp,
 ): Promise<{ path: string; url: string; count: number; rev: number; updatedAt: number }[]> {
-  return (await listCollections(app)).map((c) => ({
+  return (await publicOnly(app, await listCollections(app), (c) => c.path)).map((c) => ({
     path: c.path,
     url: `/data${c.path === "/" ? "/index" : c.path}.json`,
     count: c.count,

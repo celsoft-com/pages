@@ -75,8 +75,8 @@ available yet.
 
 ## Not available yet
 
-The reference at `/docs`, an admin screen, map tools, the agent skill for the REST API, and leaving
-private pages out of the site's contents are not available yet.
+The reference at `/docs`, an admin screen, map tools, and the agent skill for the REST API are not
+available yet.
 
 ## Development
 

@@ -72,5 +72,5 @@ collection with nothing declared comes back saying nothing was checked, not that
 
 The served JSON needs no sign-in: anyone who guesses the path can read it, exactly like a page.
 A collection under a [private path](privacy.md) is served only to the owner and to a browser holding
-a share link, though the index still names it for now. Put nothing in a public one that you would
+a share link, and is left out of the index. Put nothing in a public one that you would
 not publish.
