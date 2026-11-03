@@ -14,14 +14,15 @@ afterAll(() => t.close());
 const bundle = () => readdirSync("dist/admin/assets").find((file) => file.endsWith(".js"));
 
 describe("/admin", () => {
-  it("serves the admin app at /admin and /admin/", async () => {
-    for (const path of ["/admin", "/admin/"]) {
-      const response = await t.fetch(path);
-      expect(response.status, path).toBe(200);
-      const html = await response.text();
-      expect(html).toContain("<title>Admin</title>");
-      expect(html).toContain(`/admin/assets/${bundle()}`);
-    }
+  it("serves the admin app at /admin/, and sends /admin there as a deploy does", async () => {
+    const bare = await t.fetch("/admin", { redirect: "manual" });
+    expect([301, 307, 308]).toContain(bare.status);
+    expect(bare.headers.get("location")).toMatch(/\/admin\/$/);
+    const response = await t.fetch("/admin/");
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("<title>Admin</title>");
+    expect(html).toContain(`/admin/assets/${bundle()}`);
   });
 
   it("serves its bundle as JavaScript", async () => {
