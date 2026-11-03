@@ -2,6 +2,7 @@ import { endpoint } from "@celsoft/platform";
 import { z } from "zod";
 import { getInstructions, MAX_INSTRUCTIONS, saveInstructions } from "../instructions";
 import { listPages } from "../pages/service";
+import { privatePaths, sharesOf } from "../privacy";
 import { templatePath } from "../render/chrome";
 import { getSettings, saveSettings } from "../settings";
 import type { SiteSettings } from "../types";
@@ -30,7 +31,8 @@ export const siteEndpoints = {
       method: "GET",
       path: "/api/v1/get_site",
       description:
-        "Return the site title, description, chrome, address and page count. " +
+        "Return the site title, description, chrome, address, page count, and every private path with how many " +
+        "share links open it. " +
         "Read the chrome here before changing it with set_site_info, which replaces a field whole.",
       access: { point: site, level: "read" },
       input: z.object({}),
@@ -40,11 +42,17 @@ export const siteEndpoints = {
         ...CHROME,
         url: z.string().describe("The site's own address"),
         pages: z.number().describe("How many pages are published"),
+        private: z
+          .array(z.object({ path: z.string(), shares: z.number().describe("Share links that open it") }))
+          .describe("Every private path you can see, sorted. Only the owner sees them."),
       }),
     },
     async (_input, app) => {
-      const [settings, pages] = await Promise.all([getSettings(app), listPages(app)]);
-      return { ...describeSite(settings), url: app.env.APP_URL, pages: pages.length };
+      const [settings, pages, privates] = await Promise.all([getSettings(app), listPages(app), privatePaths(app)]);
+      const privacy = await Promise.all(
+        privates.map(async (path) => ({ path, shares: (await sharesOf(app, path)).length })),
+      );
+      return { ...describeSite(settings), url: app.env.APP_URL, pages: pages.length, private: privacy };
     },
   ),
 

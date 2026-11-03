@@ -66,3 +66,13 @@ describe("get_site and set_site_info", () => {
     expect(await refusal(t.as(guest).call("set_site_info", { title: "Mine" }))).toMatch(/^404 not found/);
   });
 });
+
+describe("get_site private paths", () => {
+  it("lists the private paths and their link counts to the owner only", async () => {
+    await call("publish_page", { path: "/trip", content: "# Trip" });
+    await call("share_path", { path: "/trip", label: "Dana" });
+    expect((await call("get_site", {})).private).toEqual([{ path: "/trip", shares: 1 }]);
+    const guest = await t.signUp("guest@example.com");
+    expect(((await t.as(guest).call("get_site", {})) as { private: unknown[] }).private).toEqual([]);
+  });
+});
