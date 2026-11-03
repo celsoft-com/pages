@@ -13,3 +13,4 @@ deno.lock
 
 # Written by scripts/docs-content.mjs before every build, typecheck and test
 src/docs/content.ts
+__pycache__/

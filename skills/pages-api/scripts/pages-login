@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Save the site and token this machine will use.
 #
-#   pages-login https://my-site.netlify.app      # token read from stdin
+#   pages-login https://my-site.example.com      # token read from stdin
 #
 # The token arrives on stdin and never as an argument, so it stays out of argv and out of
 # shell history. Nothing here ever prints it back.

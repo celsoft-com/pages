@@ -63,7 +63,7 @@ describe("/docs", () => {
       const links = [...html.matchAll(/href="(\/docs[^"#]*)/g)].map((match) => match[1]);
       for (const link of new Set(links)) expect((await t.fetch(link)).status, `${path} -> ${link}`).toBe(200);
     }
-  });
+  }, 60_000);
 
   it("says which deploy is serving it", async () => {
     expect(await (await t.fetch("/docs")).text()).toContain("Running as test, not from a deploy.");

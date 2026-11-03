@@ -39,6 +39,17 @@ Claude to publish a page.
 Anything without a browser uses the REST API. Make a token at `/tokens`, and choose how much it
 may do: `read` only, up to `manage`.
 
+There is a skill that teaches any agent how to use it. Install it once:
+
+```
+npx skills add celsoft-com/pages --skill '*' -g -y
+```
+
+The flags matter: without them it opens an interactive picker. Then tell your agent your site's
+address and give it the token, and it works out the rest from the site itself. It reaches Claude
+Code, Cursor, Codex and anything else that reads the [Agent Skills](https://github.com/anthropics/skills)
+format.
+
 Each tool is an endpoint at `/api/v1/<tool>`. Writes take a JSON body; reads are GET with the
 input in the query string:
 
@@ -75,7 +86,7 @@ a reference to every tool drawn from the code it is running.
 
 ## Not available yet
 
-An admin screen and the agent skill for the REST API are not available yet.
+An admin screen is not available yet.
 
 ## Development
 

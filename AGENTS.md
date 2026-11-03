@@ -314,6 +314,15 @@ schema, `invalidates: "all"` and the `site` access point.
   `typecheck` and `test` scripts, so neither needs a build first. `linkToPage` in
   [topics.ts](src/docs/topics.ts) turns a link to a topic file into its page and any other relative link into
   one to the repository, and [docs.test.ts](src/docs/docs.test.ts) fails on a docs link that would 404.
+- **The skill points at the site, it does not copy it.** [skills/pages-api](skills/pages-api) is an Agent Skills
+  collection shipped from this repo, installed with `npx skills add celsoft-com/pages --skill '*' -g -y`. Every
+  install is a different site at a different URL, so the skill teaches an agent how to find the address and the
+  token, not what the tools are: [pages-call](skills/pages-api/scripts/pages-call) learns the tools, and whether
+  each is a GET or a POST, from the site's own `/api/platform/openapi.json`. It carries no tool list, no schema
+  and no copy of the connect-time instructions, and [skill.test.ts](src/skill.test.ts) fails if it names a tool
+  or argument that does not exist or repeats a twelve-word run of `MCP_INSTRUCTIONS`. Its scripts need only
+  Python 3, keep the token out of argv, take arguments as a file rather than a command line so page content never
+  reaches the process list, and never block on stdin.
 - **The tool reference is the endpoints, drawn.** `/docs/tools` renders the platform's
   `openApiDocument(endpoints, ...)` as tables in [reference.ts](src/docs/reference.ts): each tool's description,
   its arguments and its result, every word from the endpoint's own `description` and `.describe()` calls. The
@@ -327,5 +336,3 @@ These wait on @celsoft/platform. Build none of them, and no stand-in for any of 
 platform offers what each needs.
 
 - **An admin screen.** The owner works through Claude, the API and the platform's own screens.
-- **The [pages-api](skills/pages-api) skill,** which needs documented REST discovery. Its files predate the
-  platform and do not match the site.

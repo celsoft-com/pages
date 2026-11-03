@@ -1,14 +1,14 @@
 ---
 name: pages-api
 description: "Publish and edit pages, data collections and assets on a self-hosted pages site over its REST API. Use whenever the work is content on such a site: writing or editing a page, adding or changing records in a collection, uploading an image, reorganizing paths, or making something private. Also use when setting up or diagnosing access to one."
-verified: 2026-09-18
+verified: 2026-11-03
 ---
 
 # Working with a pages site
 
-A pages site is one person's website, running on their own Netlify account. It serves pages, JSON
-data collections and uploaded assets, and it takes instructions two ways: an MCP connector for a
-chat client, and this REST API for anything else.
+A pages site is one person's website, running on @celsoft/platform. It serves pages, JSON data
+collections and uploaded assets, and it takes instructions two ways: an MCP connector for a chat
+client, and this REST API for anything else.
 
 **Never assume the address.** Every install is a different site at a different URL. The site and
 token come from configuration, and the scripts here resolve them.
@@ -20,7 +20,7 @@ content reaches this site, and putting somebody's page into a git repository bec
 like a static site generator is a mess to undo. The site's code is deployed from a repository;
 what you write through this API is not.
 
-## Getting the tool list
+## Learning what the site can do
 
 **Fetch it, never carry it.** The site is the authority on what it can do, and a site on an older
 deploy has a different list. Run this once per session before the first call:
@@ -29,28 +29,28 @@ deploy has a different list. Run this once per session before the first call:
 scripts/pages-call
 ```
 
-That returns every tool the token may use, each with a JSON Schema for its arguments, and an
-`instructions` field. The same site also draws that registry as a page at `$SITE/docs`, which adds
-the shape of each reply and needs no token: read it when a person asks what the site can do.
-
-**Read `instructions` in full before proposing or writing anything.** It is not a preamble. It is
-the site's own account of how it wants to be used: when repeating content belongs in a data
-collection rather than typed into a page, how to edit a page in place instead of rewriting it, how
-paths organize pages, collections and assets into folders, why moves run on the server, and what
-is public. Working without it produces changes that look right and are wrong in ways the owner
-finds later.
+That prints the site's OpenAPI document, from `GET /api/platform/openapi.json`: every tool with its
+method, its path at `/api/v1/<tool>`, a description, the schema of its arguments and of its reply,
+and under `x-platform-access` the level it needs. The descriptions are the manual. Read the ones
+for the tools you are about to use before proposing or writing anything: they say when repeating
+content belongs in a data collection rather than typed into a page, how to edit a page in place
+instead of rewriting it, how paths organize pages, collections and assets into folders, why moves
+run on the server, and what is public. The site also draws the same document as pages at
+`$SITE/docs/tools`, which needs no token: point a person there when they ask what the site can do.
 
 **Then call `get_instructions`.** Those are the owner's rules for this one site, kept by the owner
-and by agents alike, and `instructions` says how to treat and update them.
+and by agents alike. Follow them ahead of your own defaults, and when the owner tells you how they
+want something done here, record it with `set_instructions`.
 
-That text is deliberately not repeated here. It is one string on the site, served to this API and
-to the MCP connector alike, so a site running a newer deploy teaches you its newer conventions
-with nothing to update on your side. A copy in this file would be a second, older answer.
+None of that is repeated here, so a site running a newer deploy teaches its newer conventions with
+nothing to update on your side.
 
 ## The API is HTTP, and the scripts are a convenience
 
-Every call is one POST of a JSON object with a bearer token, and every reply is JSON. Any language
-does that with no dependencies, and reaching for a real HTTP client is usually the better move:
+A write is a POST of a JSON object with a bearer token; a read is a GET with its arguments in the
+query string, an array as `name[]=a&name[]=b` and an object as `name[key]=value`. Every reply is
+JSON. Any language does that with no dependencies, and reaching for a real HTTP client is usually
+the better move:
 
 ```python
 import json, urllib.request
@@ -67,7 +67,7 @@ def call(tool, **args):
 call("publish_page", path="/notes", content="# Notes")
 ```
 
-**Prefer this for anything bulky.**
+**Prefer this for anything bulky.** The document says which tools are GETs; send those as a GET.
 
 **Uploading is the one call that is not JSON.** `upload_asset` takes the file as multipart form
 data, with `path` beside it, so curl sends it with nothing to encode. The header comes in on stdin
@@ -102,8 +102,8 @@ Or, from a shell, `curl -o map.png` with the same header. The bytes go from the 
 without passing through the conversation, which is the whole point.
 
 **Get the URL from the site, never build one.** `list_assets` returns every asset with its URL,
-and `upload_asset` returns the URL of what it just stored. A path may be stored under a content
-hash instead, in which case there is no path to assemble a URL from.
+and `upload_asset` returns the URL of what it just stored. A file may be stored under a content
+hash instead of a path, in which case there is no path to assemble a URL from.
 
 **The token matters only for a private path.** A public asset needs no credential at all. One
 under a path the owner has closed answers 404 to everybody without one, byte for byte the same
@@ -116,14 +116,16 @@ anyone has to look at.
 
 **A file too big is a dead end, not a different door.** The size ceiling is the host's, so there
 is no bulk endpoint hiding somewhere, no way to send a file in pieces and nothing to be gained by
-trying another client. A photograph over the
-limit has to be resized or recompressed before it goes up. Say that to the owner rather than
-retrying, and never quietly upload a cropped or degraded version of what they gave you.
+trying another client. A photograph over the limit has to be resized or recompressed before it goes
+up. Say that to the owner rather than retrying, and never quietly upload a cropped or degraded
+version of what they gave you.
 
 ## Making a call from a shell
 
-The bundled scripts exist so a token never reaches argv and a page body never reaches shell
-quoting. Arguments go in as a JSON file, the result comes back as JSON on stdout:
+The bundled scripts need Python 3 and nothing else. They exist so a token never reaches argv, a
+page body never reaches shell quoting, and a GET's arguments are encoded the way the site reads
+them. Arguments go in as a JSON file, the result comes back as JSON on stdout, and whether the call
+is a GET or a POST comes from the site's own document:
 
 ```
 scripts/pages-call get_page /tmp/args.json
@@ -151,9 +153,9 @@ The exit code says which, so branch on it rather than on the message:
 | --- | --- | --- |
 | 0 | worked | carry on |
 | 2 | no site configured | set it up, see below |
-| 3 | token unknown or revoked | run `scripts/pages-doctor`, then ask the owner for a new token |
-| 4 | token is read-only | tell the owner; a read-only token cannot write and is not shown the tools that would |
-| 5 | no such tool | re-fetch the tool list; this site's version may not have it |
+| 3 | token unknown, expired or revoked | run `scripts/pages-doctor`, then ask the owner for a new token |
+| 4 | the token is capped at read and the call writes | tell the owner; they can make a token with a higher cap |
+| 5 | no such tool, or a path this token cannot reach | re-read the API document; a private path or a low cap looks the same as nothing there |
 | 6 | a revision conflict | re-read the item, reapply the change, write again. Never retry the same body |
 | 64 | the arguments file is missing | check the path you wrote it to |
 | 1 | anything else | the message names the problem, usually a bad argument |
@@ -165,13 +167,13 @@ unless the owner has said to discard what is there.
 
 ## Setting up access
 
-Needed once per machine, and again whenever a token is revoked.
+Needed once per machine, and again whenever a token is revoked or expires.
 
 1. **Ask the owner for their site's address.** It is whatever they open in a browser.
-2. **Tell them where the token is.** In the site, open **Connections**, find **API tokens**, name
-   a token, choose read-only or read and write, and press Create. It is shown once.
-3. **Have them run it themselves.** The Connections screen shows this command with their address
-   already in it, so there is nothing for either of you to type:
+2. **Tell them where the token is.** Signed in to their site, they open `/tokens`, name a token,
+   give it a cap (`read` for looking, `write` or above for changing things, `manage` for privacy
+   and site settings) and create it. It is shown once.
+3. **Have them run it themselves:**
 
    ```
    scripts/pages-login https://their-site.example
@@ -194,13 +196,12 @@ scripts/pages-doctor
 ```
 
 It changes nothing, never prints the token, and reports one fact per line: which config it found,
-the site, whether the credential works, what it may do, and how many tools it can reach. `READY:
-no` comes with a `FIX:` line.
+the site, whether the credential reaches the API document, and how many tools it lists. `READY: no`
+comes with a `FIX:` line.
 
 ## What this cannot do
 
-- **It is not the admin.** Passwords, recovery codes and the OAuth connector are the owner's, in
-  their browser.
-- **A read-only token is not shown write tools at all**, so a missing tool may mean the token
-  rather than the site.
-- **Custom domains are the owner's job**, in Netlify. Nothing here touches them.
+- **It is not the owner's account.** Passwords, invitations, tokens and the MCP connector are the
+  owner's, in their browser.
+- **A token acts as its owner, never above its cap,** so a refused call may mean the token rather
+  than the site.
