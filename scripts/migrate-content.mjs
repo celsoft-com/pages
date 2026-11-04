@@ -15,32 +15,35 @@
 // it would write and writes nothing. It never deletes anything on the target; what the target holds
 // and the source does not is reported, for a person to decide.
 //
-// --redirect-old-paths leaves a 301 from each old page path to its /p URL, for links from outside.
+// --redirect-old-paths leaves a 301 from each old public page path to its /p URL, for links from
+// outside. A private path gets none, since a redirect would tell anyone its name.
 // --rewrite-links moves internal links to the scheme this site serves, pages under /p: see
 // rewriteLinks in content-sites.mjs. It is a step of a migration, never something a transfer does.
+// The source's own absolute URLs (https://old.host/...) in pages and item fields become root-relative,
+// or point at the target in a <meta> or <link>: see rewriteOwnUrls. --keep-own-urls leaves them, and
+// --source-origin names the old address when the source is an export.
 //
 // What cannot move: share links, because a site keeps only a hash of each. A private path arrives
 // closed, and its links are minted again on the target.
-import { canonical, oldPathRedirects, openSource, openTarget, parseArgs, rewriteContent, same, sha256, SiteError, writeExport } from "./content-sites.mjs";
+import { canonical, migratedContent, oldPathRedirects, openSource, openTarget, pageHref, parseArgs, rewriteContent, same, sha256, SiteError, writeExport } from "./content-sites.mjs";
 
 const actions = [];
 const notes = [];
 const act = (line) => actions.push(line);
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2), ["dry-run", "rewrite-links", "redirect-old-paths"]);
+  const options = parseArgs(process.argv.slice(2), ["dry-run", "rewrite-links", "redirect-old-paths", "keep-own-urls"]);
   if (!options.source) throw new SiteError("usage: migrate-content.mjs --source <url|dir> [--token-env NAME] (--target <url> [--target-token-env NAME] [--dry-run] | --export <dir>)");
   const source = await openSource(options.source, options["token-env"]);
   let content = await source.read();
-  // From a site that served pages at their own paths: every internal link takes its /p form, listed.
-  if (options["rewrite-links"]) {
-    const result = rewriteContent(content);
-    content = result.content;
-    for (const r of result.rewritten) console.log(`rewrite link in ${r.page}: ${r.from} -> ${r.to}`);
-    console.log(`rewrote ${result.rewritten.length} link${result.rewritten.length === 1 ? "" : "s"}`);
-  }
 
   if (options.export) {
+    // From a site that served pages at their own paths: every internal link takes its /p form, listed.
+    if (options["rewrite-links"]) {
+      const result = rewriteContent(content);
+      content = result.content;
+      for (const r of result.rewritten) console.log(`rewrite link in ${r.page}: ${r.from} -> ${r.to}`);
+    }
     const dir = options.export;
     await writeExport(dir, content);
     console.log(`exported ${source.label} to ${dir}: ${summary(content)}`);
@@ -50,6 +53,16 @@ async function main() {
   const dry = options["dry-run"] === true;
   const target = openTarget(options.target, options["target-token-env"] ?? "TARGET_TOKEN");
   if (source.site && source.site.url === target.url) throw new SiteError("the source and the target are the same site");
+  // The source's own absolute URLs become relative to the target, and with --rewrite-links every internal
+  // link takes its /p form; both are listed. An export as the source names its old address with --source-origin.
+  const migrated = migratedContent(content, {
+    from: options["source-origin"] ?? source.site?.url,
+    to: target.url,
+    rewriteLinks: options["rewrite-links"] === true,
+    keepOwnUrls: options["keep-own-urls"] === true,
+  });
+  content = migrated.content;
+  for (const line of migrated.lines) console.log(line);
   const current = await target.snapshot();
   console.log(`${dry ? "dry run: " : ""}${source.label} -> ${target.url}`);
   console.log(`source: ${summary(content)}`);
@@ -106,6 +119,12 @@ async function main() {
       const was = there.get(from);
       if (was && was.to === to && !was.prefix && was.status === 301) continue;
       await write(`redirect ${from} -> ${to}`, () => target.call("set_redirect", { from, to }));
+    }
+    // An earlier run redirected private paths too; take back only the redirects it made.
+    for (const page of content.pages) {
+      const was = there.get(page.path);
+      if (was && was.to === pageHref(page.path) && !oldPathRedirects(content).some((r) => r.from === page.path))
+        await write(`remove redirect ${page.path} (private)`, () => target.call("remove_redirect", { from: page.path }));
     }
   }
 

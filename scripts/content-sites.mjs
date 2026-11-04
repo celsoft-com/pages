@@ -278,11 +278,13 @@ export function rewriteLinks(source, format) {
 }
 
 // The redirect each old page path needs, from a site that served pages at their own paths: the home page
-// and the templates filed under /root were never addresses of their own, and / is unchanged.
+// and the templates filed under /root were never addresses of their own, and / is unchanged. A private
+// path gets none: a redirect answers anyone, so it would tell a stranger the path is there.
 export function oldPathRedirects(content) {
+  const isPrivate = (path) => content.private.some((scope) => path === scope || path.startsWith(`${scope}/`));
   return content.pages
     .map((page) => page.path)
-    .filter((path) => path !== "/root" && !path.startsWith("/root/") && pageHref(path) !== path)
+    .filter((path) => path !== "/root" && !path.startsWith("/root/") && pageHref(path) !== path && !isPrivate(path))
     .map((path) => ({ from: path, to: pageHref(path) }));
 }
 
@@ -297,4 +299,84 @@ export function rewriteContent(content) {
     return { ...page, content: live.text, ...(page.draft ? { draft: { ...page.draft, content: draft.text } } : {}) };
   });
   return { content: { ...content, pages }, rewritten };
+}
+
+// The source's own absolute URLs, for a migration to a site at another address. A page or item that names
+// its own site by https://old.host/... keeps working only while the old host serves it, and a browser on
+// the new host refuses that fetch across origins, so each becomes root-relative, the page path taking
+// its new form when links are rewritten too. A <meta> or <link> must stay absolute (og:url, og:image,
+// canonical), so there it points at the target instead. Bare host names in prose are left alone.
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function rewriteUrls(text, from, to, mapPath, inTag, changes) {
+  const host = new URL(from).host;
+  const pattern = new RegExp(`https?://${escapeRegExp(host)}(?![\\w.-])([^\\s"'<>()\\]\\\`]*)`, "g");
+  return text.replace(pattern, (url, rest, at) => {
+    const path = mapPath(rest === "" || /^[?#]/.test(rest) ? `/${rest}` : rest);
+    const replaced = inTag && /^<(meta|link)\b/i.test(text.slice(text.lastIndexOf("<", at), at)) ? `${to}${path}` : path;
+    if (replaced !== url) changes.push({ from: url, to: replaced });
+    return replaced;
+  });
+}
+
+function rewriteValueUrls(value, from, to, mapPath, changes) {
+  if (typeof value === "string") return rewriteUrls(value, from, to, mapPath, false, changes);
+  if (Array.isArray(value)) return value.map((v) => rewriteValueUrls(v, from, to, mapPath, changes));
+  if (value && typeof value === "object")
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, rewriteValueUrls(v, from, to, mapPath, changes)]));
+  return value;
+}
+
+function rewritePageUrls(source, format, from, to, mapPath, changes) {
+  if (format === "html") return rewriteUrls(source, from, to, mapPath, true, changes);
+  const parts = source.split(/(^```[^\n]*\n[\s\S]*?^```[ \t]*$)/m);
+  return parts
+    .map((part) => (part.startsWith("```") && !/^```pages\b/.test(part) ? part : rewriteUrls(part, from, to, mapPath, true, changes)))
+    .join("");
+}
+
+// The whole content with the source's own URLs made relative to wherever it lands, and what changed.
+export function rewriteOwnUrls(content, from, to, { pagePaths = false } = {}) {
+  const mapPath = pagePaths ? pageHref : (path) => path;
+  const rewritten = [];
+  const pages = content.pages.map((page) => {
+    const changes = [];
+    const text = rewritePageUrls(page.content, page.format, from, to, mapPath, changes);
+    const draft = page.draft
+      ? { ...page.draft, content: rewritePageUrls(page.draft.content, page.draft.format, from, to, mapPath, changes) }
+      : undefined;
+    for (const change of changes) rewritten.push({ where: page.path, ...change });
+    return { ...page, content: text, ...(draft ? { draft } : {}) };
+  });
+  const collections = content.collections.map((collection) => ({
+    ...collection,
+    items: collection.items.map((item) => {
+      const changes = [];
+      const fields = rewriteValueUrls(item, from, to, mapPath, changes);
+      for (const change of changes) rewritten.push({ where: `${collection.path}#${item.id}`, ...change });
+      return fields;
+    }),
+  }));
+  return { content: { ...content, pages, collections }, rewritten };
+}
+
+// What a migration writes, from what the source holds: its own URLs made relative unless keepOwnUrls,
+// then its links in their /p form when rewriteLinks. Migrate and verify both call this, so verify
+// expects exactly what migrate wrote. Each change is reported as a line.
+export function migratedContent(content, { from, to, rewriteLinks: links = false, keepOwnUrls = false }) {
+  const lines = [];
+  let result = content;
+  if (!keepOwnUrls && from) {
+    const own = rewriteOwnUrls(result, from, to, { pagePaths: links });
+    result = own.content;
+    for (const r of own.rewritten) lines.push(`own URL in ${r.where}: ${r.from} -> ${r.to}`);
+    lines.push(`rewrote ${own.rewritten.length} own URL${own.rewritten.length === 1 ? "" : "s"}`);
+  }
+  if (links) {
+    const rewritten = rewriteContent(result);
+    result = rewritten.content;
+    for (const r of rewritten.rewritten) lines.push(`link in ${r.page}: ${r.from} -> ${r.to}`);
+    lines.push(`rewrote ${rewritten.rewritten.length} link${rewritten.rewritten.length === 1 ? "" : "s"}`);
+  }
+  return { content: result, lines };
 }

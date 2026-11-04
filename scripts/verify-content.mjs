@@ -6,21 +6,23 @@
 // Arguments and tokens as for migrate-content.mjs. It reads both whole and reports every page (live
 // and draft), item (fields and order), collection reference, asset (by SHA-256 of its bytes), the
 // instructions, the site settings and the private paths that differ. It exits 1 on any difference.
-import { canonical, oldPathRedirects, openSource, openTarget, parseArgs, rewriteContent, same, sha256, SiteError } from "./content-sites.mjs";
+import { canonical, migratedContent, oldPathRedirects, openSource, openTarget, parseArgs, same, sha256, SiteError } from "./content-sites.mjs";
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2), ["rewrite-links", "redirect-old-paths"]);
+  const options = parseArgs(process.argv.slice(2), ["rewrite-links", "redirect-old-paths", "keep-own-urls"]);
   if (!options.source || !options.target) throw new SiteError("usage: verify-content.mjs --source <url|dir> [--token-env NAME] --target <url> [--target-token-env NAME]");
   const source = await openSource(options.source, options["token-env"]);
   const target = openTarget(options.target, options["target-token-env"] ?? "TARGET_TOKEN");
   const [read, have] = await Promise.all([source.read(), target.snapshot()]);
-  // Compared modulo the migration's link rewrites, which it lists, so a rewrite is the only difference allowed.
-  let want = read;
-  if (options["rewrite-links"]) {
-    const result = rewriteContent(read);
-    want = result.content;
-    for (const r of result.rewritten) console.log(`expected rewrite in ${r.page}: ${r.from} -> ${r.to}`);
-  }
+  // Compared modulo the migration's rewrites, which it lists, so a rewrite is the only difference allowed.
+  const migrated = migratedContent(read, {
+    from: options["source-origin"] ?? source.site?.url,
+    to: target.url,
+    rewriteLinks: options["rewrite-links"] === true,
+    keepOwnUrls: options["keep-own-urls"] === true,
+  });
+  const want = migrated.content;
+  for (const line of migrated.lines) console.log(`expected ${line}`);
   const problems = [];
   let checked = 0;
 
@@ -75,6 +77,14 @@ async function main() {
       const response = await fetch(`${target.url}${from}`, { redirect: "manual", headers: { "user-agent": "pages-migrate/1" } });
       const location = response.headers.get("location") ?? "";
       if (response.status !== 301 || !location.endsWith(to)) problems.push(`redirect ${from}: ${response.status} ${location}, not 301 to ${to}`);
+    }
+
+  // A private page's old address must not redirect, signed out: that would name it to anyone.
+  if (options["redirect-old-paths"])
+    for (const page of want.pages.filter((p) => want.private.some((s) => p.path === s || p.path.startsWith(`${s}/`)))) {
+      checked++;
+      const response = await fetch(`${target.url}${page.path}`, { redirect: "manual", headers: { "user-agent": "pages-migrate/1" } });
+      if (response.status >= 300 && response.status < 400) problems.push(`private ${page.path}: redirects signed out (${response.status})`);
     }
 
   if (have.instructions !== want.instructions) problems.push("instructions differ");
