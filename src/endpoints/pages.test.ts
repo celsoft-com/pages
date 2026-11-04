@@ -220,6 +220,12 @@ describe("check_links", () => {
     expect((await call("check_links", {})).broken).toEqual([{ path: "/x", line: 1, link: "/data/trip/gone.json" }]);
   });
 
+  it("takes a /data prefix a script builds on as the collections under it", async () => {
+    await call("put_item", { path: "/tour/stops", id: "a", fields: { name: "A" } });
+    await call("publish_page", { path: "/x", content: 'const BASE = "/data/tour/";\nconst GONE = "/data/journey/";' });
+    expect((await call("check_links", {})).broken).toEqual([{ path: "/x", line: 2, link: "/data/journey/" }]);
+  });
+
   it("reads neither code examples nor links a template completes", async () => {
     await call("publish_page", {
       path: "/howto",

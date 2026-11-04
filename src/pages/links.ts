@@ -72,6 +72,12 @@ export async function checkLinks(app: PagesApp): Promise<LinkReport> {
     if (asset !== null) return assetKeys.has(asset.slice(1)) || assetKeys.has(normalizeAssetPath(asset));
     const data = under("/data", path);
     if (data !== null) {
+      // A prefix a script adds file names to, such as const BASE = "/data/trip/", stands for the
+      // collections under it, so it resolves while any is there.
+      if (data.endsWith("/")) {
+        const prefix = normalizePath(data);
+        return [...collectionPaths].some((path) => path.startsWith(prefix === "/" ? "/" : `${prefix}/`));
+      }
       const target = normalizeCollectionPath(data);
       return /\.json$/i.test(data) && (target === MANIFEST_PATH || collectionPaths.has(target));
     }
