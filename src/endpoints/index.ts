@@ -1,5 +1,6 @@
 import { assetEndpoints } from "./assets";
 import { dataEndpoints } from "./data";
+import { directoryEndpoints } from "./directory";
 import { geoEndpoints } from "./geo";
 import { pageEndpoints } from "./pages";
 import { privacyEndpoints } from "./privacy";
@@ -10,7 +11,7 @@ import { transferEndpoints } from "./transfer";
 // Every endpoint, by the subsystem that defines it. The groups are the files, so the reference at
 // /docs/tools is navigated the way the code is laid out and no list of tools is kept anywhere.
 export const ENDPOINT_GROUPS = {
-  Pages: pageEndpoints,
+  Pages: { ...pageEndpoints, ...directoryEndpoints },
   Data: dataEndpoints,
   Assets: assetEndpoints,
   Transfers: transferEndpoints,
@@ -23,6 +24,7 @@ export const ENDPOINT_GROUPS = {
 export const endpoints = {
   ...siteEndpoints,
   ...pageEndpoints,
+  ...directoryEndpoints,
   ...dataEndpoints,
   ...assetEndpoints,
   ...transferEndpoints,

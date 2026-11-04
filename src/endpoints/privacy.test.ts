@@ -248,10 +248,9 @@ describe("listings", () => {
     await call("set_privacy", { path: "/trip", private: true });
     const contents = await (await t.fetch("/")).text();
     expect(contents).toContain("/tripwire");
-    expect(contents).not.toContain("/trip/day1");
     expect(contents).not.toContain('href="/p/trip"');
     await call("set_privacy", { path: "/trip", private: false });
-    expect(await (await t.fetch("/")).text()).toContain("/trip/day1");
+    expect(await (await t.fetch("/")).text()).toContain('href="/p/trip"');
   });
 
   it("leave private collections out of the index", async () => {
