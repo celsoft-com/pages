@@ -108,10 +108,30 @@ describe("/data", () => {
     ]);
   });
 
-  it("answers 404 without .json or for a missing collection", async () => {
+  it("answers the old site's JSON 404 without .json or for a missing collection", async () => {
     await call("put_item", { path: "/trip/stops", id: "a", fields: {} });
-    expect((await t.fetch("/data/trip/stops")).status).toBe(404);
-    expect((await t.fetch("/data/nothing.json")).status).toBe(404);
+    for (const url of ["/data/trip/stops", "/data/nothing.json"]) {
+      const response = await t.fetch(url);
+      expect(response.status).toBe(404);
+      expect(response.headers.get("content-type")).toMatch(/application\/json/);
+      expect(await response.json()).toEqual({ error: "Not found" });
+    }
+  });
+
+  it("answers a refused private collection exactly as a missing one", async () => {
+    await call("put_item", { path: "/diary/days", id: "a", fields: {} });
+    await call("publish_page", { path: "/diary", content: "# Diary" });
+    await call("set_privacy", { path: "/diary", private: true });
+    expect((await t.as(owner).fetch("/data/diary/days.json")).status).toBe(200);
+    const answer = async (url: string) => {
+      const response = await t.fetch(url);
+      const headers = [...response.headers].filter(([name]) => name !== "date");
+      return { status: response.status, headers, body: await response.text() };
+    };
+    const refused = await answer("/data/diary/days.json");
+    expect(refused.status).toBe(404);
+    expect(refused).toEqual(await answer("/data/nothing.json"));
+    expect(refused.body).toBe('{"error":"Not found"}');
   });
 });
 

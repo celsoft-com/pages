@@ -68,9 +68,11 @@ const pages = page({
 // The index of every collection belongs to no path, so only the site gates it.
 const dataPath = (raw: string) => (normalizeCollectionPath(raw) === MANIFEST_PATH ? "/" : normalizeCollectionPath(raw));
 
-// Collection /a/b is served at /data/a/b.json as a bare array of its items, in collection order.
+// Collection /a/b is served at /data/a/b.json as a bare array of its items, in collection order. A missing
+// path and a refused private one get the same JSON 404 the old site sent, so a page's fetch reads them alike.
 const data = page({
   path: "/data",
+  notFound: () => Response.json({ error: "Not found" }, { headers: { "access-control-allow-origin": "*" } }),
   routes: {
     "/*path": route({ params: REST, access: at(dataPath), cache: CACHE }, async ({ path: raw }, app) => {
       if (!/\.json$/i.test(raw)) throw notFound(`/data/${raw}`);
