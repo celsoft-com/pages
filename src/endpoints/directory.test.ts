@@ -25,6 +25,17 @@ async function site() {
 }
 
 describe("the directory at /", () => {
+  it("never lists the home page's chrome and templates under /root", async () => {
+    await site();
+    await call("publish_page", { path: "/root/chrome/header", content: "<nav>x</nav>", format: "html" });
+    await call("publish_page", { path: "/root/templates/row", content: "<a>{{ p.title }}</a>", format: "html" });
+    const html = await (await t.fetch("/")).text();
+    expect(html).toContain('<a href="/p/trip">Trip</a>');
+    expect(html).not.toContain("/root/");
+    await call("publish_page", { path: "/root", content: "# Home" });
+    expect(paths(await t.as(owner).call("directory", {}))).toEqual(["/diary (private)", "/notes/a", "/trip"]);
+  });
+
   it("lists the public top-level pages, a page with nothing above it included", async () => {
     await site();
     const html = await (await t.fetch("/")).text();

@@ -18,8 +18,12 @@ export function listable(pages: PageSummary[]): PageSummary[] {
 
 // The pages no other page sits above, at whatever depth: /tutorial when it exists, and otherwise each
 // /tutorial/x, so a page is never reachable only through a parent that is not there.
+// Pages under /root are the home page's own chrome and templates, never addresses to list, whether
+// or not a home page is stored above them.
+const inHomeBundle = (path: string) => path.startsWith(`${ROOT_BUNDLE}/`);
+
 export function topLevel(pages: PageSummary[]): PageSummary[] {
-  const listed = listable(pages);
+  const listed = listable(pages).filter((page) => !inHomeBundle(page.path));
   const paths = new Set(listed.map((page) => page.path));
   return listed.filter((page) => {
     const segments = page.path.split("/").filter(Boolean);
