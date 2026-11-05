@@ -1,18 +1,20 @@
 #!/usr/bin/env zsh
-#MISE description="Migrate one old site to its preview and verify it: sean | family [--dry-run]"
-#USAGE arg "<site>" help="sean (sean.celsoft.com to pr-1) or family (pages.odellfambly.us to pr-2)"
+#MISE description="Migrate one old site to a target and verify it: sean | family --target <url> --target-token-env NAME [--dry-run]"
+#USAGE arg "<site>" help="The source: sean (https://sean.celsoft.com) or family (https://pages.odellfambly.us)"
+#USAGE flag "--target <url>" required=#true help="The site to migrate into, such as a preview at https://pr-N.<site hostname>"
+#USAGE flag "--target-token-env <name>" required=#true help="The .env.secrets name of a manage-capped token minted at <target>/tokens"
 #USAGE flag "--dry-run" help="List what would be written, write nothing, verify nothing"
 set -euo pipefail
 
-# Each old site goes to its own preview, never into another's. The tokens are named here and read
-# from .env.secrets by Node in its own process; none is passed or printed.
+# The site names the source; the target is always given, so no run writes to a default place. The
+# tokens are named here and read from .env.secrets by Node in its own process; none is passed or printed.
 case "${usage_site:-${1:-}}" in
-  sean) source_url=https://sean.celsoft.com; source_token=SEAN_SITE_TOKEN; target_url=https://pr-1.pages-dev.celsoft.com; target_token=PR1_TOKEN ;;
-  family) source_url=https://pages.odellfambly.us; source_token=FAMILY_SITE_TOKEN; target_url=https://pr-2.pages-dev.celsoft.com; target_token=PR2_TOKEN ;;
+  sean) source_url=https://sean.celsoft.com; source_token=SEAN_SITE_TOKEN ;;
+  family) source_url=https://pages.odellfambly.us; source_token=FAMILY_SITE_TOKEN ;;
   *) echo "migrate-site: name a site, sean or family" >&2; exit 64 ;;
 esac
 
-args=(--source "$source_url" --token-env "$source_token" --target "$target_url" --target-token-env "$target_token" --rewrite-links --redirect-old-paths)
+args=(--source "$source_url" --token-env "$source_token" --target "$usage_target" --target-token-env "$usage_target_token_env" --rewrite-links --redirect-old-paths)
 run() { node --env-file-if-exists=.env.secrets "$@"; }
 
 if [[ "${usage_dry_run:-}" == "true" ]]; then
