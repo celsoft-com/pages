@@ -360,12 +360,35 @@ export function rewriteOwnUrls(content, from, to, { pagePaths = false } = {}) {
   return { content: { ...content, pages, collections }, rewritten };
 }
 
-// What a migration writes, from what the source holds: its own URLs made relative unless keepOwnUrls,
-// then its links in their /p form when rewriteLinks. Migrate and verify both call this, so verify
-// expects exactly what migrate wrote. Each change is reported as a line.
+// The home page the old setup seeded on every new site. A /root that is exactly this was never written
+// by its owner, and migrating it would hide the directory a site with no home page shows at /.
+const SEED_HOME = {
+  title: "Welcome",
+  format: "markdown",
+  content: "# Welcome\n\nThis site was just set up. Its owner writes pages here by talking to Claude.\n\nAsk Claude to replace this page whenever you are ready.",
+};
+
+export function isSeedHome(page) {
+  return (
+    page.path === "/root" &&
+    page.title === SEED_HOME.title &&
+    page.format === SEED_HOME.format &&
+    page.content === SEED_HOME.content &&
+    !page.draft &&
+    Object.keys(page.meta ?? {}).length === 0
+  );
+}
+
+// What a migration writes, from what the source holds: the seeded placeholder home page left out, its
+// own URLs made relative unless keepOwnUrls, then its links in their /p form when rewriteLinks. Migrate
+// and verify both call this, so verify expects exactly what migrate wrote. Each change is reported as a line.
 export function migratedContent(content, { from, to, rewriteLinks: links = false, keepOwnUrls = false }) {
   const lines = [];
   let result = content;
+  if (result.pages.some(isSeedHome)) {
+    result = { ...result, pages: result.pages.filter((page) => !isSeedHome(page)) };
+    lines.push("skipped /root: the placeholder the old setup seeded, so / shows the directory");
+  }
   if (!keepOwnUrls && from) {
     const own = rewriteOwnUrls(result, from, to, { pagePaths: links });
     result = own.content;
