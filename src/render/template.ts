@@ -91,10 +91,18 @@ class CollectionsDrop extends Drop {
 }
 
 // Every limit is generous for a page and finite for a loop nobody meant to write: a template runs on
-// the request path, and one that never finishes takes the site down with it.
+// the request path, and one that never finishes takes the site down with it. The render limit counts
+// waiting too, so each template is read from storage and parsed once per render: Liquid checks a file
+// exists before reading it, and a row rendered in a loop would otherwise be read again on every pass.
 function engine(app: PagesApp): Liquid {
-  const named = (file: string): Promise<Page | null> => getPage(app, normalizePath(file));
+  const read = new Map<string, Promise<Page | null>>();
+  const named = (file: string): Promise<Page | null> => {
+    const path = normalizePath(file);
+    if (!read.has(path)) read.set(path, getPage(app, path));
+    return read.get(path)!;
+  };
   const liquid = new Liquid({
+    cache: true,
     fs: {
       exists: async (file) => (await named(file)) !== null,
       existsSync: () => false,
